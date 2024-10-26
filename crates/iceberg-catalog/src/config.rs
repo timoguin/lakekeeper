@@ -553,10 +553,12 @@ mod test {
         figment::Jail::expect_with(|jail| {
             jail.set_env("LAKEKEEPER_TEST__ALLOW_ORIGIN", "*");
             let config = get_config();
-            assert_eq!(config.allow_origin, Some(vec![HeaderValue::from_str("*").unwrap()]));
+            assert_eq!(
+                config.allow_origin,
+                Some(vec![HeaderValue::from_str("*").unwrap()])
+            );
             Ok(())
         });
-
     }
 
     #[test]
