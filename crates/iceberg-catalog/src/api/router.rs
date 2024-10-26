@@ -10,7 +10,6 @@ use crate::service::token_verification::Verifier;
 use crate::service::{authz::Authorizer, Catalog, SecretStore, State};
 use axum::response::IntoResponse;
 use axum::{routing::get, Json, Router};
-use axum_extra::headers::Allow;
 use axum_extra::middleware::option_layer;
 use axum_prometheus::PrometheusMetricLayer;
 use http::HeaderValue;
