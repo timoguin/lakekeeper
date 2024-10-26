@@ -549,6 +549,17 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_wildcard_allow_origin() {
+        figment::Jail::expect_with(|jail| {
+            jail.set_env("LAKEKEEPER_TEST__ALLOW_ORIGIN", "*");
+            let config = get_config();
+            assert_eq!(config.allow_origin, Some(vec![HeaderValue::from_str("*").unwrap()]));
+            Ok(())
+        });
+
+    }
+
+    #[test]
     fn test_default() {
         let _ = &CONFIG.base_uri;
     }

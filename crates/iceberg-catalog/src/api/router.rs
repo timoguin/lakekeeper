@@ -10,6 +10,7 @@ use crate::service::token_verification::Verifier;
 use crate::service::{authz::Authorizer, Catalog, SecretStore, State};
 use axum::response::IntoResponse;
 use axum::{routing::get, Json, Router};
+use axum_extra::headers::Allow;
 use axum_extra::middleware::option_layer;
 use axum_prometheus::PrometheusMetricLayer;
 use http::HeaderValue;
@@ -38,7 +39,15 @@ pub fn new_full_router<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
 
     let management_routes = Router::new().merge(ApiServer::new_v1_router(&authorizer));
     let maybe_cors_layer = option_layer(cors_origins.map(|origins| {
-        tower_http::cors::CorsLayer::new().allow_origin(AllowOrigin::list(origins.iter().cloned()))
+        let allowed_origin = if origins
+            .iter()
+            .any(|origin| origin == &HeaderValue::from_static("*"))
+        {
+            AllowOrigin::any()
+        } else {
+            AllowOrigin::list(origins.iter().cloned())
+        };
+        tower_http::cors::CorsLayer::new().allow_origin(allowed_origin)
     }));
     let maybe_auth_layer = option_layer(token_verifier.map(|o| {
         axum::middleware::from_fn_with_state(
