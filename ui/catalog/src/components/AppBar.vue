@@ -144,7 +144,7 @@
       </v-list>
     </v-menu>
 
-    <v-menu open-on-hover v-if="idpOn">
+    <v-menu open-on-hover v-if="!idpOn">
       <template #activator="{ props }">
         <v-btn v-bind="props"> <v-icon>mdi-account</v-icon> </v-btn>
       </template>

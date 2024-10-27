@@ -1,16 +1,14 @@
-// auth.ts
-import { App, ref, onMounted } from "vue";
+import { App, ref } from "vue";
 import { UserManager, WebStorageStateStore } from "oidc-client-ts";
 import * as env from "../app.config";
-// Define a custom type for the user state
 
 // OIDC Configuration
 const oidcSettings = {
-  authority: env.idpAuthority, // Replace with your OIDC provider authority
-  client_id: env.idpClientId, // Replace with your actual client ID
-  redirect_uri: `${window.location.origin}${env.idpRedirectPath}`, // Your redirect URI must match the OIDC provider settings
+  authority: env.idpAuthority,
+  client_id: env.idpClientId,
+  redirect_uri: `${window.location.origin}${env.idpRedirectPath}`,
   response_type: "code",
-  scope: env.idpScope, // Adjust as needed for your application's scopes
+  scope: env.idpScope,
   post_logout_redirect_uri: `${window.location.origin}${env.idpLogoutRedirectPath}`,
   userStore: new WebStorageStateStore({ store: window.localStorage }),
 };
@@ -25,11 +23,13 @@ const isAuthenticated = ref(false);
 // Helper functions
 const initUser = async () => {
   try {
-    signIn();
+    await signIn(); // Ensure signIn is called as part of initialization
     const user = await userManager.getUser();
-    access_token.value = user!.access_token; // Explicitly cast to custom type
-    console.log("signIn", access_token.value);
-    isAuthenticated.value = true;
+    if (user) {
+      access_token.value = user.access_token; // Use non-null assertion if user is expected to exist
+      console.log("signIn", access_token.value);
+      isAuthenticated.value = true;
+    }
   } catch (error) {
     console.error("Failed to initialize OIDC user", error);
   }
@@ -55,15 +55,12 @@ const signOut = async () => {
 
 // Vue Composition API hook to use authentication state and functions
 export function useAuth() {
-  onMounted(() => {
-    initUser();
-  });
-
   return {
-    access_token: access_token.value,
-    isAuthenticated: isAuthenticated.value,
+    access_token,
+    isAuthenticated,
     signIn,
     signOut,
+    initUser, // Expose initUser for calling in components
   };
 }
 
@@ -71,8 +68,6 @@ export function useAuth() {
 export default {
   install: (app: App) => {
     const auth = useAuth();
-    console.log("install", isAuthenticated.value);
-
     app.provide("auth", auth);
     app.config.globalProperties.$auth = auth;
   },

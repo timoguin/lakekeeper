@@ -9,27 +9,19 @@
         </div>
       </div>
 
-      <div class="py-4" />
+      <div class="py-4"></div>
       <v-row
         ><v-col>
           <v-card class="mx-auto" max-width="344" outlined>
             <v-list-item three-line>
-              <v-list-item-content>
-                <div class="text-overline mb-4">WAREHOUSES</div>
-                <v-list-item-title class="text-h5 mb-1">
-                  Iceberg Tables
-                </v-list-item-title>
-                <v-list-item-subtitle
-                  >Create and manage your Warhouses, Tables and Access
-                  Controls</v-list-item-subtitle
-                >
-              </v-list-item-content>
-
-              <v-list-item-avatar
-                tile
-                size="80"
-                color="grey"
-              ></v-list-item-avatar>
+              <div class="text-overline mb-4">WAREHOUSES</div>
+              <v-list-item-title class="text-h5 mb-1">
+                Iceberg Tables
+              </v-list-item-title>
+              <v-list-item-subtitle
+                >Create and manage your Warhouses, Tables and Access
+                Controls</v-list-item-subtitle
+              >
             </v-list-item>
 
             <v-card-actions>
@@ -39,22 +31,14 @@
         ><v-col>
           <v-card class="mx-auto" max-width="344" outlined>
             <v-list-item three-line>
-              <v-list-item-content>
-                <div class="text-overline mb-4">VOLUMES</div>
-                <v-list-item-title class="text-h5 mb-1">
-                  Files & Objects
-                </v-list-item-title>
-                <v-list-item-subtitle
-                  >Store and govern Access to your Files and Objects to run your
-                  AI and ML processes
-                </v-list-item-subtitle>
-              </v-list-item-content>
-
-              <v-list-item-avatar
-                tile
-                size="80"
-                color="grey"
-              ></v-list-item-avatar>
+              <div class="text-overline mb-4">VOLUMES</div>
+              <v-list-item-title class="text-h5 mb-1">
+                Files & Objects
+              </v-list-item-title>
+              <v-list-item-subtitle
+                >Store and govern Access to your Files and Objects to run your
+                AI and ML processes
+              </v-list-item-subtitle>
             </v-list-item>
 
             <v-card-actions>
