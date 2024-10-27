@@ -40,7 +40,7 @@ pub fn new_full_router<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
     let maybe_cors_layer = option_layer(cors_origins.map(|origins| {
         let allowed_origin = if origins
             .iter()
-            .any(|origin| origin == &HeaderValue::from_static("*"))
+            .any(|origin| origin == HeaderValue::from_static("*"))
         {
             AllowOrigin::any()
         } else {
