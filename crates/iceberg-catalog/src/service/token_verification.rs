@@ -101,8 +101,10 @@ impl AuthDetails {
                 });
 
         let preferred_username = claims
+            .name
+            .clone()
             // Keycloak
-            .preferred_username
+            .or(claims.preferred_username)
             // Azure
             .or(claims.app_displayname)
             // Humans
