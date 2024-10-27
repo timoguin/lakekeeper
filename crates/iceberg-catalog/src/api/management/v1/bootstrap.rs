@@ -15,6 +15,7 @@ use super::user::{UserLastUpdatedWith, UserType};
 #[serde(rename_all = "kebab-case")]
 pub enum AuthZBackend {
     AllowAll,
+    #[serde(rename = "openfga")]
     OpenFGA,
 }
 
