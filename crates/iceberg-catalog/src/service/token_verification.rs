@@ -534,8 +534,8 @@ mod test {
     #[test]
     fn test_human_user_discovery() {
         let claims: Claims = serde_json::from_value(serde_json::json!({
-          "exp": 1729990458,
-          "iat": 1729990158,
+          "exp": 1_729_990_458,
+          "iat": 1_729_990_158,
           "jti": "97cdc5d9-8717-4826-a425-30c6682342b4",
           "iss": "http://localhost:30080/realms/iceberg",
           "aud": "account",
@@ -576,7 +576,7 @@ mod test {
         let auth_details = super::AuthDetails::try_from_jwt_claims(claims).unwrap();
         let principal = match auth_details {
             super::AuthDetails::Principal(principal) => principal,
-            _ => panic!("Expected principal"),
+            super::AuthDetails::Unauthenticated => panic!("Expected principal"),
         };
         let (name, user_type) = principal.get_name_and_type().unwrap();
         assert_eq!(name, "Peter Cold");

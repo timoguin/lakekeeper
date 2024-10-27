@@ -48,7 +48,12 @@ pub fn new_full_router<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
         };
         tower_http::cors::CorsLayer::new()
             .allow_origin(allowed_origin)
-            .allow_headers(vec![header::AUTHORIZATION, header::CONTENT_TYPE])
+            .allow_headers(vec![
+                header::AUTHORIZATION,
+                header::CONTENT_TYPE,
+                header::ACCEPT,
+                header::USER_AGENT,
+            ])
             .allow_methods(vec![
                 Method::GET,
                 Method::HEAD,
