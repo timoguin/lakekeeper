@@ -51,3 +51,12 @@ export interface TreeItem {
 export interface TreeItems {
   items: TreeItem[];
 }
+
+export interface User {
+  access_token: string;
+  id_token: string;
+  email: string;
+  preferred_username: string;
+  family_name: string;
+  given_name: string;
+}
