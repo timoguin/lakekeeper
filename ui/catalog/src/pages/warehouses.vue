@@ -57,7 +57,7 @@ const treeItems = ref<TreeItems>({ items: [] });
 
 const selected = ref([]);
 const json = reactive({});
-const baseUrl = env.default.icebergCatalogUrl as string;
+const baseUrl = env.icebergCatalogUrl as string;
 const managementUrl = baseUrl + "/management/v1";
 const catalogUrl = baseUrl + "/catalog/v1";
 const type = ref();

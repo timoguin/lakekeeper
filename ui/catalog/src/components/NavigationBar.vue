@@ -9,9 +9,15 @@
       ></v-list-item>
       <v-list-item
         link
-        to="catalogs"
-        title="Catalogs"
-        prepend-icon="mdi-book-open-variant"
+        to="warehouses"
+        title="Warehouses"
+        prepend-icon="mdi-warehouse"
+      ></v-list-item>
+      <v-list-item
+        link
+        @click="showSnackbar"
+        title="Volumes"
+        prepend-icon="mdi-bucket"
       ></v-list-item>
       <v-list-item
         link
@@ -20,10 +26,18 @@
         prepend-icon="mdi-cog"
       ></v-list-item>
     </v-list>
+    <v-snackbar v-model="snackbarVisible" timeout="3000">
+      Volumes are not active yet
+    </v-snackbar>
   </v-navigation-drawer>
 </template>
 
 <script setup lang="ts">
 import { useVisualStore } from "../stores/visual";
 const visual = useVisualStore();
+const snackbarVisible = ref(false);
+
+function showSnackbar() {
+  snackbarVisible.value = true;
+}
 </script>

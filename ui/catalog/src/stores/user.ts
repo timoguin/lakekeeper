@@ -10,10 +10,10 @@ export const useUserStore = defineStore(
     const user: User = reactive({
       access_token: "",
       id_token: "",
-      email: "",
-      preferred_username: "",
-      family_name: "",
-      given_name: "",
+      email: "anonymous@unknown.com",
+      preferred_username: "anonymous",
+      family_name: "Ymous",
+      given_name: "Anon",
     });
 
     function setUser(newUser: User) {
@@ -29,10 +29,10 @@ export const useUserStore = defineStore(
       isAuthenticated.value = false;
       user.access_token = "";
       user.id_token = "";
-      user.email = "";
-      user.preferred_username = "";
-      user.family_name = "";
-      user.given_name = "";
+      user.email = "anonymous@unknown.com";
+      user.preferred_username = "anonymous";
+      user.family_name = "Ymous";
+      user.given_name = "Anon";
     }
 
     return { isAuthenticated, user, unsetUser, setUser, getUser };

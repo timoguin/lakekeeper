@@ -5,7 +5,8 @@
 
 <script lang="ts" setup>
 import { useAuth } from "../plugins/auth";
+import { idpOn } from "../app.config";
 function login() {
-  useAuth().signIn();
+  if (idpOn) useAuth().signIn();
 }
 </script>

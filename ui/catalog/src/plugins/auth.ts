@@ -1,17 +1,17 @@
 // auth.ts
 import { App, ref, onMounted } from "vue";
 import { UserManager, WebStorageStateStore } from "oidc-client-ts";
-
+import * as env from "../app.config";
 // Define a custom type for the user state
 
 // OIDC Configuration
 const oidcSettings = {
-  authority: "http://localhost:30080/realms/iceberg/", // Replace with your OIDC provider
-  client_id: "iceberg-catalog", // Replace with your client ID
-  redirect_uri: `${window.location.origin}/callback`,
+  authority: env.idpAuthority, // Replace with your OIDC provider authority
+  client_id: env.idpClientId, // Replace with your actual client ID
+  redirect_uri: `${window.location.origin}${env.idpRedirectPath}`, // Your redirect URI must match the OIDC provider settings
   response_type: "code",
-  scope: "openid profile email iceberg-catalog", // Customize based on required scopes
-  post_logout_redirect_uri: `${window.location.origin}/logout`,
+  scope: env.idpScope, // Adjust as needed for your application's scopes
+  post_logout_redirect_uri: `${window.location.origin}${env.idpLogoutRedirectPath}`,
   userStore: new WebStorageStateStore({ store: window.localStorage }),
 };
 
