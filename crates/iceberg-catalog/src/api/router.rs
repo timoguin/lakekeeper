@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use crate::service::event_publisher::CloudEventsPublisher;
 use crate::tracing::{MakeRequestUuid7, RestMakeSpan};
 
@@ -14,7 +12,7 @@ use axum::response::IntoResponse;
 use axum::{routing::get, Json, Router};
 use axum_extra::middleware::option_layer;
 use axum_prometheus::PrometheusMetricLayer;
-use http::{HeaderName, HeaderValue, Method};
+use http::{header, HeaderName, HeaderValue, Method};
 use tower::ServiceBuilder;
 use tower_http::cors::AllowOrigin;
 use tower_http::{
@@ -50,11 +48,15 @@ pub fn new_full_router<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
         };
         tower_http::cors::CorsLayer::new()
             .allow_origin(allowed_origin)
-            .allow_headers(vec![
-                HeaderName::from_static("Content-Type"),
-                HeaderName::from_static("Authorization"),
+            .allow_headers(vec![header::AUTHORIZATION, header::CONTENT_TYPE])
+            .allow_methods(vec![
+                Method::GET,
+                Method::HEAD,
+                Method::POST,
+                Method::PUT,
+                Method::DELETE,
+                Method::OPTIONS,
             ])
-            .allow_methods(vec![Method::GET, Method::POST, Method::PUT, Method::DELETE])
     }));
     let maybe_auth_layer = option_layer(token_verifier.map(|o| {
         axum::middleware::from_fn_with_state(
