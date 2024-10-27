@@ -12,7 +12,14 @@ Implementation of the Iceberg REST Catalog server.
 """
 
 [features]
-all = ["sqlx-postgres", "s3-signer", "router", "nats", "vendored-protoc"]
+all = [
+    "sqlx-postgres",
+    "s3-signer",
+    "router",
+    "nats",
+    "vendored-protoc",
+    "embedded_pg",
+]
 sqlx-postgres = ["sqlx"]
 sqlx = ["dep:sqlx"]
 s3-signer = ["dep:aws-sigv4", "dep:aws-credential-types"]
@@ -20,9 +27,13 @@ router = ["dep:tower-http"]
 nats = ["dep:async-nats"]
 default = ["sqlx-postgres", "s3-signer", "router", "vendored-protoc"]
 vendored-protoc = ["openfga-rs/vendored-protoc"]
+embedded_pg = ["dep:postgresql_embedded"]
 
 [dependencies]
 anyhow = { workspace = true }
+postgresql_embedded = { workspace = true, optional = true, default-features = false, features = [
+    "rustls-tls",
+] }
 async-nats = { workspace = true, optional = true }
 async-stream = { workspace = true }
 async-trait = { workspace = true }
@@ -77,7 +88,7 @@ tower-http = { workspace = true, optional = true, features = [
     "default",
     "request-id",
     "util",
-    "cors"
+    "cors",
 ] }
 tracing = { workspace = true }
 url = { workspace = true }

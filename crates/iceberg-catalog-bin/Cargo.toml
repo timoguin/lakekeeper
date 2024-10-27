@@ -16,6 +16,9 @@ name = "iceberg-catalog"
 path = "src/main.rs"
 
 [features]
+all = ["embedded_pg"]
+default = ["embedded_pg"]
+embedded_pg = ["dep:postgresql_embedded"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -29,3 +32,8 @@ tower-http = { workspace = true, features = ["cors", "tracing"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 utoipa = { workspace = true, features = ['yaml'] }
+postgresql_embedded = { workspace = true, optional = true, default-features = false, features = [
+    "bundled",
+    "rustls-tls",
+    "tokio",
+] }

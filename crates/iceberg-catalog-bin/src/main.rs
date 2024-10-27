@@ -2,10 +2,11 @@ use clap::{Parser, Subcommand};
 use iceberg_catalog::api::management::v1::api_doc as v1_api_doc;
 use iceberg_catalog::service::authz::implementations::openfga::UnauthenticatedOpenFGAAuthorizer;
 use iceberg_catalog::service::authz::AllowAllAuthorizer;
-use iceberg_catalog::{AuthZBackend, CONFIG};
+use iceberg_catalog::{AuthZBackend, CatalogBackend, CONFIG};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
+mod embedded_pg;
 mod healthcheck;
 mod serve;
 mod wait_for_db;
@@ -113,6 +114,13 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::Migrate {}) => {
             print_info();
+
+            let pg = if CONFIG.catalog_backend == CatalogBackend::EmbeddedPg {
+                Some(embedded_pg::start_embedded_pg().await?)
+            } else {
+                None
+            };
+
             println!("Migrating authorizer...");
             iceberg_catalog::service::authz::implementations::migrate_default_authorizer().await?;
             println!("Authorizer migration complete.");
@@ -129,6 +137,10 @@ async fn main() -> anyhow::Result<()> {
             // is migrated correctly on startup
             iceberg_catalog::implementations::postgres::migrate(&write_pool).await?;
             println!("Database migration complete.");
+
+            if let Some(pg) = pg {
+                pg.stop().await?;
+            }
         }
         Some(Commands::Serve {}) => {
             print_info();

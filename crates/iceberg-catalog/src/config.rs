@@ -48,6 +48,30 @@ fn get_config() -> DynAppConfig {
         .reserved_namespaces
         .extend(DEFAULT_RESERVED_NAMESPACES.into_iter().map(str::to_string));
 
+    if config.catalog_backend == CatalogBackend::EmbeddedPg {
+        #[cfg(not(feature = "embedded_pg"))]
+        {
+            panic!("Embedded Postgres is not supported in this build.");
+        }
+
+        #[cfg(feature = "embedded_pg")]
+        {
+            let embedded_pg_settings = config.embedded_pg_settings();
+            let db = config.pg_database.unwrap_or("lakekeeper".to_string());
+            config.pg_database = Some(db.clone());
+            let db_url = format!(
+                "postgres://{}:{}@{}:{}/{}",
+                urlencoding::encode(&embedded_pg_settings.username),
+                urlencoding::encode(&embedded_pg_settings.password),
+                "localhost",
+                embedded_pg_settings.port,
+                db
+            );
+            config.pg_database_url_read = Some(db_url.clone());
+            config.pg_database_url_write = Some(db_url);
+        }
+    };
+
     // Fail early if the base_uri is not a valid URL
     config.s3_signer_uri_for_warehouse(WarehouseIdent::from(uuid::Uuid::new_v4()));
     config.base_uri_catalog();
@@ -97,6 +121,16 @@ pub struct DynAppConfig {
         serialize_with = "serialize_reserved_namespaces"
     )]
     pub reserved_namespaces: ReservedNamespaces,
+
+    /// If true, the embedded postgres is used.
+    /// Embedded postgres must only be used for testing! It is not
+    /// production ready.
+    /// For this flag to run, the binary must be build with the
+    /// `embedded_pg` feature.
+    pub catalog_backend: CatalogBackend,
+    // ------------- EMDBEDDED POSTGRES -------------
+    pub(crate) embedded_pg_data_dir: Option<PathBuf>,
+    pub(crate) embedded_pg_installation_dir: Option<PathBuf>,
     // ------------- POSTGRES IMPLEMENTATION -------------
     #[redact]
     pub(crate) pg_encryption_key: String,
@@ -108,7 +142,7 @@ pub struct DynAppConfig {
     pub(crate) pg_user: Option<String>,
     #[redact]
     pub(crate) pg_password: Option<String>,
-    pub(crate) pg_database: Option<String>,
+    pub pg_database: Option<String>,
     pub(crate) pg_ssl_mode: Option<PgSslMode>,
     pub(crate) pg_ssl_root_cert: Option<PathBuf>,
     pub(crate) pg_enable_statement_logging: bool,
@@ -220,6 +254,18 @@ where
         .serialize(serializer)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogBackend {
+    /// Use an embedded postgres as the catalog backend.
+    /// This is only for testing purposes and should not be used in production.
+    /// For this to work, the binary must be built with the `embedded_pg` feature.
+    #[serde(alias = "embedded_pg", alias = "EmbeddedPg", alias = "EMBEDDED_PG")]
+    EmbeddedPg,
+    #[serde(alias = "postgres", alias = "Postgres", alias = "POSTGRES")]
+    Postgres,
+}
+
 #[derive(Clone, Serialize, Deserialize, PartialEq, veil::Redact)]
 #[serde(rename_all = "snake_case")]
 pub enum OpenFGAAuth {
@@ -295,6 +341,9 @@ impl Default for DynAppConfig {
                 "system".to_string(),
                 "examples".to_string(),
             ])),
+            catalog_backend: CatalogBackend::Postgres,
+            embedded_pg_data_dir: None,
+            embedded_pg_installation_dir: None,
             pg_encryption_key: DEFAULT_ENCRYPTION_KEY.to_string(),
             pg_database_url_read: None,
             pg_database_url_write: None,
@@ -354,6 +403,31 @@ impl DynAppConfig {
 
     pub fn tabular_expiration_delay(&self) -> chrono::Duration {
         self.default_tabular_expiration_delay_seconds
+    }
+
+    #[cfg(feature = "embedded_pg")]
+    pub fn embedded_pg_settings(&self) -> postgresql_embedded::Settings {
+        let mut settings = postgresql_embedded::Settings::new();
+        if let Some(port) = self.pg_port {
+            settings.port = port;
+        }
+        if let Some(user) = &self.pg_user {
+            settings.username = user.clone();
+        }
+
+        if let Some(password) = &self.pg_password {
+            settings.password = password.clone();
+        }
+
+        if let Some(data_dir) = &self.embedded_pg_data_dir {
+            settings.data_dir = data_dir.clone();
+        }
+
+        if let Some(installation_dir) = &self.embedded_pg_installation_dir {
+            settings.installation_dir = installation_dir.clone();
+        }
+
+        settings
     }
 }
 
