@@ -6,7 +6,7 @@
     >
       &copy; {{ new Date().getFullYear() }}
       <span class="d-none d-sm-inline-block">
-        <a href="https://hansetag.com">HANSETAG</a>
+        <a href="https://lakekeeper.io">LAKEKEEPER</a>
       </span>
     </div>
   </v-footer>

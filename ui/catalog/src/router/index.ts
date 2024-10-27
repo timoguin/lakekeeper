@@ -37,10 +37,8 @@ router.isReady().then(() => {
 
 router.beforeEach((to, from, next) => {
   const userStorage = useUserStore();
-  console.log("env.idpOn", env.idpOn, typeof env.idpOn);
-  if (env.idpOn) {
-    console.log("env.idpOn1", env.idpOn);
 
+  if (env.idpOn) {
     if (to.path === "/login" || to.path === "/callback") {
       return next();
     } else {
@@ -52,6 +50,13 @@ router.beforeEach((to, from, next) => {
       }
     }
   } else {
+    if (
+      to.path === "/login" ||
+      to.path === "/callback" ||
+      to.path === "/logout"
+    ) {
+      return next("/");
+    }
     next();
   }
 

@@ -60,3 +60,10 @@ export interface User {
   family_name: string;
   given_name: string;
 }
+export interface ProjectCatalog {
+  version: string;
+  bootstrapped: boolean;
+  "server-id": string;
+  "default-project-id": string;
+  "authz-backend": string;
+}

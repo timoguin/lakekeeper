@@ -8,6 +8,7 @@ import { UserManager } from "oidc-client-ts";
 import { useUserStore } from "../stores/user";
 import { User } from "@/common/interfaces";
 import * as env from "../app.config";
+import router from "@/router";
 const userStorage = useUserStore();
 
 // Configure the OIDC client
@@ -55,25 +56,27 @@ const userManager = new UserManager({
           throw new Error(`Error: ${response.statusText}`);
         }
         const data = await response.json();
+        console.log(data);
         if (!data.bootstrapped) {
-          try {
-            const response_b = await fetch(
-              "http://localhost:8080/management/v1/bootstrap",
-              {
-                method: "POST", // HTTP method
-                headers: {
-                  Authorization: `Bearer ${token}`, // Add Authorization header
-                  "Content-Type": "application/json", // Specify the content type
-                },
-                body: JSON.stringify({ "accept-terms-of-use": true }),
-              }
-            );
-            if (!response_b.ok) {
-              throw new Error(`Error: ${response_b.statusText}`);
-            }
-          } catch (error) {
-            console.error(error);
-          }
+          router.push("/bootstrap");
+          // try {
+          //   const response_b = await fetch(
+          //     "http://localhost:8080/management/v1/bootstrap",
+          //     {
+          //       method: "POST", // HTTP method
+          //       headers: {
+          //         Authorization: `Bearer ${token}`, // Add Authorization header
+          //         "Content-Type": "application/json", // Specify the content type
+          //       },
+          //       body: JSON.stringify({ "accept-terms-of-use": true }),
+          //     }
+          //   );
+          //   if (!response_b.ok) {
+          //     throw new Error(`Error: ${response_b.statusText}`);
+          //   }
+          // } catch (error) {
+          //   console.error(error);
+          // }
         }
       } catch (err) {
         console.error(err);
