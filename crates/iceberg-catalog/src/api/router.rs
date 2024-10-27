@@ -12,7 +12,7 @@ use axum::response::IntoResponse;
 use axum::{routing::get, Json, Router};
 use axum_extra::middleware::option_layer;
 use axum_prometheus::PrometheusMetricLayer;
-use http::{header, HeaderName, HeaderValue, Method};
+use http::{header, HeaderValue, Method};
 use tower::ServiceBuilder;
 use tower_http::cors::AllowOrigin;
 use tower_http::{
