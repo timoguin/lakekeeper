@@ -52,6 +52,9 @@ import {
   TreeItems,
   Warehouse,
 } from "../common/interfaces";
+import { useUserStore } from "@/stores/user";
+
+const user = useUserStore();
 
 const treeItems = ref<TreeItems>({ items: [] });
 
@@ -72,9 +75,9 @@ onMounted(async () => {
 
       for (const project of projects) {
         transformedData.push({
-          id: project.project_id,
+          id: project["project-id"],
           itemType: "project",
-          title: `Project ${project.project_id}`,
+          title: ` ${project["project-name"]}`,
           children: [], //children,
         });
       }
@@ -88,10 +91,19 @@ onMounted(async () => {
   }
 });
 
+const access_token = user.getUser().access_token;
+
 async function loadData(
   subPath: string
 ): Promise<Data | { warehouses: Warehouse[] } | Namespaces | Tables> {
-  const res = await fetch(subPath);
+  const res = await fetch(subPath, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${access_token}`,
+      "Content-Type": "application/json", // optional, if you're sending JSON data
+    },
+    // body: JSON.stringify(data), // optional, for POST or PUT requests
+  });
   if (!res.ok) {
     throw new Error(`HTTP error! status: ${res.status}`);
   }

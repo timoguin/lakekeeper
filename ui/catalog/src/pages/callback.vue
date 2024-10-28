@@ -56,7 +56,7 @@ const userManager = new UserManager({
           throw new Error(`Error: ${response.statusText}`);
         }
         const data = await response.json();
-        console.log(data);
+
         if (!data.bootstrapped) {
           router.push("/bootstrap");
           // try {
@@ -77,6 +77,8 @@ const userManager = new UserManager({
           // } catch (error) {
           //   console.error(error);
           // }
+        } else {
+          router.push("/");
         }
       } catch (err) {
         console.error(err);

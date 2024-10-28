@@ -1,6 +1,6 @@
 export interface Project {
-  project_id: string;
-  warehouses?: Warehouse[];
+  "project-id": string;
+  "project-name": string;
 }
 
 export interface Data {

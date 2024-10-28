@@ -9,6 +9,7 @@ import { createRouter, createWebHistory } from "vue-router/auto";
 import { setupLayouts } from "virtual:generated-layouts";
 import { routes } from "vue-router/auto-routes";
 import { useUserStore } from "../stores/user";
+import { useVisualStore } from "../stores/visual";
 import * as env from "../app.config";
 
 const router = createRouter({
@@ -37,19 +38,37 @@ router.isReady().then(() => {
 
 router.beforeEach((to, from, next) => {
   const userStorage = useUserStore();
+  const visual = useVisualStore();
 
   if (env.idpOn) {
+    // Check if the user is authenticated and project bootstrap is not done
+    if (
+      userStorage.isAuthenticated &&
+      !visual.project.bootstrapped &&
+      to.path !== "/bootstrap"
+    ) {
+      return next("/bootstrap");
+    }
+
+    // Allow access to login and callback paths
     if (to.path === "/login" || to.path === "/callback") {
       return next();
-    } else {
-      if (!userStorage.isAuthenticated) {
-        next("/login");
-      } else {
-        // Proceed to the route
-        next();
-      }
     }
+
+    // Redirect unauthenticated users to login
+    if (!userStorage.isAuthenticated && to.path !== "/login") {
+      return next("/login");
+    }
+
+    // Allow access if authenticated and not redirected
+    next();
   } else {
+    // For cases where idpOn is false
+
+    if (!visual.project.bootstrapped && to.path !== "/bootstrap") {
+      return next("/bootstrap");
+    }
+
     if (
       to.path === "/login" ||
       to.path === "/callback" ||
@@ -57,10 +76,10 @@ router.beforeEach((to, from, next) => {
     ) {
       return next("/");
     }
+
+    // Allow access to other paths
     next();
   }
-
-  // Check if the route requires authentication
 });
 
 export default router;
