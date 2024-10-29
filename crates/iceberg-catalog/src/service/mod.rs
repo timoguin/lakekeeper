@@ -64,7 +64,7 @@ impl From<uuid::Uuid> for ViewIdentUuid {
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
 #[serde(transparent)]
-pub struct NamespaceIdentUuid(uuid::Uuid);
+pub struct NamespaceIdentUuid(pub(crate) uuid::Uuid);
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, Copy)]
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]

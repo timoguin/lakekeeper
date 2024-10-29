@@ -8,7 +8,9 @@ use crate::api::iceberg::v1::{
 use crate::api::set_not_found_status_code;
 use crate::request_metadata::RequestMetadata;
 use crate::service::authz::{CatalogNamespaceAction, CatalogWarehouseAction, NamespaceParent};
-use crate::service::{authz::Authorizer, secrets::SecretStore, Catalog, State, Transaction as _};
+use crate::service::{
+    authz::Authorizer, secrets::SecretStore, Catalog, State, Transaction as _, Transaction,
+};
 use crate::service::{GetWarehouseResponse, NamespaceIdentUuid};
 use crate::CONFIG;
 use http::StatusCode;
@@ -16,7 +18,9 @@ use iceberg::NamespaceIdent;
 use iceberg_ext::configs::namespace::NamespaceProperties;
 use iceberg_ext::configs::{ConfigProperty as _, Location};
 use std::collections::HashMap;
+use std::future::Future;
 use std::ops::Deref;
+use uuid::Uuid;
 
 pub const UNSUPPORTED_NAMESPACE_PROPERTIES: &[&str] = &[];
 // If this is increased, we need to modify namespace creation and deletion
@@ -24,6 +28,46 @@ pub const UNSUPPORTED_NAMESPACE_PROPERTIES: &[&str] = &[];
 pub const MAX_NAMESPACE_DEPTH: i32 = 5;
 pub const NAMESPACE_ID_PROPERTY: &str = "namespace_id";
 pub(crate) const MANAGED_ACCESS_PROPERTY: &str = "managed_access";
+
+pub async fn fetch_more<'b, 'a: 'b, T, F, FUN, F2, C: Catalog>(
+    page_size: usize,
+    page_token: Option<String>,
+    mut fetch_fn: FUN,
+    mut filter_fn: impl FnMut((Vec<T>, Vec<Uuid>)) -> F2,
+    mut transaction: C::Transaction,
+) -> Result<(Vec<T>, Vec<Uuid>, Option<String>)>
+where
+    FUN: FnMut(
+        usize,
+        Option<String>,
+        <C::Transaction as Transaction<C::State>>::Transaction<'a>,
+    ) -> F,
+    F: Future<Output = Result<(Vec<T>, Vec<Uuid>, Option<String>)>> + 'b,
+    F2: Future<Output = Result<(Vec<T>, Vec<Uuid>)>>,
+{
+    let (fetched_t, fetched_t2, mut next_page) =
+        { fetch_fn(page_size, page_token, transaction.transaction()).await? };
+    let (mut fetched_t, mut fetched_t2) = filter_fn((fetched_t, fetched_t2)).await?;
+    while fetched_t.len() < page_size {
+        let (more_t, more_id, next_p) = {
+            fetch_fn(
+                page_size - fetched_t.len(),
+                next_page,
+                transaction.transaction(),
+            )
+            .await?
+        };
+        let (more_t, more_id) = filter_fn((more_t, more_id)).await?;
+        next_page = next_p;
+        if fetched_t.is_empty() {
+            break;
+        }
+        fetched_t.extend(more_t);
+        fetched_t2.extend(more_id);
+    }
+    transaction.commit().await?;
+    Ok((fetched_t, fetched_t2, next_page))
+}
 
 #[async_trait::async_trait]
 impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
@@ -71,80 +115,113 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // ------------------- BUSINESS LOGIC -------------------
 
-        let list_namespaces = C::list_namespaces(warehouse_id, &query, t.transaction()).await?;
+        let (idents, ids, next_page_token) = fetch_more::<_, _, _, _, C>(
+            query.page_size.unwrap_or(1000) as usize,
+            match query.page_token {
+                PageToken::Present(ref inner) => Some(inner.clone()),
+                PageToken::NotSpecified => None,
+                PageToken::Empty => None,
+            },
+            |ps, page_token, trx| async move {
+                let query = ListNamespacesQuery {
+                    page_size: Some(ps as i32),
+                    page_token: match page_token {
+                        Some(token) => PageToken::Present(token),
+                        None => PageToken::NotSpecified,
+                    },
+                    parent: parent.clone(),
+                    return_uuids: true,
+                };
 
-        let mut next_page_token = list_namespaces.next_page_token;
-        let len = list_namespaces.namespaces.len();
-        // ToDo: Better pagination with non-empty pages
-        let (mut namespace_uuids, mut namespaces): (Vec<_>, Vec<_>) =
-            futures::future::try_join_all(list_namespaces.namespaces.iter().map(|n| {
-                authorizer.is_allowed_namespace_action(
-                    &request_metadata,
-                    warehouse_id,
-                    *n.0,
-                    &CatalogNamespaceAction::CanGetMetadata,
-                )
-            }))
-            .await?
-            .into_iter()
-            .zip(list_namespaces.namespaces.into_iter())
-            .filter_map(|(allowed, namespace)| allowed.then_some((*namespace.0, namespace.1)))
-            .collect();
-
-        // if any namespace is not allowed, we need to loop until we get a full page with allowed namespaces
-        while namespaces.len() < len {
-            let Some(next_page_token_inner) = next_page_token else {
-                return Ok(ListNamespacesResponse {
-                    namespaces,
-                    namespace_uuids: return_uuids.then_some(namespace_uuids),
-                    next_page_token: None,
-                });
-            };
-
-            query.page_token = PageToken::Present(next_page_token_inner);
-
-            // len & namespaces.len() are both clamped to `MAX_PAGE_SIZE` which is 1000.
-            // we're only handling these casts since clippy gets angry if we dont.
-            query.page_size = Some(
-                i32::try_from(len).map_err(|e| {
-                    ErrorModel::internal(
-                        "Catalog backend returned a result set larger than i32::MAX",
-                        "TooLargeResultSet",
-                        Some(Box::new(e)),
-                    )
-                })? - i32::try_from(namespaces.len()).map_err(|e| {
-                    ErrorModel::internal(
-                        "Catalog backend returned a result set larger than i32::MAX",
-                        "TooLargeResultSet",
-                        Some(Box::new(e)),
-                    )
-                })?,
-            );
-            let next_page = C::list_namespaces(warehouse_id, &query, t.transaction()).await?;
-            next_page_token = next_page.next_page_token;
-            let (next_uuids, next_namespaces): (Vec<_>, Vec<_>) =
-                futures::future::try_join_all(next_page.namespaces.iter().map(|n| {
-                    authorizer.is_allowed_namespace_action(
-                        &request_metadata,
-                        warehouse_id,
-                        *n.0,
-                        &CatalogNamespaceAction::CanGetMetadata,
-                    )
-                }))
-                .await?
-                .into_iter()
-                .zip(next_page.namespaces.into_iter())
-                .filter_map(|(allowed, namespace)| allowed.then_some((*namespace.0, namespace.1)))
-                .collect();
-
-            namespaces.extend(next_namespaces);
-            namespace_uuids.extend(next_uuids);
-        }
+                let list_namespaces = C::list_namespaces(warehouse_id, &query, trx).await?;
+                let (ids, idents) = list_namespaces
+                    .namespaces
+                    .into_iter()
+                    .map(|(k, v)| (k.0, v))
+                    .collect::<(Vec<_>, Vec<_>)>();
+                Ok((idents, ids, list_namespaces.next_page_token))
+            },
+            |(fetched_t, fetched_t2)| async {
+                Ok(fetched_t
+                    .into_iter()
+                    .zip(fetched_t2)
+                    .collect::<(Vec<_>, Vec<_>)>())
+            },
+            t,
+        )
+        .await?;
+        // let mut next_page_token = list_namespaces.next_page_token;
+        // let len = list_namespaces.namespaces.len();
+        // // ToDo: Better pagination with non-empty pages
+        // let (mut namespace_uuids, mut namespaces): (Vec<_>, Vec<_>) =
+        //     futures::future::try_join_all(list_namespaces.namespaces.iter().map(|n| {
+        //         authorizer.is_allowed_namespace_action(
+        //             &request_metadata,
+        //             warehouse_id,
+        //             *n.0,
+        //             &CatalogNamespaceAction::CanGetMetadata,
+        //         )
+        //     }))
+        //     .await?
+        //     .into_iter()
+        //     .zip(list_namespaces.namespaces.into_iter())
+        //     .filter_map(|(allowed, namespace)| allowed.then_some((*namespace.0, namespace.1)))
+        //     .collect();
+        //
+        // // if any namespace is not allowed, we need to loop until we get a full page with allowed namespaces
+        // while namespaces.len() < len {
+        //     let Some(next_page_token_inner) = next_page_token else {
+        //         return Ok(ListNamespacesResponse {
+        //             namespaces,
+        //             namespace_uuids: return_uuids.then_some(namespace_uuids),
+        //             next_page_token: None,
+        //         });
+        //     };
+        //
+        //     query.page_token = PageToken::Present(next_page_token_inner);
+        //
+        //     // len & namespaces.len() are both clamped to `MAX_PAGE_SIZE` which is 1000.
+        //     // we're only handling these casts since clippy gets angry if we dont.
+        //     query.page_size = Some(
+        //         i32::try_from(len).map_err(|e| {
+        //             ErrorModel::internal(
+        //                 "Catalog backend returned a result set larger than i32::MAX",
+        //                 "TooLargeResultSet",
+        //                 Some(Box::new(e)),
+        //             )
+        //         })? - i32::try_from(namespaces.len()).map_err(|e| {
+        //             ErrorModel::internal(
+        //                 "Catalog backend returned a result set larger than i32::MAX",
+        //                 "TooLargeResultSet",
+        //                 Some(Box::new(e)),
+        //             )
+        //         })?,
+        //     );
+        //     let next_page = C::list_namespaces(warehouse_id, &query, t.transaction()).await?;
+        //     next_page_token = next_page.next_page_token;
+        //     let (next_uuids, next_namespaces): (Vec<_>, Vec<_>) =
+        //         futures::future::try_join_all(next_page.namespaces.iter().map(|n| {
+        //             authorizer.is_allowed_namespace_action(
+        //                 &request_metadata,
+        //                 warehouse_id,
+        //                 *n.0,
+        //                 &CatalogNamespaceAction::CanGetMetadata,
+        //             )
+        //         }))
+        //         .await?
+        //         .into_iter()
+        //         .zip(next_page.namespaces.into_iter())
+        //         .filter_map(|(allowed, namespace)| allowed.then_some((*namespace.0, namespace.1)))
+        //         .collect();
+        //
+        //     namespaces.extend(next_namespaces);
+        //     namespace_uuids.extend(next_uuids);
+        // }
 
         Ok(ListNamespacesResponse {
             next_page_token,
-            namespaces,
-            namespace_uuids: return_uuids.then_some(namespace_uuids),
+            namespaces: idents,
+            namespace_uuids: return_uuids.then_some(ids),
         })
     }
 
