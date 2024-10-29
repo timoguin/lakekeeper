@@ -55,10 +55,17 @@
 </template>
 
 <script setup lang="ts">
-//
+import { useFunctions } from "@/plugins/functions";
+
+const functions = useFunctions();
+
 const snackbarVisible = ref(false);
 
 function showSnackbar() {
   snackbarVisible.value = true;
 }
+
+onMounted(() => {
+  functions.loadProjectList();
+});
 </script>

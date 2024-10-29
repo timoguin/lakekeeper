@@ -1,4 +1,6 @@
-<template></template>
+<template>
+  <div>You're logged out</div>
+</template>
 
 <script lang="ts" setup>
 import { useUserStore } from "../stores/user";
@@ -9,6 +11,7 @@ const userStorage = useUserStore();
 const router = useRouter();
 
 onMounted(() => {
+  userStorage.isAuthenticated = false;
   userStorage.unsetUser();
   router.push("/login");
 });

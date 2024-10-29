@@ -32,6 +32,8 @@ const userManager = new UserManager({
     const newUser: User = {
       access_token: user.access_token,
       id_token: user.id_token || "",
+      refresh_token: user.refresh_token || "",
+      token_expires_at: user.profile.exp,
       email: user.profile.email || "",
       preferred_username: user.profile.preferred_username || "",
       family_name: user.profile.family_name || "",
@@ -59,24 +61,6 @@ const userManager = new UserManager({
 
         if (!data.bootstrapped) {
           router.push("/bootstrap");
-          // try {
-          //   const response_b = await fetch(
-          //     "http://localhost:8080/management/v1/bootstrap",
-          //     {
-          //       method: "POST", // HTTP method
-          //       headers: {
-          //         Authorization: `Bearer ${token}`, // Add Authorization header
-          //         "Content-Type": "application/json", // Specify the content type
-          //       },
-          //       body: JSON.stringify({ "accept-terms-of-use": true }),
-          //     }
-          //   );
-          //   if (!response_b.ok) {
-          //     throw new Error(`Error: ${response_b.statusText}`);
-          //   }
-          // } catch (error) {
-          //   console.error(error);
-          // }
         } else {
           router.push("/");
         }

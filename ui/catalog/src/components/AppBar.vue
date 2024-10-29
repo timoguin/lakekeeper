@@ -5,7 +5,10 @@
     </template>
 
     <v-app-bar-title>Lakekeeper</v-app-bar-title>
-    <v-list-item @click="dialog = true">
+    <v-list-item
+      v-if="userStorage.isAuthenticated && visual.project.bootstrapped"
+      @click="dialog = true"
+    >
       <v-list-item-title>
         <div class="text-center pa-4">
           <v-dialog
@@ -17,7 +20,7 @@
               <v-btn
                 prepend-icon="mdi-home-silo"
                 size="small"
-                text="Default Project"
+                :text="project['project-name']"
                 v-bind="activatorProps"
               ></v-btn>
             </template>
@@ -26,81 +29,31 @@
               <v-toolbar>
                 <v-btn icon="mdi-close" @click="dialog = false"></v-btn>
 
-                <v-toolbar-title>Default Project</v-toolbar-title>
+                <v-toolbar-title>{{ project["project-name"] }}</v-toolbar-title>
 
                 <v-spacer></v-spacer>
-
-                <v-toolbar-items>
-                  <v-btn
-                    text="Save"
-                    variant="text"
-                    @click="dialog = false"
-                  ></v-btn>
-                </v-toolbar-items>
               </v-toolbar>
 
               <v-list lines="two" subheader>
-                <v-list-subheader>User Controls</v-list-subheader>
+                <v-list-subheader>Selected Project </v-list-subheader>
 
                 <v-list-item
-                  subtitle="Set the content filtering level to restrict apps that can be downloaded"
-                  title="Content filtering"
+                  :subtitle="`ID: ${project['project-id']}`"
+                  :title="`Name: ${project['project-name']}`"
                   link
                 ></v-list-item>
 
+                <v-divider class="mt-8"></v-divider>
+
+                <v-list-subheader>Available Projects</v-list-subheader>
+
                 <v-list-item
-                  subtitle="Require password for purchase or use password to restrict purchase"
-                  title="Password"
+                  v-for="p in projectList"
+                  :key="p['project-id']"
+                  :subtitle="`ID: ${project['project-id']}`"
+                  :title="`Name: ${project['project-name']}`"
                   link
-                ></v-list-item>
-
-                <v-divider></v-divider>
-
-                <v-list-subheader>General</v-list-subheader>
-
-                <v-list-item
-                  subtitle="Notify me about updates to apps or games that I downloaded"
-                  title="Notifications"
-                  @click="notifications = !notifications"
                 >
-                  <template v-slot:prepend>
-                    <v-list-item-action start>
-                      <v-checkbox-btn
-                        v-model="notifications"
-                        color="primary"
-                      ></v-checkbox-btn>
-                    </v-list-item-action>
-                  </template>
-                </v-list-item>
-
-                <v-list-item
-                  subtitle="Auto-update apps at any time. Data charges may apply"
-                  title="Sound"
-                  @click="sound = !sound"
-                >
-                  <template v-slot:prepend>
-                    <v-list-item-action start>
-                      <v-checkbox-btn
-                        v-model="sound"
-                        color="primary"
-                      ></v-checkbox-btn>
-                    </v-list-item-action>
-                  </template>
-                </v-list-item>
-
-                <v-list-item
-                  subtitle="Automatically add home screen widgets"
-                  title="Auto-add widgets"
-                  @click="widgets = !widgets"
-                >
-                  <template v-slot:prepend>
-                    <v-list-item-action start>
-                      <v-checkbox-btn
-                        v-model="widgets"
-                        color="primary"
-                      ></v-checkbox-btn>
-                    </v-list-item-action>
-                  </template>
                 </v-list-item>
               </v-list>
             </v-card>
@@ -172,18 +125,18 @@ import { useTheme } from "vuetify";
 import { useAuth } from "../plugins/auth";
 import { useVisualStore } from "../stores/visual";
 import { idpOn } from "../app.config";
+import { Project } from "@/common/interfaces";
+import { useUserStore } from "../stores/user";
 
 const router = useRouter();
 const visual = useVisualStore();
-
-import { useUserStore } from "../stores/user";
 const userStorage = useUserStore();
+const project = computed(() => {
+  return visual.projectSelected;
+});
 
+const projectList = reactive<Project[]>([]);
 const dialog = shallowRef(false);
-const notifications = shallowRef(false);
-const sound = shallowRef(true);
-const widgets = shallowRef(false);
-
 const theme = useTheme();
 const themeLight = computed(() => {
   return visual.themeLight;
@@ -199,7 +152,7 @@ const navIcon = computed(() => {
 
 ref("mdi-menu");
 
-onMounted(() => {
+onMounted(async () => {
   theme.global.name.value = themeText.value;
 });
 function toggleTheme() {

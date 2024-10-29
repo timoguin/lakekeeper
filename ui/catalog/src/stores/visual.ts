@@ -1,6 +1,6 @@
 // Utilities
 import { defineStore } from "pinia";
-import { ProjectCatalog } from "@/common/interfaces";
+import { ProjectCatalog, Project } from "@/common/interfaces";
 
 export const useVisualStore = defineStore(
   "visual",
@@ -15,6 +15,11 @@ export const useVisualStore = defineStore(
       "authz-backend": "allow-all",
     });
 
+    const projectSelected = reactive<Project>({
+      "project-id": "0",
+      "project-name": "none",
+    });
+
     function toggleThemeLight() {
       themeLight.value = !themeLight.value;
     }
@@ -26,14 +31,19 @@ export const useVisualStore = defineStore(
     function setProjectCatalog(projectCatalog: ProjectCatalog) {
       Object.assign(project, projectCatalog);
     }
+    function setProject(p: Project) {
+      Object.assign(project, p);
+    }
 
     return {
       themeLight,
       navBarShow,
       project,
+      projectSelected,
       toggleThemeLight,
       navBarSwitch,
       setProjectCatalog,
+      setProject,
     };
   },
   {

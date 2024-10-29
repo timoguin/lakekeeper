@@ -10,6 +10,8 @@ export const useUserStore = defineStore(
     const user: User = reactive({
       access_token: "",
       id_token: "",
+      refresh_token: "",
+      token_expires_at: 0,
       email: "anonymous@unknown.com",
       preferred_username: "anonymous",
       family_name: "Ymous",
@@ -29,13 +31,19 @@ export const useUserStore = defineStore(
       isAuthenticated.value = false;
       user.access_token = "";
       user.id_token = "";
+      user.refresh_token = "";
+      user.token_expires_at = 0;
       user.email = "anonymous@unknown.com";
       user.preferred_username = "anonymous";
       user.family_name = "Ymous";
       user.given_name = "Anon";
     }
 
-    return { isAuthenticated, user, unsetUser, setUser, getUser };
+    function renewAT(access_token: string) {
+      user.access_token = access_token;
+    }
+
+    return { isAuthenticated, user, unsetUser, setUser, getUser, renewAT };
   },
   {
     persistedState: {

@@ -55,6 +55,8 @@ export interface TreeItems {
 export interface User {
   access_token: string;
   id_token: string;
+  refresh_token: string;
+  token_expires_at: number;
   email: string;
   preferred_username: string;
   family_name: string;

@@ -10,7 +10,6 @@ import auth from "@/plugins/auth";
 
 // Components
 import App from "./App.vue";
-import { createPinia } from "pinia";
 
 // Composables
 import { createApp } from "vue";
