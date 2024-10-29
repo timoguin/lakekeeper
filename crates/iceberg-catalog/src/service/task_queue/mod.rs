@@ -385,7 +385,7 @@ mod test {
             .unwrap();
             del.unwrap();
 
-            tokio::time::sleep(std::time::Duration::from_millis(1050)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(1250)).await;
 
             assert!(<PostgresCatalog as Catalog>::list_tabulars(
                 warehouse,

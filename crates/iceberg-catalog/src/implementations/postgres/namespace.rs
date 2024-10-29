@@ -70,9 +70,7 @@ pub(crate) async fn list_namespaces(
     }: &ListNamespacesQuery,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<ListNamespacesResponse> {
-    let page_size = page_size
-        .map(i64::from)
-        .map_or(MAX_PAGE_SIZE, |i| i.clamp(1, MAX_PAGE_SIZE));
+    let page_size = page_size.map_or(MAX_PAGE_SIZE, |i| i.clamp(1, MAX_PAGE_SIZE));
 
     // Treat empty parent as None
     let parent = parent

@@ -21,6 +21,7 @@ use iceberg::spec::{Schema, SortOrder, TableMetadata, UnboundPartitionSpec, View
 use iceberg_ext::catalog::rest::{CatalogConfig, ErrorModel};
 pub use iceberg_ext::catalog::rest::{CommitTableResponse, CreateTableRequest};
 use iceberg_ext::configs::Location;
+
 use std::collections::{HashMap, HashSet};
 
 #[async_trait::async_trait]
