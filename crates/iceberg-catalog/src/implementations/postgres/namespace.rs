@@ -9,6 +9,7 @@ use crate::{catalog::namespace::MAX_NAMESPACE_DEPTH, service::NamespaceIdentUuid
 use chrono::Utc;
 use http::StatusCode;
 use sqlx::types::Json;
+use std::collections::BTreeMap;
 use std::{collections::HashMap, ops::Deref};
 use uuid::Uuid;
 
@@ -181,7 +182,7 @@ pub(crate) async fn list_namespaces(
                 })
                 .map(|n| (id.into(), n))
         })
-        .collect::<Result<HashMap<_, _>>>()?;
+        .collect::<Result<BTreeMap<_, _>>>()?;
 
     Ok(ListNamespacesResponse {
         next_page_token,
@@ -491,7 +492,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             response.namespaces,
-            HashMap::from_iter(vec![(namespace_id, namespace.clone())])
+            BTreeMap::from_iter(vec![(namespace_id, namespace.clone())])
         );
 
         let mut transaction = PostgresTransaction::begin_write(state.clone())
@@ -583,7 +584,7 @@ pub(crate) mod tests {
         assert_eq!(namespaces.len(), 1);
         assert_eq!(
             namespaces,
-            HashMap::from_iter(vec![(response1.0, response1.1.namespace)])
+            BTreeMap::from_iter(vec![(response1.0, response1.1.namespace)])
         );
 
         let mut t = PostgresTransaction::begin_read(state.clone())
@@ -613,7 +614,7 @@ pub(crate) mod tests {
         assert!(next_page_token.is_some());
         assert_eq!(
             namespaces,
-            HashMap::from_iter(vec![
+            BTreeMap::from_iter(vec![
                 (response2.0, response2.1.namespace),
                 (response3.0, response3.1.namespace)
             ])
@@ -640,7 +641,7 @@ pub(crate) mod tests {
         .unwrap();
 
         assert_eq!(next_page_token, None);
-        assert_eq!(namespaces, HashMap::new());
+        assert_eq!(namespaces, BTreeMap::new());
     }
 
     #[sqlx::test]

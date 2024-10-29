@@ -13,17 +13,21 @@ use crate::{
 };
 use async_stream::__private::AsyncStream;
 use async_stream::stream;
+use async_trait::async_trait;
 use axum::Router;
 use futures::{pin_mut, StreamExt};
 use openfga_rs::open_fga_service_client::OpenFgaServiceClient;
+use openfga_rs::tonic::{Response, Status};
 use openfga_rs::{
     tonic::{self},
-    CheckRequest, CheckRequestTupleKey, ConsistencyPreference, ListObjectsRequest, ReadRequest,
-    ReadRequestTupleKey, ReadResponse, Tuple, TupleKey, TupleKeyWithoutCondition, WriteRequest,
-    WriteRequestDeletes, WriteRequestWrites,
+    CheckRequest, CheckRequestTupleKey, CheckResponse, ConsistencyPreference, ListObjectsRequest,
+    ListObjectsResponse, ReadRequest, ReadRequestTupleKey, ReadResponse, Tuple, TupleKey,
+    TupleKeyWithoutCondition, WriteRequest, WriteRequestDeletes, WriteRequestWrites, WriteResponse,
 };
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
-use std::{collections::HashSet, str::FromStr};
+use std::{collections::HashSet, fmt, str::FromStr};
+
 pub(super) mod api;
 mod client;
 mod entities;
@@ -70,12 +74,23 @@ lazy_static::lazy_static! {
     };
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct OpenFGAAuthorizer {
-    pub(crate) client: OpenFgaServiceClient<ClientConnection>,
+    pub(crate) client: Arc<dyn Client + Send + Sync + 'static>,
     pub(crate) store_id: String,
     pub(crate) authorization_model_id: String,
     pub(crate) health: Arc<RwLock<Vec<Health>>>,
+}
+
+impl Debug for OpenFGAAuthorizer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OpenFGAAuthorizer")
+            .field("store_id", &self.store_id)
+            .field("authorization_model_id", &self.authorization_model_id)
+            .field("health", &self.health)
+            .field("client", &"...")
+            .finish()
+    }
 }
 
 #[async_trait::async_trait]
@@ -694,7 +709,6 @@ impl OpenFGAAuthorizer {
             authorization_model_id: self.authorization_model_id.clone(),
         };
         self.client
-            .clone()
             .write(write_request.clone())
             .await
             .map_err(|e| OpenFGAError::WriteFailed {
@@ -720,7 +734,6 @@ impl OpenFGAAuthorizer {
             consistency: consistency.into(),
         };
         self.client
-            .clone()
             .read(read_request.clone())
             .await
             .map_err(|e| OpenFGAError::ReadFailed {
@@ -732,10 +745,7 @@ impl OpenFGAAuthorizer {
 
     /// Read all tuples for a given request
     async fn read_all(&self, tuple_key: ReadRequestTupleKey) -> OpenFGAResult<Vec<Tuple>> {
-        self.client
-            .clone()
-            .read_all_pages(&self.store_id, tuple_key)
-            .await
+        self.client.read_all_pages(&self.store_id, tuple_key).await
     }
 
     /// A convenience wrapper around check
@@ -751,7 +761,6 @@ impl OpenFGAAuthorizer {
         };
 
         self.client
-            .clone()
             .check(check_request.clone())
             .await
             .map_err(|source| OpenFGAError::CheckFailed {
@@ -1010,7 +1019,6 @@ impl OpenFGAAuthorizer {
     ) -> Result<Vec<String>> {
         let user = user.into();
         self.client
-            .clone()
             .list_objects(ListObjectsRequest {
                 r#type: r#type.into(),
                 relation: relation.into(),
@@ -1075,6 +1083,30 @@ impl OpenFGAAuthorizer {
     }
 }
 
+#[mockall::automock]
+#[async_trait]
+pub trait Client {
+    async fn write(&self, request: WriteRequest) -> Result<Response<WriteResponse>, tonic::Status>;
+    async fn list_objects(
+        &self,
+        request: ListObjectsRequest,
+    ) -> Result<Response<ListObjectsResponse>, tonic::Status>;
+    async fn read(
+        &self,
+        request: ReadRequest,
+    ) -> std::result::Result<Response<ReadResponse>, tonic::Status>;
+    async fn read_all_pages(
+        &self,
+        store_id: &str,
+        tuple: ReadRequestTupleKey,
+    ) -> OpenFGAResult<Vec<Tuple>>;
+
+    async fn check(
+        &self,
+        request: CheckRequest,
+    ) -> std::result::Result<Response<CheckResponse>, tonic::Status>;
+}
+
 fn suffixes_for_user(user: &FgaType) -> Vec<String> {
     user.usersets()
         .iter()
@@ -1083,6 +1115,41 @@ fn suffixes_for_user(user: &FgaType) -> Vec<String> {
         .collect::<Vec<_>>()
 }
 
+#[async_trait]
+impl Client for OpenFgaServiceClient<ClientConnection> {
+    async fn write(&self, request: WriteRequest) -> Result<Response<WriteResponse>, Status> {
+        self.clone().write(request).await
+    }
+
+    async fn list_objects(
+        &self,
+        request: ListObjectsRequest,
+    ) -> Result<Response<ListObjectsResponse>, Status> {
+        self.clone().list_objects(request).await
+    }
+
+    async fn read(
+        &self,
+        request: ReadRequest,
+    ) -> std::result::Result<Response<ReadResponse>, Status> {
+        self.clone().read(request).await
+    }
+
+    async fn read_all_pages(
+        &self,
+        store_id: &str,
+        tuple: ReadRequestTupleKey,
+    ) -> OpenFGAResult<Vec<Tuple>> {
+        ClientHelper::read_all_pages(&mut self.clone(), store_id, tuple).await
+    }
+
+    async fn check(
+        &self,
+        request: CheckRequest,
+    ) -> std::result::Result<Response<CheckResponse>, Status> {
+        self.clone().check(request).await
+    }
+}
 #[cfg(test)]
 mod tests {
     use needs_env_var::needs_env_var;

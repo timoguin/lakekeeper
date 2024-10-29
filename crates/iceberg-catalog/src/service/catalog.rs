@@ -21,7 +21,8 @@ use iceberg::spec::{Schema, SortOrder, TableMetadata, UnboundPartitionSpec, View
 use iceberg_ext::catalog::rest::{CatalogConfig, ErrorModel};
 pub use iceberg_ext::catalog::rest::{CommitTableResponse, CreateTableRequest};
 use iceberg_ext::configs::Location;
-use std::collections::{HashMap, HashSet};
+
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[async_trait::async_trait]
 pub trait Transaction<D>
@@ -55,7 +56,7 @@ pub struct GetNamespaceResponse {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ListNamespacesResponse {
     pub next_page_token: Option<String>,
-    pub namespaces: HashMap<NamespaceIdentUuid, NamespaceIdent>,
+    pub namespaces: BTreeMap<NamespaceIdentUuid, NamespaceIdent>,
 }
 
 #[derive(Debug)]
