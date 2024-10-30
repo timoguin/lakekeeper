@@ -8,14 +8,18 @@ use crate::api::iceberg::v1::{
 use crate::api::set_not_found_status_code;
 use crate::request_metadata::RequestMetadata;
 use crate::service::authz::{CatalogNamespaceAction, CatalogWarehouseAction, NamespaceParent};
-use crate::service::{authz::Authorizer, secrets::SecretStore, Catalog, State, Transaction};
+use crate::service::{
+    authz::Authorizer, secrets::SecretStore, Catalog, State, Transaction as _, Transaction,
+};
 use crate::service::{GetWarehouseResponse, NamespaceIdentUuid};
-use crate::CONFIG;
+use crate::{catalog, CONFIG};
 use http::StatusCode;
 use iceberg::NamespaceIdent;
+use iceberg_ext::catalog::rest::IcebergErrorResponse;
 use iceberg_ext::configs::namespace::NamespaceProperties;
 use iceberg_ext::configs::{ConfigProperty as _, Location};
 use std::collections::HashMap;
+use std::future::Future;
 use std::ops::Deref;
 
 pub const UNSUPPORTED_NAMESPACE_PROPERTIES: &[&str] = &[];
@@ -31,7 +35,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 {
     async fn list_namespaces(
         prefix: Option<Prefix>,
-        mut query: ListNamespacesQuery,
+        query: ListNamespacesQuery,
         state: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
     ) -> Result<ListNamespacesResponse> {
@@ -55,7 +59,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 &CatalogWarehouseAction::CanListNamespaces,
             )
             .await?;
-        let mut t = C::Transaction::begin_read(state.v1_state.catalog).await?;
+        let mut t = C::Transaction::begin_read(state.v1_state.catalog.clone()).await?;
 
         if let Some(parent) = parent {
             let namespace_id = C::namespace_to_id(warehouse_id, parent, t.transaction()).await; // Cannot fail before authz
@@ -70,66 +74,70 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         };
 
         // ------------------- BUSINESS LOGIC -------------------
+        let (idents, ids, next_page_token) = catalog::fetch_until_full_page::<_, _, _, _, C>(
+            query.page_size.unwrap_or(1000) as usize,
+            match query.page_token {
+                PageToken::Present(ref inner) => Some(inner.clone()),
+                PageToken::NotSpecified => None,
+                PageToken::Empty => None,
+            },
+            |ps, page_token, trx| {
+                let parent = parent.clone();
+                Box::pin(async move {
+                    let query = ListNamespacesQuery {
+                        page_size: Some(ps as i64),
+                        page_token: match page_token {
+                            Some(token) => PageToken::Present(token.clone()),
+                            None => PageToken::NotSpecified,
+                        },
+                        parent,
+                        return_uuids: true,
+                    };
 
-        let mut next_page_token = query.page_token.as_option().map(ToString::to_string);
-        let page_size = query.page_size.unwrap_or(1000);
-        let page_size_usize = page_size.try_into().map_err(|e| {
-            ErrorModel::internal(
-                "Internal server error, failed to convert i64 to usize after clamping i64 to 1000",
-                "InternalServerError",
-                Some(Box::new(e)),
-            )
-        })?;
+                    let list_namespaces =
+                        C::list_namespaces(warehouse_id, &query, trx.transaction()).await?;
 
-        let mut namespaces = vec![];
-        let mut namespace_ids = vec![];
+                    let (ids, idents) = list_namespaces
+                        .namespaces
+                        .into_iter()
+                        .map(|(k, v)| (k, v))
+                        .unzip::<_, _, Vec<_>, Vec<_>>();
+                    Ok((idents, ids, list_namespaces.next_page_token))
+                })
+            },
+            |(fetched_t, fetched_t2)| {
+                let authorizer = authorizer.clone();
+                let request_metadata = request_metadata.clone();
+                async move {
+                    let (next_namespaces, next_uuids): (Vec<_>, Vec<_>) =
+                        futures::future::try_join_all(fetched_t2.iter().map(|n| {
+                            authorizer.is_allowed_namespace_action(
+                                &request_metadata,
+                                warehouse_id,
+                                *n,
+                                &CatalogNamespaceAction::CanGetMetadata,
+                            )
+                        }))
+                        .await?
+                        .into_iter()
+                        .zip(fetched_t.into_iter().zip(fetched_t2.into_iter()))
+                        .filter_map(|(allowed, namespace)| {
+                            allowed.then_some((namespace.0, namespace.1))
+                        })
+                        .unzip();
 
-        while namespaces.len() < page_size_usize {
-            query.page_size = Some((page_size_usize - namespaces.len()).try_into().map_err(
-                |e| {
-                    ErrorModel::internal(
-                        "Failed to convert usize to i64",
-                        "InternalServerError",
-                        Some(Box::new(e)),
-                    )
-                },
-            )?);
-
-            let next_page = C::list_namespaces(warehouse_id, &query, t.transaction()).await?;
-            if let Some(next_page_token_inner) = next_page.next_page_token.as_deref() {
-                query.page_token = PageToken::Present(next_page_token_inner.to_string());
-                next_page_token = Some(next_page_token_inner.to_string());
-            } else {
-                return Ok(ListNamespacesResponse {
-                    namespaces,
-                    namespace_uuids: return_uuids.then_some(namespace_ids),
-                    next_page_token: None,
-                });
-            }
-
-            let (next_uuids, next_namespaces): (Vec<_>, Vec<_>) =
-                futures::future::try_join_all(next_page.namespaces.iter().map(|n| {
-                    authorizer.is_allowed_namespace_action(
-                        &request_metadata,
-                        warehouse_id,
-                        *n.0,
-                        &CatalogNamespaceAction::CanGetMetadata,
-                    )
-                }))
-                .await?
-                .into_iter()
-                .zip(next_page.namespaces.into_iter())
-                .filter_map(|(allowed, namespace)| allowed.then_some((*namespace.0, namespace.1)))
-                .unzip();
-
-            namespaces.extend(next_namespaces);
-            namespace_ids.extend(next_uuids);
-        }
+                    Ok::<_, IcebergErrorResponse>((next_namespaces, next_uuids))
+                }
+            },
+            &mut t,
+        )
+        .await?;
+        t.commit().await?;
 
         Ok(ListNamespacesResponse {
-            next_page_token: next_page_token.map(String::from),
-            namespaces,
-            namespace_uuids: return_uuids.then_some(namespace_ids),
+            next_page_token,
+            namespaces: idents,
+            namespace_uuids: return_uuids.then_some(ids.into_iter().map(|s| *s).collect()),
         })
     }
 
@@ -674,7 +682,7 @@ mod tests {
             .await
             .unwrap();
             assert_eq!(all.namespaces.len(), 10);
-
+            eprintln!("befsix");
             let first_six = CatalogServer::list_namespaces(
                 Some(Prefix(warehouse.warehouse_id.to_string())),
                 ListNamespacesQuery {
@@ -688,6 +696,7 @@ mod tests {
             )
             .await
             .unwrap();
+            eprintln!("fsix");
             assert_eq!(first_six.namespaces.len(), 6);
             let first_six_items: HashSet<String, RandomState> = first_six
                 .namespaces

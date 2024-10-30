@@ -19,7 +19,9 @@ use crate::{
     service::{authz::Authorizer, secrets::SecretStore, Catalog},
     WarehouseIdent,
 };
+use futures::future::BoxFuture;
 use std::collections::HashMap;
+use std::future::Future;
 use std::marker::PhantomData;
 
 pub trait CommonMetadata {
@@ -70,6 +72,42 @@ pub(crate) async fn maybe_get_secret<S: SecretStore>(
     } else {
         Ok(None)
     }
+}
+
+// Helper fn that fetches data using `fetch_fn` and then filters the data using `filter_fn` until
+// a full page is fetched. The `fetch_fn` is commonly a closure that fetches data from the catalog,
+// `filter_fn` is a closure that filters the data based on some criteria, usually authz.
+pub(crate) async fn fetch_until_full_page<'b, 'd: 'b, T, Z, FUN, F2, C: Catalog>(
+    page_size: usize,
+    page_token: Option<String>,
+    mut fetch_fn: FUN,
+    mut filter_fn: impl FnMut((Vec<T>, Vec<Z>)) -> F2,
+    t: &'d mut C::Transaction,
+) -> Result<(Vec<T>, Vec<Z>, Option<String>)>
+where
+    FUN: for<'c> FnMut(
+        usize,
+        Option<String>,
+        &'c mut C::Transaction,
+    ) -> BoxFuture<'c, Result<(Vec<T>, Vec<Z>, Option<String>)>>,
+    F2: Future<Output = Result<(Vec<T>, Vec<Z>)>>,
+{
+    let (fetched_t, fetched_t2, mut next_page) = fetch_fn(page_size, page_token, t).await?;
+    let (mut fetched_t, mut fetched_t2) = filter_fn((fetched_t, fetched_t2)).await?;
+
+    while fetched_t.len() < page_size {
+        let (more_t, more_id, next_p) =
+            fetch_fn(page_size - fetched_t.len(), next_page.clone(), t).await?;
+        if more_t.is_empty() {
+            break;
+        }
+        next_page = next_p;
+        let (more_t, more_id) = filter_fn((more_t, more_id)).await?;
+        fetched_t.extend(more_t);
+        fetched_t2.extend(more_id);
+    }
+
+    Ok((fetched_t, fetched_t2, next_page))
 }
 
 #[cfg(test)]
