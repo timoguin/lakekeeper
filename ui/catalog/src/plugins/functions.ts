@@ -2,16 +2,32 @@ import { App } from "vue";
 import { useUserStore } from "@/stores/user";
 import { useVisualStore } from "@/stores/visual";
 import * as env from "@/app.config";
+import { ProjectCatalog } from "@/common/interfaces";
 
-const userStore = useUserStore();
-const visualStore = useVisualStore();
-const access_token = userStore.user.access_token;
-const isAuthenticated = userStore.isAuthenticated;
 const baseUrl = env.icebergCatalogUrl as string;
 const managementUrl = baseUrl + "/management/v1";
 
+async function getServerInfo() {
+  try {
+    const visualStore = useVisualStore();
+    const response = await fetch(`${managementUrl}/info`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`Error: ${response.statusText}`);
+    }
+    const data: ProjectCatalog = await response.json();
+    visualStore.setProjectCatalog(data);
+  } catch (error) {}
+}
+
 const loadProjectList = async () => {
   try {
+    const visualStore = useVisualStore();
+    const userStore = useUserStore();
     const res = await fetch(managementUrl + "/project-list", {
       method: "GET",
       headers: {
@@ -35,8 +51,7 @@ const loadProjectList = async () => {
 
 export function useFunctions() {
   return {
-    access_token,
-    isAuthenticated,
+    getServerInfo,
     loadProjectList,
   };
 }

@@ -1,5 +1,4 @@
 <template>
-  <div>Login</div>
   <v-btn @click="login">Login</v-btn>
 </template>
 

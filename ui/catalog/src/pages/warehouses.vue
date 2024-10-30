@@ -2,11 +2,14 @@
   <v-container>
     <v-row>
       <v-col cols="6">
+        <v-btn class="mb-6">Add Warehouse</v-btn>
+
         <v-treeview
+          v-if="!warehouseIsEmpty"
           :items="treeItems.items"
           item-key="id"
           item-title="title"
-          :load-children="fetchUsers"
+          :load-children="loadTree"
           select-strategy="independent"
           @click:select="updateSelected"
           v-model:selected="selected"
@@ -28,8 +31,9 @@
             <v-icon v-else>mdi-table</v-icon>
           </template>
         </v-treeview>
+        <div>Create your first Warehouse</div>
       </v-col>
-      <v-col cols="6">
+      <v-col cols="6" v-if="!warehouseIsEmpty">
         <v-card>
           <v-card-title>Details {{ type }}: {{ obejctName }}</v-card-title>
           <v-card-text>
@@ -53,11 +57,17 @@ import {
   Warehouse,
 } from "../common/interfaces";
 import { useUserStore } from "@/stores/user";
+import { useVisualStore } from "@/stores/visual";
 
 const user = useUserStore();
+const visual = useVisualStore();
+const proejctId = computed(() => {
+  return visual.projectSelected["project-id"];
+});
 
 const treeItems = ref<TreeItems>({ items: [] });
-
+const access_token = user.getUser().access_token;
+const warehouseIsEmpty = ref(true);
 const selected = ref([]);
 const json = reactive({});
 const baseUrl = env.icebergCatalogUrl as string;
@@ -65,33 +75,17 @@ const managementUrl = baseUrl + "/management/v1";
 const catalogUrl = baseUrl + "/catalog/v1";
 const type = ref();
 const obejctName = ref();
+const ip = reactive({
+  itemType: "projectLevel",
+});
 
 onMounted(async () => {
   try {
-    const data = (await loadData(managementUrl + "/project-list")) as Data;
-    if (data) {
-      const projects = data.projects;
-      const transformedData: TreeItem[] = [];
-
-      for (const project of projects) {
-        transformedData.push({
-          id: project["project-id"],
-          itemType: "project",
-          title: ` ${project["project-name"]}`,
-          children: [], //children,
-        });
-      }
-
-      treeItems.value = { items: transformedData };
-    } else {
-      console.error("Projects data is not available.");
-    }
+    await loadTree(ip);
   } catch (err) {
     console.error("Failed to load data:", err);
   }
 });
-
-const access_token = user.getUser().access_token;
 
 async function loadData(
   subPath: string
@@ -110,24 +104,26 @@ async function loadData(
   return await res.json();
 }
 
-async function fetchUsers(item: any) {
-  if (item.itemType == "project") {
+async function loadTree(item: any) {
+  if (item.itemType == "projectLevel") {
     const warehousesResponse = (await loadData(
-      managementUrl + "/warehouse?project-id=" + item.id
+      managementUrl + "/warehouse?project-id=" + proejctId.value
     )) as { warehouses: Warehouse[] };
 
-    const children: TreeItem[] = warehousesResponse.warehouses.map(
-      (warehouse) => ({
-        id: warehouse.id,
-        proejctId: item.id,
-        itemType: "warehouse",
-        title: warehouse.name,
-        children: [],
-      })
-    );
-    item.children.push(...children);
-
-    return item;
+    if (warehousesResponse.warehouses.length != 0) {
+      const children: TreeItem[] = warehousesResponse.warehouses.map(
+        (warehouse) => ({
+          id: warehouse.id,
+          proejctId: item.id,
+          itemType: "warehouse",
+          title: warehouse.name,
+          children: [],
+        })
+      );
+      item.children.push(...children);
+    } else {
+      warehouseIsEmpty.value = true;
+    }
   } else if (item.itemType == "warehouse") {
     const namespacesResponse = (await loadData(
       catalogUrl + "/" + item.id + "/namespaces"

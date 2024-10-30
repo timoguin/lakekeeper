@@ -2,31 +2,23 @@
   <div>Callback</div>
 </template>
 <script setup lang="ts">
-// callback.ts
 import { UserManager } from "oidc-client-ts";
-
 import { useUserStore } from "../stores/user";
 import { User } from "@/common/interfaces";
-import * as env from "../app.config";
+// import * as env from "../app.config";
 import router from "@/router";
+import { useAuth } from "../plugins/auth";
+
+const settings = useAuth().oidcSettings;
+
 const userStorage = useUserStore();
 
-// Configure the OIDC client
-const userManager = new UserManager({
-  authority: env.idpAuthority, // Replace with your OIDC provider authority
-  client_id: env.idpClientId, // Replace with your actual client ID
-  redirect_uri: `${window.location.origin}${env.idpRedirectPath}`, // Your redirect URI must match the OIDC provider settings
-  response_type: "code",
-  scope: env.idpScope, // Adjust as needed for your application's scopes
-  post_logout_redirect_uri: `${window.location.origin}${env.idpLogoutRedirectPath}`,
-});
+const userManager = new UserManager(settings);
 
 (async () => {
   try {
-    // Complete the sign-in by handling the callback
+    console.log("callback");
     const user = await userManager.signinRedirectCallback();
-    console.log("user.access_token");
-
     const token = user.access_token;
 
     const newUser: User = {
@@ -47,10 +39,10 @@ const userManager = new UserManager({
         const response = await fetch(
           "http://localhost:8080/management/v1/info",
           {
-            method: "GET", // HTTP method
+            method: "GET",
             headers: {
-              Authorization: `Bearer ${token}`, // Add Authorization header
-              "Content-Type": "application/json", // Specify the content type
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
             },
           }
         );
@@ -69,12 +61,8 @@ const userManager = new UserManager({
       }
     };
     fetchUsers();
-    // Redirect to the stored return URL, or to a default page
-    //window.location.href = "/";
   } catch (error) {
     console.error("Error during callback processing:", error);
-    // Optionally, redirect to an error page
-    //window.location.href = "/error";
   }
 })();
 </script>
