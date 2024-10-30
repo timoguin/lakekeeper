@@ -39,6 +39,7 @@ const loadProjectList = async () => {
       throw new Error(`HTTP error! status: ${res.status}`);
     }
     const projects = await res.json();
+    visualStore.setProjectList(projects.projects);
 
     for (const proj of projects.projects) {
       Object.assign(visualStore.projectSelected, proj);

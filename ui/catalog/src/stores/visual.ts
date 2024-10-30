@@ -20,6 +20,8 @@ export const useVisualStore = defineStore(
       "project-name": "none",
     });
 
+    const projectList = reactive<Project[]>([]);
+
     function toggleThemeLight() {
       themeLight.value = !themeLight.value;
     }
@@ -35,12 +37,18 @@ export const useVisualStore = defineStore(
       Object.assign(project, p);
     }
 
+    function setProjectList(p: Project[]) {
+      Object.assign(projectList, p);
+    }
+
     return {
       themeLight,
       navBarShow,
       project,
+      projectList,
       projectSelected,
       toggleThemeLight,
+      setProjectList,
       navBarSwitch,
       setProjectCatalog,
       setProject,

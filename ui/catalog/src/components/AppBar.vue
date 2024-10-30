@@ -125,17 +125,20 @@ import { useTheme } from "vuetify";
 import { useAuth } from "../plugins/auth";
 import { useVisualStore } from "../stores/visual";
 import { idpOn } from "../app.config";
-import { Project } from "@/common/interfaces";
 import { useUserStore } from "../stores/user";
+import { useFunctions } from "../plugins/functions";
 
 const router = useRouter();
 const visual = useVisualStore();
+const functions = useFunctions();
 const userStorage = useUserStore();
 const project = computed(() => {
   return visual.projectSelected;
 });
 
-const projectList = reactive<Project[]>([]);
+const projectList = computed(() => {
+  return visual.projectList;
+});
 const dialog = shallowRef(false);
 const theme = useTheme();
 const themeLight = computed(() => {
@@ -172,4 +175,8 @@ function logout() {
 function goToUserProfile() {
   router.push("/user-profile");
 }
+
+watch(dialog, async (n, o) => {
+  if (n) functions.loadProjectList();
+});
 </script>
