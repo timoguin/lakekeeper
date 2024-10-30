@@ -13,6 +13,7 @@ use crate::service::{
 };
 use crate::service::{GetWarehouseResponse, NamespaceIdentUuid};
 use crate::CONFIG;
+use futures::future::BoxFuture;
 use http::StatusCode;
 use iceberg::NamespaceIdent;
 use iceberg_ext::configs::namespace::NamespaceProperties;
@@ -29,43 +30,34 @@ pub const MAX_NAMESPACE_DEPTH: i32 = 5;
 pub const NAMESPACE_ID_PROPERTY: &str = "namespace_id";
 pub(crate) const MANAGED_ACCESS_PROPERTY: &str = "managed_access";
 
-pub async fn fetch_more<'b, 'a: 'b, T, F, FUN, F2, C: Catalog>(
+pub async fn fetch_more<'b, 'd: 'b, T, FUN, F2, C: Catalog>(
     page_size: usize,
     page_token: Option<String>,
     mut fetch_fn: FUN,
     mut filter_fn: impl FnMut((Vec<T>, Vec<Uuid>)) -> F2,
-    mut transaction: C::Transaction,
+    t: &'d mut C::Transaction,
 ) -> Result<(Vec<T>, Vec<Uuid>, Option<String>)>
 where
-    FUN: FnMut(
+    FUN: for<'c> FnMut(
         usize,
         Option<String>,
-        <C::Transaction as Transaction<C::State>>::Transaction<'a>,
-    ) -> F,
-    F: Future<Output = Result<(Vec<T>, Vec<Uuid>, Option<String>)>> + 'b,
+        &'c mut C::Transaction,
+    ) -> BoxFuture<'c, Result<(Vec<T>, Vec<Uuid>, Option<String>)>>,
     F2: Future<Output = Result<(Vec<T>, Vec<Uuid>)>>,
 {
-    let (fetched_t, fetched_t2, mut next_page) =
-        { fetch_fn(page_size, page_token, transaction.transaction()).await? };
+    let (fetched_t, fetched_t2, mut next_page) = { fetch_fn(page_size, page_token, t).await? };
     let (mut fetched_t, mut fetched_t2) = filter_fn((fetched_t, fetched_t2)).await?;
     while fetched_t.len() < page_size {
-        let (more_t, more_id, next_p) = {
-            fetch_fn(
-                page_size - fetched_t.len(),
-                next_page,
-                transaction.transaction(),
-            )
-            .await?
-        };
+        let (more_t, more_id, next_p) =
+            { fetch_fn(page_size - fetched_t.len(), next_page, t).await? };
         let (more_t, more_id) = filter_fn((more_t, more_id)).await?;
         next_page = next_p;
-        if fetched_t.is_empty() {
+        if more_t.is_empty() {
             break;
         }
         fetched_t.extend(more_t);
         fetched_t2.extend(more_id);
     }
-    transaction.commit().await?;
     Ok((fetched_t, fetched_t2, next_page))
 }
 
@@ -75,7 +67,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 {
     async fn list_namespaces(
         prefix: Option<Prefix>,
-        mut query: ListNamespacesQuery,
+        query: ListNamespacesQuery,
         state: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
     ) -> Result<ListNamespacesResponse> {
@@ -99,7 +91,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 &CatalogWarehouseAction::CanListNamespaces,
             )
             .await?;
-        let mut t = C::Transaction::begin_read(state.v1_state.catalog).await?;
+        let mut t = C::Transaction::begin_read(state.v1_state.catalog.clone()).await?;
 
         if let Some(parent) = parent {
             let namespace_id = C::namespace_to_id(warehouse_id, parent, t.transaction()).await; // Cannot fail before authz
@@ -114,40 +106,43 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         };
 
         // ------------------- BUSINESS LOGIC -------------------
-
-        let (idents, ids, next_page_token) = fetch_more::<_, _, _, _, C>(
+        let (idents, ids, next_page_token) = fetch_more::<_, _, _, C>(
             query.page_size.unwrap_or(1000) as usize,
             match query.page_token {
                 PageToken::Present(ref inner) => Some(inner.clone()),
                 PageToken::NotSpecified => None,
                 PageToken::Empty => None,
             },
-            |ps, page_token, trx| async move {
-                let query = ListNamespacesQuery {
-                    page_size: Some(ps as i32),
-                    page_token: match page_token {
-                        Some(token) => PageToken::Present(token),
-                        None => PageToken::NotSpecified,
-                    },
-                    parent: parent.clone(),
-                    return_uuids: true,
-                };
+            |ps, page_token, trx| {
+                let parent = parent.clone();
+                Box::pin(async move {
+                    let query = ListNamespacesQuery {
+                        page_size: Some(ps as i32),
+                        page_token: match page_token {
+                            Some(token) => PageToken::Present(token.clone()),
+                            None => PageToken::NotSpecified,
+                        },
+                        parent,
+                        return_uuids: true,
+                    };
 
-                let list_namespaces = C::list_namespaces(warehouse_id, &query, trx).await?;
-                let (ids, idents) = list_namespaces
-                    .namespaces
-                    .into_iter()
-                    .map(|(k, v)| (k.0, v))
-                    .collect::<(Vec<_>, Vec<_>)>();
-                Ok((idents, ids, list_namespaces.next_page_token))
+                    let list_namespaces =
+                        C::list_namespaces(warehouse_id, &query, trx.transaction()).await?;
+                    let (ids, idents) = list_namespaces
+                        .namespaces
+                        .into_iter()
+                        .map(|(k, v)| (k.0, v))
+                        .unzip::<_, _, Vec<_>, Vec<_>>();
+                    Ok((idents, ids, list_namespaces.next_page_token))
+                })
             },
             |(fetched_t, fetched_t2)| async {
                 Ok(fetched_t
                     .into_iter()
                     .zip(fetched_t2)
-                    .collect::<(Vec<_>, Vec<_>)>())
+                    .unzip::<_, _, Vec<_>, Vec<_>>())
             },
-            t,
+            &mut t,
         )
         .await?;
         // let mut next_page_token = list_namespaces.next_page_token;
