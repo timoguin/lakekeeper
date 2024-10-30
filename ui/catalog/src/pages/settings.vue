@@ -3,14 +3,14 @@
     <v-col cols="10">
       <v-card class="ma-6">
         <v-list-item two-line class="mb-12">
-          <div class="text-overline mb-4">Settings</div>
+          <div class="text-overline mb-4">Server Information</div>
           <v-list-item-title class="text-h7 mb-1">
             Server ID: {{ projectInfo["server-id"] }}
           </v-list-item-title>
           <v-list-item-subtitle>
             <div>Server Version: {{ projectInfo.version }}</div>
-            <div>Bootstrap Status: {{ projectInfo.bootstrapped }}</div>
-            <div>Bootstrap Status: {{ projectInfo["authz-backend"] }}</div>
+            <div>Bootstraped: {{ projectInfo.bootstrapped }}</div>
+            <div>Authenticated by: {{ projectInfo["authz-backend"] }}</div>
           </v-list-item-subtitle>
         </v-list-item>
       </v-card>
