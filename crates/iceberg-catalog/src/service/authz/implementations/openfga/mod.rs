@@ -1118,21 +1118,21 @@ fn suffixes_for_user(user: &FgaType) -> Vec<String> {
 #[async_trait]
 impl Client for OpenFgaServiceClient<ClientConnection> {
     async fn write(&self, request: WriteRequest) -> Result<Response<WriteResponse>, Status> {
-        self.clone().write(request).await
+        Self::write(&mut self.clone(), request).await
     }
 
     async fn list_objects(
         &self,
         request: ListObjectsRequest,
     ) -> Result<Response<ListObjectsResponse>, Status> {
-        self.clone().list_objects(request).await
+        Self::list_objects(&mut self.clone(), request).await
     }
 
     async fn read(
         &self,
         request: ReadRequest,
     ) -> std::result::Result<Response<ReadResponse>, Status> {
-        self.clone().read(request).await
+        Self::read(&mut self.clone(), request).await
     }
 
     async fn read_all_pages(
@@ -1147,7 +1147,7 @@ impl Client for OpenFgaServiceClient<ClientConnection> {
         &self,
         request: CheckRequest,
     ) -> std::result::Result<Response<CheckResponse>, Status> {
-        self.clone().check(request).await
+        Self::check(&mut self.clone(), request).await
     }
 }
 #[cfg(test)]

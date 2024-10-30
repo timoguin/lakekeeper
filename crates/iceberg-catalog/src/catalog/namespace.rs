@@ -716,7 +716,7 @@ mod tests {
                 .into_iter()
                 .map(|ns| ns.to_url_string())
                 .collect();
-            for i in 0..6 {
+            for i in 6..10 {
                 assert!(next_four_items.contains(&format!("ns-{i}")));
             }
 
