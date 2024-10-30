@@ -32,7 +32,7 @@ onMounted(async () => {
   if (!idpOn) {
     await functions.getServerInfo();
 
-    if (!visual.project.bootstrapped) router.push("/bootstrap");
+    if (!visual.projectInfo.bootstrapped) router.push("/bootstrap");
   }
 });
 

@@ -6,7 +6,7 @@
 
     <v-app-bar-title>Lakekeeper</v-app-bar-title>
     <v-list-item
-      v-if="userStorage.isAuthenticated && visual.project.bootstrapped"
+      v-if="userStorage.isAuthenticated && visual.projectInfo.bootstrapped"
       @click="dialog = true"
     >
       <v-list-item-title>

@@ -44,7 +44,7 @@ router.beforeEach((to, from, next) => {
     // Check if the user is authenticated and project bootstrap is not done
     if (
       userStorage.isAuthenticated &&
-      !visual.project.bootstrapped &&
+      !visual.projectInfo.bootstrapped &&
       to.path !== "/bootstrap"
     ) {
       return next("/bootstrap");
@@ -65,7 +65,7 @@ router.beforeEach((to, from, next) => {
   } else {
     // For cases where idpOn is false
 
-    if (!visual.project.bootstrapped && to.path !== "/bootstrap") {
+    if (!visual.projectInfo.bootstrapped && to.path !== "/bootstrap") {
       return next("/bootstrap");
     }
 

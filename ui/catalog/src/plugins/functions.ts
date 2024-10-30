@@ -9,10 +9,12 @@ const managementUrl = baseUrl + "/management/v1";
 
 async function getServerInfo() {
   try {
+    const userStore = useUserStore();
     const visualStore = useVisualStore();
     const response = await fetch(`${managementUrl}/info`, {
       method: "GET",
       headers: {
+        Authorization: `Bearer ${userStore.user.access_token}`,
         "Content-Type": "application/json",
       },
     });
@@ -20,6 +22,7 @@ async function getServerInfo() {
       throw new Error(`Error: ${response.statusText}`);
     }
     const data: ProjectCatalog = await response.json();
+    console.log(data);
     visualStore.setProjectCatalog(data);
   } catch (error) {}
 }

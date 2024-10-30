@@ -7,12 +7,12 @@ export const useVisualStore = defineStore(
   () => {
     const themeLight = ref(true);
     const navBarShow = ref(true);
-    const project = reactive<ProjectCatalog>({
-      version: "0.4.1",
+    const projectInfo = reactive<ProjectCatalog>({
+      version: "0.0.0",
       bootstrapped: true,
       "server-id": "00000000-0000-0000-0000-000000000000",
       "default-project-id": "00000000-0000-0000-0000-000000000000",
-      "authz-backend": "allow-all",
+      "authz-backend": "",
     });
 
     const projectSelected = reactive<Project>({
@@ -31,10 +31,10 @@ export const useVisualStore = defineStore(
     }
 
     function setProjectCatalog(projectCatalog: ProjectCatalog) {
-      Object.assign(project, projectCatalog);
+      Object.assign(projectInfo, projectCatalog);
     }
     function setProject(p: Project) {
-      Object.assign(project, p);
+      Object.assign(projectInfo, p);
     }
 
     function setProjectList(p: Project[]) {
@@ -44,7 +44,7 @@ export const useVisualStore = defineStore(
     return {
       themeLight,
       navBarShow,
-      project,
+      projectInfo,
       projectList,
       projectSelected,
       toggleThemeLight,
