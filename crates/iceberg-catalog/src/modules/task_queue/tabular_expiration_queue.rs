@@ -1,5 +1,5 @@
 use crate::modules::task_queue::{Task, TaskQueue};
-use crate::modules::{Catalog, TableIdentUuid, Transaction, ViewIdentUuid};
+use crate::modules::{CatalogBackend, TableIdentUuid, Transaction, ViewIdentUuid};
 use crate::rest::management::v1::{DeleteKind, TabularType};
 use crate::rest::Result;
 use crate::WarehouseIdent;
@@ -20,7 +20,7 @@ pub type ExpirationQueue = Arc<
 >;
 
 // TODO: concurrent workers
-pub async fn tabular_expiration_task<C: Catalog, A: Authorizer>(
+pub async fn tabular_expiration_task<C: CatalogBackend, A: Authorizer>(
     fetcher: ExpirationQueue,
     cleaner: TabularPurgeQueue,
     catalog_state: C::State,
@@ -65,7 +65,7 @@ pub async fn tabular_expiration_task<C: Catalog, A: Authorizer>(
     }
 }
 
-async fn instrumented_expire<C: Catalog, A: Authorizer>(
+async fn instrumented_expire<C: CatalogBackend, A: Authorizer>(
     fetcher: ExpirationQueue,
     cleaner: &TabularPurgeQueue,
     catalog_state: C::State,
@@ -93,7 +93,7 @@ async fn handle_table<C, A>(
     expiration: &TabularExpirationTask,
 ) -> Result<()>
 where
-    C: Catalog,
+    C: CatalogBackend,
     A: Authorizer,
 {
     let mut trx = C::Transaction::begin_write(catalog_state)

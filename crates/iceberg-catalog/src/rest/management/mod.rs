@@ -15,10 +15,11 @@ pub mod v1 {
     use crate::rest::iceberg::v1::PaginationQuery;
 
     use crate::modules::{
-        authz::Authorizer, object_stores::S3Flavor, Actor, Catalog, CreateOrUpdateUserResponse,
-        RoleId, SecretStore, State, TabularIdentUuid, UserId,
+        authz::Authorizer, object_stores::S3Flavor, Actor, CatalogBackend,
+        CreateOrUpdateUserResponse, RoleId, SecretStore, State, TabularIdentUuid, UserId,
     };
     use crate::rest::management::v1::user::{ListUsersQuery, ListUsersResponse};
+    use crate::service::management::warehouse::Service as _;
     use crate::ProjectIdent;
     use axum::extract::{Path, Query, State as AxumState};
     use axum::response::{IntoResponse, Response};
@@ -42,8 +43,8 @@ pub mod v1 {
     use warehouse::{
         AzCredential, AzdlsProfile, CreateWarehouseRequest, CreateWarehouseResponse, GcsCredential,
         GcsProfile, GcsServiceKey, GetWarehouseResponse, ListWarehousesRequest,
-        ListWarehousesResponse, RenameWarehouseRequest, S3Credential, S3Profile, Service as _,
-        StorageCredential, StorageProfile, TabularDeleteProfile, UpdateWarehouseCredentialRequest,
+        ListWarehousesResponse, RenameWarehouseRequest, S3Credential, S3Profile, StorageCredential,
+        StorageProfile, TabularDeleteProfile, UpdateWarehouseCredentialRequest,
         UpdateWarehouseDeleteProfileRequest, UpdateWarehouseStorageRequest, WarehouseStatus,
     };
 
@@ -152,7 +153,7 @@ pub mod v1 {
     struct ManagementApiDoc;
 
     #[derive(Clone, Debug)]
-    pub struct ApiServer<C: Catalog, A: Authorizer + Clone, S: SecretStore> {
+    pub struct ApiServer<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore> {
         auth_handler: PhantomData<A>,
         config_server: PhantomData<C>,
         secret_store: PhantomData<S>,
@@ -167,7 +168,7 @@ pub mod v1 {
             (status = 200, description = "User details", body = [ServerInfo]),
         )
     )]
-    async fn get_server_info<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn get_server_info<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
     ) -> Result<(StatusCode, Json<ServerInfo>)> {
@@ -188,7 +189,7 @@ pub mod v1 {
             (status = 200, description = "Server bootstrapped successfully"),
         )
     )]
-    async fn bootstrap<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn bootstrap<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<BootstrapRequest>,
@@ -209,7 +210,7 @@ pub mod v1 {
             (status = 201, description = "User created", body = [User]),
         )
     )]
-    async fn create_user<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn create_user<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<CreateUserRequest>,
@@ -232,7 +233,7 @@ pub mod v1 {
             (status = 200, description = "List of users", body = [SearchUserResponse]),
         )
     )]
-    async fn search_user<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn search_user<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<SearchUserRequest>,
@@ -250,7 +251,7 @@ pub mod v1 {
             (status = 200, description = "User details", body = [User]),
         )
     )]
-    async fn get_user<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn get_user<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         Path(id): Path<UserId>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -269,7 +270,7 @@ pub mod v1 {
             (status = 200, description = "User details", body = [User]),
         )
     )]
-    async fn whoami<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn whoami<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
     ) -> Result<(StatusCode, Json<User>)> {
@@ -302,7 +303,7 @@ pub mod v1 {
             (status = 200, description = "User details updated successfully"),
         )
     )]
-    async fn update_user<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn update_user<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         Path(id): Path<UserId>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -321,7 +322,7 @@ pub mod v1 {
             (status = 200, description = "List of users", body = [ListUsersResponse]),
         )
     )]
-    async fn list_user<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn list_user<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Query(query): Query<ListUsersQuery>,
@@ -342,7 +343,7 @@ pub mod v1 {
             (status = 200, description = "User deleted successfully"),
         )
     )]
-    async fn delete_user<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn delete_user<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         Path(id): Path<UserId>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -364,7 +365,7 @@ pub mod v1 {
             (status = 201, description = "Role successfully created", body = [Role]),
         )
     )]
-    async fn create_role<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn create_role<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<CreateRoleRequest>,
@@ -385,7 +386,7 @@ pub mod v1 {
             (status = 200, description = "List of users", body = [SearchRoleResponse]),
         )
     )]
-    async fn search_role<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn search_role<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<SearchRoleRequest>,
@@ -403,7 +404,7 @@ pub mod v1 {
             (status = 200, description = "List of roles", body = [ListRolesResponse]),
         )
     )]
-    async fn list_roles<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn list_roles<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Query(query): Query<ListRolesQuery>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -423,7 +424,7 @@ pub mod v1 {
             (status = 200, description = "Role deleted successfully"),
         )
     )]
-    async fn delete_role<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn delete_role<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         Path(id): Path<RoleId>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -443,7 +444,7 @@ pub mod v1 {
             (status = 200, description = "Role details", body = [Role]),
         )
     )]
-    async fn get_role<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn get_role<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         Path(id): Path<RoleId>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -464,7 +465,7 @@ pub mod v1 {
             (status = 200, description = "Role updated successfully", body = [Role]),
         )
     )]
-    async fn update_role<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn update_role<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         Path(id): Path<RoleId>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -489,7 +490,7 @@ pub mod v1 {
             (status = 201, description = "Warehouse created successfully", body = [CreateWarehouseResponse]),
         )
     )]
-    async fn create_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn create_warehouse<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<CreateWarehouseRequest>,
@@ -506,7 +507,7 @@ pub mod v1 {
             (status = 200, description = "List of projects", body = [ListProjectsResponse])
         )
     )]
-    async fn list_projects<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn list_projects<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
     ) -> Result<ListProjectsResponse> {
@@ -522,7 +523,7 @@ pub mod v1 {
             (status = 201, description = "Project created successfully", body = [CreateProjectResponse])
         )
     )]
-    async fn create_project<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn create_project<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<CreateProjectRequest>,
@@ -539,7 +540,7 @@ pub mod v1 {
             (status = 200, description = "Project details", body = [GetProjectResponse])
         )
     )]
-    async fn get_default_project<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn get_default_project<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
     ) -> Result<GetProjectResponse> {
@@ -556,7 +557,7 @@ pub mod v1 {
             (status = 200, description = "Project details", body = [GetProjectResponse])
         )
     )]
-    async fn get_project_by_id<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn get_project_by_id<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         Path(project_id): Path<ProjectIdent>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -573,7 +574,7 @@ pub mod v1 {
             (status = 200, description = "Project deleted successfully")
         )
     )]
-    async fn delete_default_project<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn delete_default_project<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
     ) -> Result<()> {
@@ -590,7 +591,7 @@ pub mod v1 {
             (status = 200, description = "Project deleted successfully")
         )
     )]
-    async fn delete_project_by_id<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn delete_project_by_id<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         Path(project_id): Path<ProjectIdent>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -607,7 +608,7 @@ pub mod v1 {
             (status = 200, description = "Project renamed successfully")
         )
     )]
-    async fn rename_default_project<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn rename_default_project<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<RenameProjectRequest>,
@@ -625,7 +626,7 @@ pub mod v1 {
             (status = 200, description = "Project renamed successfully")
         )
     )]
-    async fn rename_project_by_id<C: Catalog, A: Authorizer, S: SecretStore>(
+    async fn rename_project_by_id<C: CatalogBackend, A: Authorizer, S: SecretStore>(
         Path(project_id): Path<ProjectIdent>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -647,7 +648,7 @@ pub mod v1 {
             (status = 200, description = "List of warehouses", body = [ListWarehousesResponse])
         )
     )]
-    async fn list_warehouses<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn list_warehouses<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         Query(request): Query<ListWarehousesRequest>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -664,7 +665,7 @@ pub mod v1 {
             (status = 200, description = "Warehouse details", body = [GetWarehouseResponse])
         )
     )]
-    async fn get_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn get_warehouse<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         Path(warehouse_id): Path<uuid::Uuid>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -681,7 +682,7 @@ pub mod v1 {
             (status = 200, description = "Warehouse deleted successfully")
         )
     )]
-    async fn delete_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn delete_warehouse<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         Path(warehouse_id): Path<uuid::Uuid>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -699,7 +700,7 @@ pub mod v1 {
             (status = 200, description = "Warehouse renamed successfully")
         )
     )]
-    async fn rename_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn rename_warehouse<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         Path(warehouse_id): Path<uuid::Uuid>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -719,7 +720,11 @@ pub mod v1 {
                 (status = 200, description = "Deletion Profile updated successfully")
             )
         )]
-    async fn update_warehouse_delete_profile<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn update_warehouse_delete_profile<
+        C: CatalogBackend,
+        A: Authorizer + Clone,
+        S: SecretStore,
+    >(
         Path(warehouse_id): Path<uuid::Uuid>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -743,7 +748,7 @@ pub mod v1 {
             (status = 200, description = "Warehouse deactivated successfully")
         )
     )]
-    async fn deactivate_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn deactivate_warehouse<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         Path(warehouse_id): Path<uuid::Uuid>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -760,7 +765,7 @@ pub mod v1 {
             (status = 200, description = "Warehouse activated successfully")
         )
     )]
-    async fn activate_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn activate_warehouse<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         Path(warehouse_id): Path<uuid::Uuid>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -778,7 +783,7 @@ pub mod v1 {
             (status = 200, description = "Storage profile updated successfully")
         )
     )]
-    async fn update_storage_profile<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn update_storage_profile<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         Path(warehouse_id): Path<uuid::Uuid>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -799,7 +804,7 @@ pub mod v1 {
             (status = 200, description = "Storage credential updated successfully")
         )
     )]
-    async fn update_storage_credential<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn update_storage_credential<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         Path(warehouse_id): Path<uuid::Uuid>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -826,7 +831,7 @@ pub mod v1 {
             (status = 200, description = "List of soft-deleted tabulars", body = [ListDeletedTabularsResponse])
         )
     )]
-    async fn list_deleted_tabulars<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+    async fn list_deleted_tabulars<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
         Path(warehouse_id): Path<uuid::Uuid>,
         Query(pagination): Query<PaginationQuery>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
@@ -901,7 +906,7 @@ pub mod v1 {
         doc
     }
 
-    impl<C: Catalog, A: Authorizer, S: SecretStore> ApiServer<C, A, S> {
+    impl<C: CatalogBackend, A: Authorizer, S: SecretStore> ApiServer<C, A, S> {
         pub fn new_v1_router(authorizer: &A) -> Router<ApiContext<State<A, C, S>>> {
             Router::new()
                 // Server

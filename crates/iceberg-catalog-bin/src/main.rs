@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
             println!("Authorizer migration complete.");
 
             println!("Migrating database...");
-            let write_pool = iceberg_catalog::implementations::postgres::get_writer_pool(
+            let write_pool = iceberg_catalog::modules::catalog_backends::postgres::get_writer_pool(
                 CONFIG
                     .to_pool_opts()
                     .acquire_timeout(std::time::Duration::from_secs(1)),
@@ -127,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
 
             // This embeds database migrations in the application binary so we can ensure the database
             // is migrated correctly on startup
-            iceberg_catalog::implementations::postgres::migrate(&write_pool).await?;
+            iceberg_catalog::modules::catalog_backends::postgres::migrate(&write_pool).await?;
             println!("Database migration complete.");
         }
         Some(Commands::Serve {}) => {

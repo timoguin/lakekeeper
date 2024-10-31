@@ -163,7 +163,7 @@ pub enum StartupValidationData {
 }
 
 #[async_trait::async_trait]
-pub trait Catalog
+pub trait CatalogBackend
 where
     Self: Clone + Send + Sync + 'static,
 {

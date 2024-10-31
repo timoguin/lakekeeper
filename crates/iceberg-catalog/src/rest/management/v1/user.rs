@@ -1,8 +1,8 @@
 use super::default_page_size;
 use crate::modules::authz::{Authorizer, CatalogServerAction, CatalogUserAction};
 use crate::modules::{
-    AuthDetails, Catalog, CreateOrUpdateUserResponse, Result, SecretStore, State, Transaction,
-    UserId,
+    AuthDetails, CatalogBackend, CreateOrUpdateUserResponse, Result, SecretStore, State,
+    Transaction, UserId,
 };
 use crate::request_metadata::RequestMetadata;
 use crate::rest::iceberg::v1::{PageToken, PaginationQuery};
@@ -161,10 +161,13 @@ pub struct UpdateUserRequest {
     pub user_type: UserType,
 }
 
-impl<C: Catalog, A: Authorizer + Clone, S: SecretStore> Service<C, A, S> for ApiServer<C, A, S> {}
+impl<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore> Service<C, A, S>
+    for ApiServer<C, A, S>
+{
+}
 
 #[async_trait::async_trait]
-pub(super) trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
+pub(super) trait Service<C: CatalogBackend, A: Authorizer, S: SecretStore> {
     async fn create_user(
         context: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,

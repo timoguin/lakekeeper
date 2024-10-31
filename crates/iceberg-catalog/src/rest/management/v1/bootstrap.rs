@@ -1,6 +1,7 @@
 use crate::modules::authz::Authorizer;
 use crate::modules::{
-    Actor, AuthDetails, Catalog, Result, SecretStore, StartupValidationData, State, Transaction,
+    Actor, AuthDetails, CatalogBackend, Result, SecretStore, StartupValidationData, State,
+    Transaction,
 };
 use crate::request_metadata::RequestMetadata;
 use crate::rest::management::v1::ApiServer;
@@ -54,10 +55,10 @@ pub struct ServerInfo {
     pub authz_backend: AuthZBackend,
 }
 
-impl<C: Catalog, A: Authorizer, S: SecretStore> Service<C, A, S> for ApiServer<C, A, S> {}
+impl<C: CatalogBackend, A: Authorizer, S: SecretStore> Service<C, A, S> for ApiServer<C, A, S> {}
 
 #[async_trait::async_trait]
-pub(super) trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
+pub(super) trait Service<C: CatalogBackend, A: Authorizer, S: SecretStore> {
     async fn bootstrap(
         state: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,

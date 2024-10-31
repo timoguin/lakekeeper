@@ -1,7 +1,7 @@
 use super::health::HealthExt;
 use super::{
-    Catalog, NamespaceIdentUuid, ProjectIdent, RoleId, SecretStore, State, TableIdentUuid, UserId,
-    ViewIdentUuid, WarehouseIdent,
+    CatalogBackend, NamespaceIdentUuid, ProjectIdent, RoleId, SecretStore, State, TableIdentUuid,
+    UserId, ViewIdentUuid, WarehouseIdent,
 };
 use crate::request_metadata::RequestMetadata;
 use crate::rest::iceberg::v1::Result;
@@ -152,7 +152,9 @@ where
     fn api_doc() -> utoipa::openapi::OpenApi;
 
     /// Router for the API
-    fn new_router<C: Catalog, S: SecretStore>(&self) -> Router<ApiContext<State<Self, C, S>>>;
+    fn new_router<C: CatalogBackend, S: SecretStore>(
+        &self,
+    ) -> Router<ApiContext<State<Self, C, S>>>;
 
     /// Check if this server can be bootstrapped.
     async fn can_bootstrap(&self, metadata: &RequestMetadata) -> Result<()>;

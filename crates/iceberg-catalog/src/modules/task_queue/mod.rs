@@ -1,6 +1,6 @@
 use crate::modules::task_queue::tabular_expiration_queue::TabularExpirationInput;
 use crate::modules::task_queue::tabular_purge_queue::TabularPurgeInput;
-use crate::modules::{Catalog, SecretStore};
+use crate::modules::{CatalogBackend, SecretStore};
 use async_trait::async_trait;
 use chrono::Utc;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -56,7 +56,7 @@ impl TaskQueues {
         authorizer: A,
     ) -> Result<(), anyhow::Error>
     where
-        C: Catalog,
+        C: CatalogBackend,
         S: SecretStore,
         A: Authorizer,
     {
@@ -229,16 +229,16 @@ mod test {
     // to test this module in isolation.
     #[needs_env_var(TEST_MINIO = 1)]
     mod minio {
-        use crate::implementations::postgres::tabular::table::tests::initialize_table;
-        use crate::implementations::postgres::warehouse::test::initialize_warehouse;
-        use crate::implementations::postgres::{CatalogState, PostgresCatalog};
         use crate::modules::authz::AllowAllAuthorizer;
+        use crate::modules::catalog_backends::postgres::tabular::table::tests::initialize_table;
+        use crate::modules::catalog_backends::postgres::warehouse::test::initialize_warehouse;
+        use crate::modules::catalog_backends::postgres::{CatalogState, PostgresCatalog};
         use crate::modules::object_stores::{
             S3Credential, S3Flavor, S3Profile, StorageCredential, StorageProfile,
         };
         use crate::modules::task_queue::tabular_expiration_queue::TabularExpirationInput;
         use crate::modules::task_queue::{TaskQueue, TaskQueueConfig};
-        use crate::modules::{Catalog, ListFlags, SecretStore, Transaction};
+        use crate::modules::{CatalogBackend, ListFlags, SecretStore, Transaction};
         use crate::rest::iceberg::v1::PaginationQuery;
         use crate::rest::management::v1::TabularType;
         use sqlx::PgPool;
@@ -259,17 +259,19 @@ mod test {
                 poll_interval: std::time::Duration::from_millis(100),
             };
 
-            let rw =
-                crate::implementations::postgres::ReadWrite::from_pools(pool.clone(), pool.clone());
+            let rw = crate::modules::catalog_backends::postgres::ReadWrite::from_pools(
+                pool.clone(),
+                pool.clone(),
+            );
             let expiration_queue = Arc::new(
-                crate::implementations::postgres::task_queues::TabularExpirationQueue::from_config(
+                crate::modules::catalog_backends::postgres::task_queues::TabularExpirationQueue::from_config(
                     rw.clone(),
                     config.clone(),
                 )
                 .unwrap(),
             );
             let purge_queue = Arc::new(
-                crate::implementations::postgres::task_queues::TabularPurgeQueue::from_config(
+                crate::modules::catalog_backends::postgres::task_queues::TabularPurgeQueue::from_config(
                     rw.clone(),
                     config,
                 )
@@ -280,8 +282,10 @@ mod test {
 
             let queues =
                 crate::modules::task_queue::TaskQueues::new(expiration_queue.clone(), purge_queue);
-            let secrets =
-                crate::implementations::postgres::SecretsState::from_pools(pool.clone(), pool);
+            let secrets = crate::modules::catalog_backends::postgres::SecretsState::from_pools(
+                pool.clone(),
+                pool,
+            );
             let cloned = queues.clone();
             let cat = catalog_state.clone();
             let sec = secrets.clone();

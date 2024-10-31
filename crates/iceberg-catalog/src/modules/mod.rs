@@ -1,16 +1,17 @@
 pub mod authz;
 mod catalog;
+pub mod catalog_backends;
 pub mod contract_verification;
 pub mod event_publisher;
 pub mod health;
-pub mod secrets;
 pub mod object_stores;
+pub mod secrets;
 mod tabular_idents;
 pub mod task_queue;
 pub mod token_verification;
 
 pub use catalog::{
-    Catalog, CommitTableResponse, CreateNamespaceRequest, CreateNamespaceResponse,
+    CatalogBackend, CommitTableResponse, CreateNamespaceRequest, CreateNamespaceResponse,
     CreateOrUpdateUserResponse, CreateTableRequest, CreateTableResponse, DeletionDetails,
     DropFlags, GetNamespaceResponse, GetProjectResponse, GetStorageConfigResponse,
     GetTableMetadataResponse, GetWarehouseResponse, ListFlags, ListNamespacesQuery,
@@ -37,7 +38,7 @@ use std::str::FromStr;
 
 // ---------------- State ----------------
 #[derive(Clone, Debug)]
-pub struct State<A: Authorizer + Clone, C: Catalog, S: SecretStore> {
+pub struct State<A: Authorizer + Clone, C: CatalogBackend, S: SecretStore> {
     pub authz: A,
     pub catalog: C::State,
     pub secrets: S,
@@ -46,7 +47,7 @@ pub struct State<A: Authorizer + Clone, C: Catalog, S: SecretStore> {
     pub queues: TaskQueues,
 }
 
-impl<A: Authorizer + Clone, C: Catalog, S: SecretStore> ServiceState for State<A, C, S> {}
+impl<A: Authorizer + Clone, C: CatalogBackend, S: SecretStore> ServiceState for State<A, C, S> {}
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, Copy)]
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]

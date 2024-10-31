@@ -5,8 +5,8 @@ use crate::modules::authz::{
 };
 use crate::modules::health::{Health, HealthExt};
 use crate::modules::{
-    Catalog, NamespaceIdentUuid, ProjectIdent, RoleId, SecretStore, State, TableIdentUuid, UserId,
-    ViewIdentUuid, WarehouseIdent,
+    CatalogBackend, NamespaceIdentUuid, ProjectIdent, RoleId, SecretStore, State, TableIdentUuid,
+    UserId, ViewIdentUuid, WarehouseIdent,
 };
 use crate::request_metadata::RequestMetadata;
 use crate::rest::iceberg::v1::Result;
@@ -38,7 +38,9 @@ impl Authorizer for AllowAllAuthorizer {
         ApiDoc::openapi()
     }
 
-    fn new_router<C: Catalog, S: SecretStore>(&self) -> Router<ApiContext<State<Self, C, S>>> {
+    fn new_router<C: CatalogBackend, S: SecretStore>(
+        &self,
+    ) -> Router<ApiContext<State<Self, C, S>>> {
         Router::new()
     }
 

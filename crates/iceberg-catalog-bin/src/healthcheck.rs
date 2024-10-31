@@ -1,5 +1,7 @@
 use anyhow::Context;
-use iceberg_catalog::implementations::postgres::{get_reader_pool, get_writer_pool, ReadWrite};
+use iceberg_catalog::modules::catalog_backends::postgres::{
+    get_reader_pool, get_writer_pool, ReadWrite,
+};
 use iceberg_catalog::modules::health::{HealthExt, HealthState, HealthStatus};
 use iceberg_catalog::CONFIG;
 

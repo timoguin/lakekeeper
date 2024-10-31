@@ -6,10 +6,10 @@ mod gcs;
 mod s3;
 
 use super::{secrets::SecretInStorage, NamespaceIdentUuid, TableIdentUuid};
-use crate::catalog::compression_codec::CompressionCodec;
-use crate::catalog::io::list_location;
 use crate::modules::tabular_idents::TabularIdentUuid;
 use crate::rest::{iceberg::v1::DataAccess, CatalogConfig};
+use crate::service::catalog::compression_codec::CompressionCodec;
+use crate::service::catalog::io::list_location;
 use crate::WarehouseIdent;
 pub use az::{AzCredential, AzdlsLocation, AzdlsProfile};
 pub(crate) use error::ValidationError;
@@ -312,7 +312,7 @@ impl StorageProfile {
         }
         tracing::info!("Cleanup started");
         // Cleanup
-        crate::catalog::io::remove_all(&file_io, &test_location)
+        crate::service::catalog::io::remove_all(&file_io, &test_location)
             .await
             .map_err(|e| ValidationError::IoOperationFailed(e, Box::new(self.clone())))?;
 
@@ -360,7 +360,7 @@ impl StorageProfile {
         }
 
         // Test write
-        crate::catalog::io::write_metadata_file(
+        crate::service::catalog::io::write_metadata_file(
             &test_file_write,
             "test",
             compression_codec,
@@ -370,12 +370,12 @@ impl StorageProfile {
         .map_err(|e| ValidationError::IoOperationFailed(e, Box::new(self.clone())))?;
 
         // Test read
-        let _ = crate::catalog::io::read_file(file_io, &test_file_write)
+        let _ = crate::service::catalog::io::read_file(file_io, &test_file_write)
             .await
             .map_err(|e| ValidationError::IoOperationFailed(e, Box::new(self.clone())))?;
 
         // Test delete
-        crate::catalog::io::delete_file(file_io, &test_file_write)
+        crate::service::catalog::io::delete_file(file_io, &test_file_write)
             .await
             .map_err(|e| ValidationError::IoOperationFailed(e, Box::new(self.clone())))?;
 

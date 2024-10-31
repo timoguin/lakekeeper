@@ -1,6 +1,6 @@
 use super::default_page_size;
 use crate::modules::authz::{Authorizer, CatalogProjectAction, CatalogRoleAction};
-use crate::modules::{Catalog, Result, RoleId, SecretStore, State, Transaction};
+use crate::modules::{CatalogBackend, Result, RoleId, SecretStore, State, Transaction};
 use crate::request_metadata::RequestMetadata;
 use crate::rest::iceberg::types::PageToken;
 use crate::rest::iceberg::v1::PaginationQuery;
@@ -127,10 +127,13 @@ impl IntoResponse for SearchRoleResponse {
     }
 }
 
-impl<C: Catalog, A: Authorizer + Clone, S: SecretStore> Service<C, A, S> for ApiServer<C, A, S> {}
+impl<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore> Service<C, A, S>
+    for ApiServer<C, A, S>
+{
+}
 
 #[async_trait::async_trait]
-pub(super) trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
+pub(super) trait Service<C: CatalogBackend, A: Authorizer, S: SecretStore> {
     async fn create_role(
         request: CreateRoleRequest,
         context: ApiContext<State<A, C, S>>,
@@ -340,7 +343,7 @@ pub(super) trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
     }
 }
 
-pub(super) fn require_project_id(
+pub(crate) fn require_project_id(
     specified_project_id: Option<ProjectIdent>,
     request_metadata: &RequestMetadata,
 ) -> Result<ProjectIdent> {

@@ -1,12 +1,12 @@
 use crate::WarehouseIdent;
 
-use crate::catalog::io::IoError;
 use crate::modules::object_stores::error::{
     CredentialsError, FileIoError, TableConfigError, UpdateError, ValidationError,
 };
 use crate::modules::object_stores::path_utils::reduce_scheme_string;
 use crate::modules::object_stores::{StoragePermissions, StorageProfile, StorageType};
 use crate::rest::{iceberg::v1::DataAccess, CatalogConfig, Result};
+use crate::service::catalog::io::IoError;
 use azure_storage::prelude::{BlobSasPermissions, BlobSignedResource};
 use azure_storage::shared_access_signature::service_sas::BlobSharedAccessSignature;
 use azure_storage::shared_access_signature::SasToken;

@@ -12,7 +12,7 @@ pub use crate::modules::WarehouseStatus;
 use crate::modules::{
     authz::{Authorizer, ListProjectsResponse as AuthZListProjectsResponse},
     secrets::SecretStore,
-    Catalog, State, Transaction,
+    CatalogBackend, State, Transaction,
 };
 use crate::rest::management::v1::role::require_project_id;
 use crate::ProjectIdent;
@@ -76,10 +76,10 @@ impl axum::response::IntoResponse for GetProjectResponse {
     }
 }
 
-impl<C: Catalog, A: Authorizer, S: SecretStore> Service<C, A, S> for ApiServer<C, A, S> {}
+impl<C: CatalogBackend, A: Authorizer, S: SecretStore> Service<C, A, S> for ApiServer<C, A, S> {}
 
 #[async_trait::async_trait]
-pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
+pub trait Service<C: CatalogBackend, A: Authorizer, S: SecretStore> {
     async fn create_project(
         request: CreateProjectRequest,
         context: ApiContext<State<A, C, S>>,

@@ -20,7 +20,7 @@ use crate::modules::authz::implementations::openfga::{
     OpenFGAAuthorizer, OpenFGAError, OpenFGAResult,
 };
 use crate::modules::{
-    Actor, Catalog, NamespaceIdentUuid, Result, RoleId, SecretStore, State, TableIdentUuid,
+    Actor, CatalogBackend, NamespaceIdentUuid, Result, RoleId, SecretStore, State, TableIdentUuid,
     ViewIdentUuid,
 };
 use crate::request_metadata::RequestMetadata;
@@ -283,7 +283,7 @@ struct SetManagedAccessRequest {
             (status = 200, body = [GetRoleAccessResponse]),
     )
 )]
-async fn get_role_access_by_id<C: Catalog, S: SecretStore>(
+async fn get_role_access_by_id<C: CatalogBackend, S: SecretStore>(
     Path(role_id): Path<RoleId>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -311,7 +311,7 @@ async fn get_role_access_by_id<C: Catalog, S: SecretStore>(
             (status = 200, description = "Server Access", body = [GetServerAccessResponse]),
     )
 )]
-async fn get_server_access<C: Catalog, S: SecretStore>(
+async fn get_server_access<C: CatalogBackend, S: SecretStore>(
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
     Query(_query): Query<GetAccessQuery>,
@@ -337,7 +337,7 @@ async fn get_server_access<C: Catalog, S: SecretStore>(
             (status = 200, description = "Server Relations", body = [GetProjectAccessResponse]),
     )
 )]
-async fn get_project_access<C: Catalog, S: SecretStore>(
+async fn get_project_access<C: CatalogBackend, S: SecretStore>(
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
     Query(_query): Query<GetAccessQuery>,
@@ -369,7 +369,7 @@ async fn get_project_access<C: Catalog, S: SecretStore>(
             (status = 200, description = "Server Relations", body = [GetProjectAccessResponse]),
     )
 )]
-async fn get_project_access_by_id<C: Catalog, S: SecretStore>(
+async fn get_project_access_by_id<C: CatalogBackend, S: SecretStore>(
     Path(project_id): Path<ProjectIdent>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -397,7 +397,7 @@ async fn get_project_access_by_id<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetWarehouseAccessResponse]),
     )
 )]
-async fn get_warehouse_access_by_id<C: Catalog, S: SecretStore>(
+async fn get_warehouse_access_by_id<C: CatalogBackend, S: SecretStore>(
     Path(warehouse_id): Path<WarehouseIdent>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -424,7 +424,7 @@ async fn get_warehouse_access_by_id<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetWarehouseResponse]),
     )
 )]
-async fn get_warehouse_by_id<C: Catalog, S: SecretStore>(
+async fn get_warehouse_by_id<C: CatalogBackend, S: SecretStore>(
     Path(warehouse_id): Path<WarehouseIdent>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -455,7 +455,7 @@ async fn get_warehouse_by_id<C: Catalog, S: SecretStore>(
             (status = 200, body = [()]),
     )
 )]
-async fn set_warehouse_managed_access<C: Catalog, S: SecretStore>(
+async fn set_warehouse_managed_access<C: CatalogBackend, S: SecretStore>(
     Path(warehouse_id): Path<WarehouseIdent>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -484,7 +484,7 @@ async fn set_warehouse_managed_access<C: Catalog, S: SecretStore>(
             (status = 200, body = [()]),
     )
 )]
-async fn set_namespace_managed_access<C: Catalog, S: SecretStore>(
+async fn set_namespace_managed_access<C: CatalogBackend, S: SecretStore>(
     Path(namespace_id): Path<NamespaceIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -513,7 +513,7 @@ async fn set_namespace_managed_access<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetNamespaceResponse]),
     )
 )]
-async fn get_namespace_by_id<C: Catalog, S: SecretStore>(
+async fn get_namespace_by_id<C: CatalogBackend, S: SecretStore>(
     Path(namespace_id): Path<NamespaceIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -545,7 +545,7 @@ async fn get_namespace_by_id<C: Catalog, S: SecretStore>(
             (status = 200, description = "Server Relations", body = [GetNamespaceAccessResponse]),
     )
 )]
-async fn get_namespace_access_by_id<C: Catalog, S: SecretStore>(
+async fn get_namespace_access_by_id<C: CatalogBackend, S: SecretStore>(
     Path(namespace_id): Path<NamespaceIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -573,7 +573,7 @@ async fn get_namespace_access_by_id<C: Catalog, S: SecretStore>(
             (status = 200, description = "Server Relations", body = [GetTableAccessResponse]),
     )
 )]
-async fn get_table_access_by_id<C: Catalog, S: SecretStore>(
+async fn get_table_access_by_id<C: CatalogBackend, S: SecretStore>(
     Path(table_id): Path<TableIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -601,7 +601,7 @@ async fn get_table_access_by_id<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetViewAccessResponse]),
     )
 )]
-async fn get_view_access_by_id<C: Catalog, S: SecretStore>(
+async fn get_view_access_by_id<C: CatalogBackend, S: SecretStore>(
     Path(view_id): Path<ViewIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -629,7 +629,7 @@ async fn get_view_access_by_id<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetRoleAssignmentsResponse]),
     )
 )]
-async fn get_role_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn get_role_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(role_id): Path<RoleId>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -661,7 +661,7 @@ async fn get_role_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetServerAssignmentsResponse]),
     )
 )]
-async fn get_server_assignments<C: Catalog, S: SecretStore>(
+async fn get_server_assignments<C: CatalogBackend, S: SecretStore>(
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
     Query(query): Query<GetServerAssignmentsQuery>,
@@ -692,7 +692,7 @@ async fn get_server_assignments<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetProjectAssignmentsResponse]),
     )
 )]
-async fn get_project_assignments<C: Catalog, S: SecretStore>(
+async fn get_project_assignments<C: CatalogBackend, S: SecretStore>(
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
     Query(query): Query<GetProjectAssignmentsQuery>,
@@ -731,7 +731,7 @@ async fn get_project_assignments<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetProjectAssignmentsResponse]),
     )
 )]
-async fn get_project_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn get_project_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(project_id): Path<ProjectIdent>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -766,7 +766,7 @@ async fn get_project_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetWarehouseAssignmentsResponse]),
     )
 )]
-async fn get_warehouse_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn get_warehouse_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(warehouse_id): Path<WarehouseIdent>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -795,7 +795,7 @@ async fn get_warehouse_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetNamespaceAssignmentsResponse]),
     )
 )]
-async fn get_namespace_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn get_namespace_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(namespace_id): Path<NamespaceIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -828,7 +828,7 @@ async fn get_namespace_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetTableAssignmentsResponse]),
     )
 )]
-async fn get_table_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn get_table_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(table_id): Path<TableIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -857,7 +857,7 @@ async fn get_table_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, body = [GetViewAssignmentsResponse]),
     )
 )]
-async fn get_view_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn get_view_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(view_id): Path<ViewIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -886,7 +886,7 @@ async fn get_view_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, description = "Permissions updated successfully"),
     )
 )]
-async fn update_server_assignments<C: Catalog, S: SecretStore>(
+async fn update_server_assignments<C: CatalogBackend, S: SecretStore>(
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
     Json(request): Json<UpdateServerAssignmentsRequest>,
@@ -914,7 +914,7 @@ async fn update_server_assignments<C: Catalog, S: SecretStore>(
             (status = 200, description = "Permissions updated successfully"),
     )
 )]
-async fn update_project_assignments<C: Catalog, S: SecretStore>(
+async fn update_project_assignments<C: CatalogBackend, S: SecretStore>(
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
     Json(request): Json<UpdateProjectAssignmentsRequest>,
@@ -947,7 +947,7 @@ async fn update_project_assignments<C: Catalog, S: SecretStore>(
             (status = 200, description = "Permissions updated successfully"),
     )
 )]
-async fn update_project_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn update_project_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(project_id): Path<ProjectIdent>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -976,7 +976,7 @@ async fn update_project_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, description = "Permissions updated successfully"),
     )
 )]
-async fn update_warehouse_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn update_warehouse_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(warehouse_id): Path<WarehouseIdent>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -1005,7 +1005,7 @@ async fn update_warehouse_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, description = "Permissions updated successfully"),
     )
 )]
-async fn update_namespace_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn update_namespace_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(namespace_id): Path<NamespaceIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -1034,7 +1034,7 @@ async fn update_namespace_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, description = "Permissions updated successfully"),
     )
 )]
-async fn update_table_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn update_table_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(table_id): Path<TableIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -1063,7 +1063,7 @@ async fn update_table_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, description = "Permissions updated successfully"),
     )
 )]
-async fn update_view_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn update_view_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(view_id): Path<ViewIdentUuid>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -1092,7 +1092,7 @@ async fn update_view_assignments_by_id<C: Catalog, S: SecretStore>(
             (status = 200, description = "Permissions updated successfully"),
     )
 )]
-async fn update_role_assignments_by_id<C: Catalog, S: SecretStore>(
+async fn update_role_assignments_by_id<C: CatalogBackend, S: SecretStore>(
     Path(role_id): Path<RoleId>,
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -1194,7 +1194,7 @@ async fn update_role_assignments_by_id<C: Catalog, S: SecretStore>(
 )]
 pub(crate) struct ApiDoc;
 
-pub(super) fn new_v1_router<C: Catalog, S: SecretStore>(
+pub(super) fn new_v1_router<C: CatalogBackend, S: SecretStore>(
 ) -> Router<ApiContext<State<OpenFGAAuthorizer, C, S>>> {
     Router::new()
         .route(

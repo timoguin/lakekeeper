@@ -5,7 +5,7 @@ use crate::modules::contract_verification::ContractVerifiers;
 use crate::modules::health::ServiceHealthProvider;
 use crate::modules::task_queue::TaskQueues;
 use crate::modules::token_verification::Verifier;
-use crate::modules::{authz::Authorizer, Catalog, SecretStore, State};
+use crate::modules::{authz::Authorizer, CatalogBackend, SecretStore, State};
 use crate::rest::management::v1::{api_doc as v1_api_doc, ApiServer};
 use crate::rest::{iceberg::v1::new_v1_full_router, shutdown_signal, ApiContext};
 use axum::response::IntoResponse;
@@ -30,7 +30,7 @@ lazy_static::lazy_static! {
 }
 
 #[allow(clippy::module_name_repetitions, clippy::too_many_arguments)]
-pub fn new_full_router<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+pub fn new_full_router<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>(
     authorizer: A,
     catalog_state: C::State,
     secrets_state: S,
@@ -42,7 +42,8 @@ pub fn new_full_router<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
     cors_origins: Option<&[HeaderValue]>,
     metrics_layer: Option<PrometheusMetricLayer<'static>>,
 ) -> Router {
-    let v1_routes = new_v1_full_router::<crate::catalog::CatalogServer<C, A, S>, State<A, C, S>>();
+    let v1_routes =
+        new_v1_full_router::<crate::service::catalog::CatalogServer<C, A, S>, State<A, C, S>>();
 
     let management_routes = Router::new().merge(ApiServer::new_v1_router(&authorizer));
     let maybe_cors_layer = option_layer(cors_origins.map(|origins| {

@@ -44,7 +44,9 @@ use crate::modules::authz::implementations::openfga::relations::OpenFgaRelation;
 use crate::modules::authz::implementations::FgaType;
 use crate::modules::authz::{CatalogRoleAction, CatalogUserAction, NamespaceParent};
 use crate::modules::health::Health;
-use crate::modules::{AuthDetails, Catalog, RoleId, SecretStore, State, UserId, ViewIdentUuid};
+use crate::modules::{
+    AuthDetails, CatalogBackend, RoleId, SecretStore, State, UserId, ViewIdentUuid,
+};
 use crate::rest::ApiContext;
 pub(crate) use client::new_client_from_config;
 pub use client::{
@@ -99,7 +101,9 @@ impl Authorizer for OpenFGAAuthorizer {
         api::ApiDoc::openapi()
     }
 
-    fn new_router<C: Catalog, S: SecretStore>(&self) -> Router<ApiContext<State<Self, C, S>>> {
+    fn new_router<C: CatalogBackend, S: SecretStore>(
+        &self,
+    ) -> Router<ApiContext<State<Self, C, S>>> {
         api::new_v1_router()
     }
 
