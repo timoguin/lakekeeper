@@ -1,4 +1,4 @@
-use crate::api::ErrorModel;
+use crate::rest::ErrorModel;
 
 pub(crate) trait DBErrorHandler
 where

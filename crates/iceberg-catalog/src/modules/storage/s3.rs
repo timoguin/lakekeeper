@@ -2,11 +2,11 @@
 
 use crate::{WarehouseIdent, CONFIG};
 
-use crate::api::{iceberg::v1::DataAccess, CatalogConfig};
 use crate::modules::storage::error::{
     CredentialsError, FileIoError, TableConfigError, UpdateError, ValidationError,
 };
 use crate::modules::storage::StoragePermissions;
+use crate::rest::{iceberg::v1::DataAccess, CatalogConfig};
 use aws_config::{BehaviorVersion, SdkConfig};
 
 use iceberg_ext::configs::table::{client, custom, s3, TableProperties};

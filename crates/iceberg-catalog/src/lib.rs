@@ -18,7 +18,7 @@ pub mod implementations;
 
 mod request_metadata;
 
-pub mod api;
+pub mod rest;
 
 #[cfg(feature = "router")]
 pub mod metrics;

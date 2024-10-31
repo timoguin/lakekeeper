@@ -1,11 +1,11 @@
-use crate::api::iceberg::v1::ViewParameters;
-use crate::api::{set_not_found_status_code, ApiContext};
 use crate::catalog::require_warehouse_id;
 use crate::catalog::tables::validate_table_or_view_ident;
 use crate::modules::authz::{Authorizer, CatalogViewAction, CatalogWarehouseAction};
 use crate::modules::Result;
 use crate::modules::{Catalog, SecretStore, State, Transaction};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::v1::ViewParameters;
+use crate::rest::{set_not_found_status_code, ApiContext};
 
 pub(crate) async fn view_exists<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
     parameters: ViewParameters,
@@ -44,10 +44,10 @@ pub(crate) async fn view_exists<C: Catalog, A: Authorizer + Clone, S: SecretStor
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::api::iceberg::types::Prefix;
-    use crate::api::iceberg::v1::ViewParameters;
     use crate::catalog::views::create::test::create_view;
     use crate::catalog::views::test::setup;
+    use crate::rest::iceberg::types::Prefix;
+    use crate::rest::iceberg::v1::ViewParameters;
     use iceberg::TableIdent;
     use iceberg_ext::catalog::rest::CreateViewRequest;
     use sqlx::PgPool;

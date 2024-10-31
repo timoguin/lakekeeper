@@ -1,8 +1,8 @@
-use crate::api::management::v1::TabularType;
-use crate::api::Result;
 use crate::catalog::maybe_get_secret;
 use crate::modules::task_queue::{Task, TaskQueue};
 use crate::modules::{Catalog, SecretStore, Transaction};
+use crate::rest::management::v1::TabularType;
+use crate::rest::Result;
 use crate::WarehouseIdent;
 use std::sync::Arc;
 

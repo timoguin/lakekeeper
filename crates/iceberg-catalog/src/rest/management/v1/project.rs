@@ -1,13 +1,12 @@
-use crate::api::management::v1::ApiServer;
-use crate::api::{ApiContext, Result};
 pub use crate::modules::storage::{
     AzCredential, AzdlsProfile, GcsCredential, GcsProfile, GcsServiceKey, S3Credential, S3Profile,
     StorageCredential, StorageProfile,
 };
 use crate::request_metadata::RequestMetadata;
+use crate::rest::management::v1::ApiServer;
+use crate::rest::{ApiContext, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::api::management::v1::role::require_project_id;
 use crate::modules::authz::{CatalogProjectAction, CatalogServerAction};
 pub use crate::modules::WarehouseStatus;
 use crate::modules::{
@@ -15,6 +14,7 @@ use crate::modules::{
     secrets::SecretStore,
     Catalog, State, Transaction,
 };
+use crate::rest::management::v1::role::require_project_id;
 use crate::ProjectIdent;
 use iceberg_ext::catalog::rest::ErrorModel;
 use utoipa::ToSchema;

@@ -1,8 +1,8 @@
 use super::namespace::NamespaceIdentUrl;
-use crate::api::iceberg::types::Prefix;
-use crate::api::iceberg::v1::tables::TableParameters;
-use crate::api::{ApiContext, Result};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::types::Prefix;
+use crate::rest::iceberg::v1::tables::TableParameters;
+use crate::rest::{ApiContext, Result};
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use axum::routing::post;
@@ -11,7 +11,7 @@ use http::StatusCode;
 use iceberg_ext::TableIdent;
 
 #[async_trait]
-pub trait Service<S: crate::api::ThreadSafe>
+pub trait Service<S: crate::rest::ThreadSafe>
 where
     Self: Send + Sync + 'static,
 {
@@ -24,7 +24,7 @@ where
     ) -> Result<()>;
 }
 
-pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S>> {
+pub fn router<I: Service<S>, S: crate::rest::ThreadSafe>() -> Router<ApiContext<S>> {
     Router::new()
         // /{prefix}/namespaces/{namespace}/tables/{table}/metrics
         .route(

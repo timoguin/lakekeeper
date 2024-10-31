@@ -1,7 +1,7 @@
-use crate::api::Result;
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use crate::implementations::postgres::tabular::view::{ViewFormatVersion, ViewRepresentationType};
 use crate::modules::{ViewIdentUuid, ViewMetadataWithLocation};
+use crate::rest::Result;
 use chrono::{DateTime, Utc};
 use iceberg::spec::{
     Schema, SqlViewRepresentation, ViewMetadata, ViewRepresentation, ViewRepresentations,
@@ -292,7 +292,7 @@ fn prepare_schemas(
     Ok(schemas)
 }
 
-fn unwrap_or_500<T>(val: Option<T>, message: &str) -> crate::api::Result<T> {
+fn unwrap_or_500<T>(val: Option<T>, message: &str) -> crate::rest::Result<T> {
     Ok(val.ok_or_else(|| {
         ErrorModel::builder()
             .code(500)
@@ -307,7 +307,7 @@ fn unwrap_or_500<T>(val: Option<T>, message: &str) -> crate::api::Result<T> {
 async fn get_namespace_ident_with_empty_support(
     conn: &mut PgConnection,
     dni: Option<Uuid>,
-) -> crate::api::Result<NamespaceIdent> {
+) -> crate::rest::Result<NamespaceIdent> {
     let namespace_name: NamespaceIdent = serde_json::from_value(if let Some(dni) = dni {
         serde_json::Value::Array(
             sqlx::query_scalar!(

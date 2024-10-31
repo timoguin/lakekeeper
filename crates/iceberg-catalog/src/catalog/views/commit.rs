@@ -1,7 +1,3 @@
-use crate::api::iceberg::v1::{
-    ApiContext, CommitViewRequest, DataAccess, ErrorModel, LoadViewResult, Prefix, Result,
-    ViewParameters,
-};
 use crate::catalog::compression_codec::CompressionCodec;
 use crate::catalog::io::write_metadata_file;
 use crate::catalog::require_warehouse_id;
@@ -20,6 +16,10 @@ use crate::modules::{
 };
 use crate::modules::{TabularIdentUuid, ViewIdentUuid};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::v1::{
+    ApiContext, CommitViewRequest, DataAccess, ErrorModel, LoadViewResult, Prefix, Result,
+    ViewParameters,
+};
 use http::StatusCode;
 use iceberg::spec::{AppendViewVersion, ViewMetadata, ViewMetadataBuilder};
 use iceberg_ext::catalog::rest::ViewUpdate;
@@ -303,7 +303,7 @@ fn build_new_metadata(
 
 #[cfg(test)]
 mod test {
-    use crate::api::iceberg::v1::{views, DataAccess, Prefix, ViewParameters};
+    use crate::rest::iceberg::v1::{views, DataAccess, Prefix, ViewParameters};
 
     use iceberg::TableIdent;
     use iceberg_ext::catalog::rest::CommitViewRequest;

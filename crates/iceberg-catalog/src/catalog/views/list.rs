@@ -1,13 +1,13 @@
-use crate::api::iceberg::v1::{ListTablesQuery, NamespaceParameters, PaginationQuery};
-use crate::api::ApiContext;
-use crate::api::Result;
 use crate::catalog::namespace::validate_namespace_ident;
 use crate::catalog::require_warehouse_id;
-use crate::request_metadata::RequestMetadata;
 use crate::modules::authz::{
     Authorizer, CatalogNamespaceAction, CatalogViewAction, CatalogWarehouseAction,
 };
 use crate::modules::{Catalog, SecretStore, State, Transaction};
+use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::v1::{ListTablesQuery, NamespaceParameters, PaginationQuery};
+use crate::rest::ApiContext;
+use crate::rest::Result;
 use futures::FutureExt;
 use iceberg_ext::catalog::rest::{IcebergErrorResponse, ListTablesResponse};
 
@@ -105,14 +105,14 @@ pub(crate) async fn list_views<C: Catalog, A: Authorizer + Clone, S: SecretStore
 mod test {
     #[needs_env_var::needs_env_var(TEST_MINIO = 1)]
     mod minio {
-        use crate::api::iceberg::types::{PageToken, Prefix};
-        use crate::api::iceberg::v1::{DataAccess, ListTablesQuery, NamespaceParameters};
-        use crate::api::management::v1::warehouse::TabularDeleteProfile;
         use crate::catalog::test::random_request_metadata;
         use crate::catalog::CatalogServer;
         use crate::modules::authz::implementations::openfga::tests::ObjectHidingMock;
+        use crate::rest::iceberg::types::{PageToken, Prefix};
+        use crate::rest::iceberg::v1::{DataAccess, ListTablesQuery, NamespaceParameters};
+        use crate::rest::management::v1::warehouse::TabularDeleteProfile;
 
-        use crate::api::iceberg::v1::views::Service;
+        use crate::rest::iceberg::v1::views::Service;
         use itertools::Itertools;
 
         #[sqlx::test]

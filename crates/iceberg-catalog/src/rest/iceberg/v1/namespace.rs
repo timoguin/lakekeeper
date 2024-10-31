@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
-use crate::api::iceberg::types::{PageToken, Prefix};
-use crate::api::{ApiContext, Result};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::types::{PageToken, Prefix};
+use crate::rest::{ApiContext, Result};
 use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -16,7 +16,7 @@ use iceberg_ext::catalog::rest::{
 use serde::{Deserialize, Deserializer, Serialize};
 
 #[async_trait]
-pub trait Service<S: crate::api::ThreadSafe>
+pub trait Service<S: crate::rest::ThreadSafe>
 where
     Self: Send + Sync + 'static,
 {
@@ -134,7 +134,7 @@ where
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S>> {
+pub fn router<I: Service<S>, S: crate::rest::ThreadSafe>() -> Router<ApiContext<S>> {
     Router::new()
         // List Namespaces
         .route(
@@ -436,7 +436,7 @@ mod tests {
         #[derive(Debug, Clone)]
         struct ThisState;
 
-        impl crate::api::ThreadSafe for ThisState {}
+        impl crate::rest::ThreadSafe for ThisState {}
 
         #[async_trait]
         impl Service<ThisState> for TestService {

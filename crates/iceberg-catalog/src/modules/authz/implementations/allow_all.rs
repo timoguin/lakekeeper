@@ -1,5 +1,3 @@
-use crate::api::iceberg::v1::Result;
-use crate::api::ApiContext;
 use crate::modules::authz::{
     Authorizer, CatalogNamespaceAction, CatalogProjectAction, CatalogRoleAction,
     CatalogServerAction, CatalogTableAction, CatalogUserAction, CatalogViewAction,
@@ -11,6 +9,8 @@ use crate::modules::{
     ViewIdentUuid, WarehouseIdent,
 };
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::v1::Result;
+use crate::rest::ApiContext;
 use async_trait::async_trait;
 use axum::Router;
 use utoipa::OpenApi;

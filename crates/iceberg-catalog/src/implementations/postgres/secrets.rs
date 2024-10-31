@@ -1,7 +1,7 @@
 use super::ReadWrite;
-use crate::api::{ErrorModel, Result};
 use crate::modules::health::{Health, HealthExt};
 use crate::modules::secrets::{Secret, SecretIdent, SecretStore};
+use crate::rest::{ErrorModel, Result};
 use crate::CONFIG;
 use async_trait::async_trait;
 use http::StatusCode;

@@ -1,10 +1,10 @@
 use super::dbutils::DBErrorHandler;
-use crate::api::iceberg::v1::MAX_PAGE_SIZE;
 use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToken};
 use crate::modules::{
     CreateNamespaceRequest, CreateNamespaceResponse, ErrorModel, GetNamespaceResponse,
     ListNamespacesQuery, ListNamespacesResponse, NamespaceIdent, Result,
 };
+use crate::rest::iceberg::v1::MAX_PAGE_SIZE;
 use crate::{catalog::namespace::MAX_NAMESPACE_DEPTH, modules::NamespaceIdentUuid, WarehouseIdent};
 use chrono::Utc;
 use http::StatusCode;
@@ -477,7 +477,7 @@ pub(crate) mod tests {
         let response = PostgresCatalog::list_namespaces(
             warehouse_id,
             &ListNamespacesQuery {
-                page_token: crate::api::iceberg::v1::PageToken::NotSpecified,
+                page_token: crate::rest::iceberg::v1::PageToken::NotSpecified,
                 page_size: None,
                 parent: None,
                 return_uuids: false,
@@ -568,7 +568,7 @@ pub(crate) mod tests {
         } = PostgresCatalog::list_namespaces(
             warehouse_id,
             &ListNamespacesQuery {
-                page_token: crate::api::iceberg::v1::PageToken::NotSpecified,
+                page_token: crate::rest::iceberg::v1::PageToken::NotSpecified,
                 page_size: Some(1),
                 parent: None,
                 return_uuids: false,
@@ -595,8 +595,8 @@ pub(crate) mod tests {
             warehouse_id,
             &ListNamespacesQuery {
                 page_token: next_page_token.map_or(
-                    crate::api::iceberg::v1::PageToken::Empty,
-                    crate::api::iceberg::v1::PageToken::Present,
+                    crate::rest::iceberg::v1::PageToken::Empty,
+                    crate::rest::iceberg::v1::PageToken::Present,
                 ),
                 page_size: Some(2),
                 parent: None,
@@ -625,8 +625,8 @@ pub(crate) mod tests {
             warehouse_id,
             &ListNamespacesQuery {
                 page_token: next_page_token.map_or(
-                    crate::api::iceberg::v1::PageToken::Empty,
-                    crate::api::iceberg::v1::PageToken::Present,
+                    crate::rest::iceberg::v1::PageToken::Empty,
+                    crate::rest::iceberg::v1::PageToken::Present,
                 ),
                 page_size: Some(3),
                 parent: None,

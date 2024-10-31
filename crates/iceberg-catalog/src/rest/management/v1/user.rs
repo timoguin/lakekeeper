@@ -1,13 +1,13 @@
 use super::default_page_size;
-use crate::api::iceberg::v1::{PageToken, PaginationQuery};
-use crate::api::management::v1::ApiServer;
-use crate::api::ApiContext;
 use crate::modules::authz::{Authorizer, CatalogServerAction, CatalogUserAction};
 use crate::modules::{
     AuthDetails, Catalog, CreateOrUpdateUserResponse, Result, SecretStore, State, Transaction,
     UserId,
 };
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::v1::{PageToken, PaginationQuery};
+use crate::rest::management::v1::ApiServer;
+use crate::rest::ApiContext;
 use axum::response::IntoResponse;
 use axum::Json;
 use iceberg_ext::catalog::rest::ErrorModel;

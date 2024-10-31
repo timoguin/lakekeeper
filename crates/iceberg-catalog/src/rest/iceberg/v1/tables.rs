@@ -1,11 +1,11 @@
-use crate::api::iceberg::types::{DropParams, Prefix};
-use crate::api::iceberg::v1::namespace::{NamespaceIdentUrl, NamespaceParameters};
-use crate::api::{
+use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::types::{DropParams, Prefix};
+use crate::rest::iceberg::v1::namespace::{NamespaceIdentUrl, NamespaceParameters};
+use crate::rest::{
     ApiContext, CommitTableRequest, CommitTableResponse, CommitTransactionRequest,
     CreateTableRequest, ListTablesResponse, LoadTableResult, RegisterTableRequest,
     RenameTableRequest, Result,
 };
-use crate::request_metadata::RequestMetadata;
 use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -40,7 +40,7 @@ impl From<ListTablesQuery> for PaginationQuery {
 }
 
 #[async_trait]
-pub trait Service<S: crate::api::ThreadSafe>
+pub trait Service<S: crate::rest::ThreadSafe>
 where
     Self: Send + Sync + 'static,
 {
@@ -118,7 +118,7 @@ where
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S>> {
+pub fn router<I: Service<S>, S: crate::rest::ThreadSafe>() -> Router<ApiContext<S>> {
     Router::new()
         // /{prefix}/namespaces/{namespace}/tables
         .route(

@@ -3,10 +3,10 @@ use std::str::FromStr;
 use std::time::SystemTime;
 use std::vec;
 
-use crate::api::iceberg::types::Prefix;
-use crate::api::{ApiContext, Result};
-use crate::api::{ErrorModel, IcebergErrorResponse, S3SignRequest, S3SignResponse};
 use crate::modules::authz::{CatalogTableAction, CatalogWarehouseAction};
+use crate::rest::iceberg::types::Prefix;
+use crate::rest::{ApiContext, Result};
+use crate::rest::{ErrorModel, IcebergErrorResponse, S3SignRequest, S3SignResponse};
 use aws_sigv4::http_request::{sign as aws_sign, SignableBody, SignableRequest, SigningSettings};
 use aws_sigv4::sign::v4;
 use aws_sigv4::{self};
@@ -35,7 +35,7 @@ const HEADERS_TO_SIGN: [&str; 7] = [
 
 #[async_trait::async_trait]
 impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
-    crate::api::iceberg::v1::s3_signer::Service<State<A, C, S>> for CatalogServer<C, A, S>
+    crate::rest::iceberg::v1::s3_signer::Service<State<A, C, S>> for CatalogServer<C, A, S>
 {
     #[allow(clippy::too_many_lines)]
     async fn sign(

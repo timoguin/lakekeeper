@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use crate::api::management::v1::TabularType;
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use crate::implementations::postgres::tabular::TabularType as DbTabularType;
 use crate::implementations::postgres::task_queues::{
@@ -9,6 +8,7 @@ use crate::implementations::postgres::task_queues::{
 };
 use crate::modules::task_queue::tabular_purge_queue::{TabularPurgeInput, TabularPurgeTask};
 use crate::modules::task_queue::{TaskQueue, TaskQueueConfig};
+use crate::rest::management::v1::TabularType;
 
 super::impl_pg_task_queue!(TabularPurgeQueue);
 
@@ -26,7 +26,7 @@ impl TaskQueue for TabularPurgeQueue {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn pick_new_task(&self) -> crate::api::Result<Option<Self::Task>> {
+    async fn pick_new_task(&self) -> crate::rest::Result<Option<Self::Task>> {
         let task = pick_task(
             &self.pg_queue.read_write.write_pool,
             self.queue_name(),
@@ -63,11 +63,11 @@ impl TaskQueue for TabularPurgeQueue {
         }))
     }
 
-    async fn record_success(&self, id: Uuid) -> crate::api::Result<()> {
+    async fn record_success(&self, id: Uuid) -> crate::rest::Result<()> {
         record_success(id, &self.pg_queue.read_write.write_pool).await
     }
 
-    async fn record_failure(&self, id: Uuid, error_details: &str) -> crate::api::Result<()> {
+    async fn record_failure(&self, id: Uuid, error_details: &str) -> crate::rest::Result<()> {
         record_failure(
             &self.pg_queue.read_write.write_pool,
             id,
@@ -87,7 +87,7 @@ impl TaskQueue for TabularPurgeQueue {
             tabular_type,
             parent_id,
         }: TabularPurgeInput,
-    ) -> crate::api::Result<()> {
+    ) -> crate::rest::Result<()> {
         let mut transaction = self
             .pg_queue
             .read_write
@@ -169,7 +169,7 @@ mod test {
         let input = TabularPurgeInput {
             tabular_id: uuid::Uuid::new_v4(),
             warehouse_ident: uuid::Uuid::new_v4().into(),
-            tabular_type: crate::api::management::v1::TabularType::Table,
+            tabular_type: crate::rest::management::v1::TabularType::Table,
             parent_id: None,
             tabular_location: String::new(),
         };

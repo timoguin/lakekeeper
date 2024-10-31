@@ -1,5 +1,3 @@
-use crate::api::iceberg::v1::{DataAccess, ViewParameters};
-use crate::api::{set_not_found_status_code, ApiContext};
 use crate::catalog::require_warehouse_id;
 use crate::catalog::tables::{require_active_warehouse, validate_table_or_view_ident};
 use crate::catalog::views::parse_view_location;
@@ -8,6 +6,8 @@ use crate::modules::storage::{StorageCredential, StoragePermissions};
 use crate::modules::{Catalog, SecretStore, State, Transaction, ViewMetadataWithLocation};
 use crate::modules::{GetWarehouseResponse, Result};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::v1::{DataAccess, ViewParameters};
+use crate::rest::{set_not_found_status_code, ApiContext};
 use iceberg_ext::catalog::rest::LoadViewResult;
 
 pub(crate) async fn load_view<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -109,9 +109,9 @@ pub(crate) async fn load_view<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
 #[cfg(test)]
 pub(crate) mod test {
-    use crate::api::iceberg::v1::{views, DataAccess, Prefix, ViewParameters};
-    use crate::api::ApiContext;
     use crate::catalog::CatalogServer;
+    use crate::rest::iceberg::v1::{views, DataAccess, Prefix, ViewParameters};
+    use crate::rest::ApiContext;
 
     use crate::implementations::postgres::secrets::SecretsState;
 
@@ -131,7 +131,7 @@ pub(crate) mod test {
     pub(crate) async fn load_view(
         api_context: ApiContext<State<AllowAllAuthorizer, PostgresCatalog, SecretsState>>,
         params: ViewParameters,
-    ) -> crate::api::Result<LoadViewResult> {
+    ) -> crate::rest::Result<LoadViewResult> {
         <CatalogServer<PostgresCatalog, AllowAllAuthorizer, SecretsState> as views::Service<
             State<AllowAllAuthorizer, PostgresCatalog, SecretsState>,
         >>::load_view(

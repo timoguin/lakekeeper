@@ -8,17 +8,17 @@ pub mod v1 {
     use axum::{Extension, Json, Router};
     use utoipa::OpenApi;
 
-    use crate::api::{ApiContext, Result};
     use crate::request_metadata::RequestMetadata;
+    use crate::rest::{ApiContext, Result};
     use std::marker::PhantomData;
 
-    use crate::api::iceberg::v1::PaginationQuery;
+    use crate::rest::iceberg::v1::PaginationQuery;
 
-    use crate::api::management::v1::user::{ListUsersQuery, ListUsersResponse};
     use crate::modules::{
         authz::Authorizer, storage::S3Flavor, Actor, Catalog, CreateOrUpdateUserResponse, RoleId,
         SecretStore, State, TabularIdentUuid, UserId,
     };
+    use crate::rest::management::v1::user::{ListUsersQuery, ListUsersResponse};
     use crate::ProjectIdent;
     use axum::extract::{Path, Query, State as AxumState};
     use axum::response::{IntoResponse, Response};

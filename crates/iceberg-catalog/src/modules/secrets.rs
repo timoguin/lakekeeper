@@ -1,5 +1,5 @@
-use crate::api::Result;
 use crate::modules::health::HealthExt;
+use crate::rest::Result;
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;

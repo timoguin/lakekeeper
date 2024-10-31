@@ -8,12 +8,12 @@ use crate::{
 
 use http::StatusCode;
 
-use crate::api::iceberg::v1::{PaginatedTabulars, PaginationQuery};
 use crate::implementations::postgres::tabular::{
     self, create_tabular, drop_tabular, list_tabulars, CreateTabular, TabularIdentBorrowed,
     TabularIdentUuid, TabularType,
 };
 pub(crate) use crate::modules::ViewMetadataWithLocation;
+use crate::rest::iceberg::v1::{PaginatedTabulars, PaginationQuery};
 use chrono::{DateTime, Utc};
 use iceberg::spec::{SchemaRef, ViewMetadata, ViewRepresentation, ViewVersionId, ViewVersionRef};
 use iceberg::NamespaceIdent;
@@ -549,9 +549,9 @@ pub(crate) mod tests {
     use iceberg::spec::{ViewMetadata, ViewMetadataBuilder};
     use iceberg::{NamespaceIdent, TableIdent};
 
-    use crate::api::iceberg::v1::PaginationQuery;
     use crate::implementations::postgres::tabular::mark_tabular_as_deleted;
     use crate::modules::TabularIdentUuid;
+    use crate::rest::iceberg::v1::PaginationQuery;
     use crate::WarehouseIdent;
     use iceberg_ext::configs::Location;
     use serde_json::json;

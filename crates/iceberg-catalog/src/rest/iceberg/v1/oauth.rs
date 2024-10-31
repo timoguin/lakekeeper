@@ -1,5 +1,5 @@
-use crate::api::{ApiContext, Result};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::{ApiContext, Result};
 use async_trait::async_trait;
 use axum::extract::State;
 use axum::routing::post;
@@ -7,7 +7,7 @@ use axum::{Extension, Form, Router};
 use iceberg_ext::catalog::rest::{OAuthTokenRequest, OAuthTokenResponse};
 
 #[async_trait]
-pub trait Service<S: crate::api::ThreadSafe>
+pub trait Service<S: crate::rest::ThreadSafe>
 where
     Self: Send + Sync + 'static,
 {
@@ -19,7 +19,7 @@ where
     ) -> Result<OAuthTokenResponse>;
 }
 
-pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S>> {
+pub fn router<I: Service<S>, S: crate::rest::ThreadSafe>() -> Router<ApiContext<S>> {
     Router::new().route(
         "/oauth/tokens",
         post(

@@ -14,11 +14,11 @@ use iceberg::spec::{
 };
 use iceberg_ext::{spec::TableMetadata, NamespaceIdent};
 
-use crate::api::iceberg::v1::{PaginatedTabulars, PaginationQuery};
 use crate::implementations::postgres::tabular::{
     create_tabular, drop_tabular, list_tabulars, try_parse_namespace_ident, CreateTabular,
     TabularIdentBorrowed, TabularIdentOwned, TabularIdentUuid, TabularType,
 };
+use crate::rest::iceberg::v1::{PaginatedTabulars, PaginationQuery};
 use iceberg_ext::configs::Location;
 use sqlx::types::Json;
 use std::default::Default;
@@ -593,12 +593,12 @@ pub(crate) mod tests {
 
     use super::*;
 
-    use crate::api::iceberg::types::PageToken;
-    use crate::api::management::v1::warehouse::WarehouseStatus;
     use crate::implementations::postgres::namespace::tests::initialize_namespace;
     use crate::implementations::postgres::warehouse::set_warehouse_status;
     use crate::implementations::postgres::warehouse::test::initialize_warehouse;
     use crate::modules::{ListFlags, NamespaceIdentUuid};
+    use crate::rest::iceberg::types::PageToken;
+    use crate::rest::management::v1::warehouse::WarehouseStatus;
 
     use crate::implementations::postgres::tabular::mark_tabular_as_deleted;
     use iceberg::spec::{NestedField, PrimitiveType, Schema, UnboundPartitionSpec};

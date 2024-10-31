@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Error};
-use iceberg_catalog::api::router::{new_full_router, serve as service_serve};
 use iceberg_catalog::implementations::postgres::{CatalogState, PostgresCatalog, ReadWrite};
 use iceberg_catalog::implementations::Secrets;
 use iceberg_catalog::modules::authz::implementations::{
@@ -14,6 +13,7 @@ use iceberg_catalog::modules::event_publisher::{
 use iceberg_catalog::modules::health::ServiceHealthProvider;
 use iceberg_catalog::modules::token_verification::Verifier;
 use iceberg_catalog::modules::{Catalog, StartupValidationData};
+use iceberg_catalog::rest::router::{new_full_router, serve as service_serve};
 use iceberg_catalog::{SecretBackend, CONFIG};
 use reqwest::Url;
 

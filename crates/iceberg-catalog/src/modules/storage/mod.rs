@@ -6,10 +6,10 @@ mod gcs;
 mod s3;
 
 use super::{secrets::SecretInStorage, NamespaceIdentUuid, TableIdentUuid};
-use crate::api::{iceberg::v1::DataAccess, CatalogConfig};
 use crate::catalog::compression_codec::CompressionCodec;
 use crate::catalog::io::list_location;
 use crate::modules::tabular_idents::TabularIdentUuid;
+use crate::rest::{iceberg::v1::DataAccess, CatalogConfig};
 use crate::WarehouseIdent;
 pub use az::{AzCredential, AzdlsLocation, AzdlsProfile};
 pub(crate) use error::ValidationError;

@@ -1,11 +1,11 @@
 use super::default_page_size;
-use crate::api::iceberg::types::PageToken;
-use crate::api::iceberg::v1::PaginationQuery;
-use crate::api::management::v1::ApiServer;
-use crate::api::ApiContext;
 use crate::modules::authz::{Authorizer, CatalogProjectAction, CatalogRoleAction};
 use crate::modules::{Catalog, Result, RoleId, SecretStore, State, Transaction};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::types::PageToken;
+use crate::rest::iceberg::v1::PaginationQuery;
+use crate::rest::management::v1::ApiServer;
+use crate::rest::ApiContext;
 use crate::{ProjectIdent, DEFAULT_PROJECT_ID};
 use axum::response::IntoResponse;
 use axum::Json;

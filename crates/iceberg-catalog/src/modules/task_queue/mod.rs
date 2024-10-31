@@ -37,7 +37,7 @@ impl TaskQueues {
     pub(crate) async fn queue_tabular_expiration(
         &self,
         task: TabularExpirationInput,
-    ) -> crate::api::Result<()> {
+    ) -> crate::rest::Result<()> {
         self.tabular_expiration.enqueue(task).await
     }
 
@@ -45,7 +45,7 @@ impl TaskQueues {
     pub(crate) async fn queue_tabular_purge(
         &self,
         task: TabularPurgeInput,
-    ) -> crate::api::Result<()> {
+    ) -> crate::rest::Result<()> {
         self.tabular_purge.enqueue(task).await
     }
 
@@ -96,10 +96,10 @@ pub trait TaskQueue: Debug {
     fn config(&self) -> &TaskQueueConfig;
     fn queue_name(&self) -> &'static str;
 
-    async fn enqueue(&self, task: Self::Input) -> crate::api::Result<()>;
-    async fn pick_new_task(&self) -> crate::api::Result<Option<Self::Task>>;
-    async fn record_success(&self, id: Uuid) -> crate::api::Result<()>;
-    async fn record_failure(&self, id: Uuid, error_details: &str) -> crate::api::Result<()>;
+    async fn enqueue(&self, task: Self::Input) -> crate::rest::Result<()>;
+    async fn pick_new_task(&self) -> crate::rest::Result<Option<Self::Task>>;
+    async fn record_success(&self, id: Uuid) -> crate::rest::Result<()>;
+    async fn record_failure(&self, id: Uuid, error_details: &str) -> crate::rest::Result<()>;
 
     async fn retrying_record_success(&self, task: &Task) {
         self.retrying_record_success_or_failure(task, SuccessOrFailure::Success)
@@ -229,8 +229,6 @@ mod test {
     // to test this module in isolation.
     #[needs_env_var(TEST_MINIO = 1)]
     mod minio {
-        use crate::api::iceberg::v1::PaginationQuery;
-        use crate::api::management::v1::TabularType;
         use crate::implementations::postgres::tabular::table::tests::initialize_table;
         use crate::implementations::postgres::warehouse::test::initialize_warehouse;
         use crate::implementations::postgres::{CatalogState, PostgresCatalog};
@@ -241,6 +239,8 @@ mod test {
         use crate::modules::task_queue::tabular_expiration_queue::TabularExpirationInput;
         use crate::modules::task_queue::{TaskQueue, TaskQueueConfig};
         use crate::modules::{Catalog, ListFlags, SecretStore, Transaction};
+        use crate::rest::iceberg::v1::PaginationQuery;
+        use crate::rest::management::v1::TabularType;
         use sqlx::PgPool;
         use std::sync::Arc;
 

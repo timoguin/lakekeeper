@@ -1,7 +1,7 @@
 pub mod types;
 
 pub mod v1 {
-    use crate::api::ThreadSafe;
+    use crate::rest::ThreadSafe;
     use axum::Router;
     use std::collections::HashMap;
     use std::fmt::Debug;
@@ -19,9 +19,10 @@ pub mod v1 {
     pub use self::namespace::{ListNamespacesQuery, NamespaceParameters, PaginationQuery};
     pub use self::tables::{DataAccess, ListTablesQuery, TableParameters};
     pub use self::views::ViewParameters;
-    pub use crate::api::iceberg::types::*;
+    pub use crate::rest::iceberg::types::*;
 
-    pub use crate::api::{
+    pub use crate::request_metadata::RequestMetadata;
+    pub use crate::rest::{
         ApiContext, CatalogConfig, CommitTableRequest, CommitTableResponse,
         CommitTransactionRequest, CommitViewRequest, CreateNamespaceRequest,
         CreateNamespaceResponse, CreateTableRequest, CreateViewRequest, ErrorModel,
@@ -30,7 +31,6 @@ pub mod v1 {
         RegisterTableRequest, RenameTableRequest, Result, UpdateNamespacePropertiesRequest,
         UpdateNamespacePropertiesResponse,
     };
-    pub use crate::request_metadata::RequestMetadata;
 
     // according to crates/iceberg-ext/src/catalog/rest/namespace.rs:115 we should
     // return everything - in order to block malicious requests, we still cap to 1000

@@ -7,16 +7,6 @@ use futures::FutureExt;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr as _;
 
-use crate::api::iceberg::types::DropParams;
-use crate::api::iceberg::v1::{
-    ApiContext, CommitTableRequest, CommitTableResponse, CommitTransactionRequest,
-    CreateTableRequest, DataAccess, ErrorModel, ListTablesQuery, ListTablesResponse,
-    LoadTableResult, NamespaceParameters, PaginationQuery, Prefix, RegisterTableRequest,
-    RenameTableRequest, Result, TableIdent, TableParameters,
-};
-use crate::api::management::v1::warehouse::TabularDeleteProfile;
-use crate::api::management::v1::TabularType;
-use crate::api::set_not_found_status_code;
 use crate::catalog::compression_codec::CompressionCodec;
 use crate::modules::authz::{CatalogNamespaceAction, CatalogTableAction, CatalogWarehouseAction};
 use crate::modules::contract_verification::{ContractVerification, ContractVerificationOutcome};
@@ -33,6 +23,16 @@ use crate::modules::{
     GetNamespaceResponse, TableCommit, TableCreation, TableIdentUuid, WarehouseStatus,
 };
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::types::DropParams;
+use crate::rest::iceberg::v1::{
+    ApiContext, CommitTableRequest, CommitTableResponse, CommitTransactionRequest,
+    CreateTableRequest, DataAccess, ErrorModel, ListTablesQuery, ListTablesResponse,
+    LoadTableResult, NamespaceParameters, PaginationQuery, Prefix, RegisterTableRequest,
+    RenameTableRequest, Result, TableIdent, TableParameters,
+};
+use crate::rest::management::v1::warehouse::TabularDeleteProfile;
+use crate::rest::management::v1::TabularType;
+use crate::rest::set_not_found_status_code;
 
 use crate::catalog;
 use http::StatusCode;
@@ -52,7 +52,7 @@ const PROPERTY_METADATA_DELETE_AFTER_COMMIT_ENABLED_DEFAULT: bool = false;
 
 #[async_trait::async_trait]
 impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
-    crate::api::iceberg::v1::tables::Service<State<A, C, S>> for CatalogServer<C, A, S>
+    crate::rest::iceberg::v1::tables::Service<State<A, C, S>> for CatalogServer<C, A, S>
 {
     #[allow(clippy::too_many_lines)]
     /// List all table identifiers underneath a given namespace
@@ -633,7 +633,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 name: table_ident.name,
                 namespace: table_ident.namespace.to_url_string(),
                 prefix: prefix
-                    .map(crate::api::iceberg::types::Prefix::into_string)
+                    .map(crate::rest::iceberg::types::Prefix::into_string)
                     .unwrap_or_default(),
 
                 num_events: 1,
@@ -766,7 +766,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 name: table.name,
                 namespace: table.namespace.to_url_string(),
                 prefix: prefix
-                    .map(crate::api::iceberg::types::Prefix::into_string)
+                    .map(crate::rest::iceberg::types::Prefix::into_string)
                     .unwrap_or_default(),
                 num_events: 1,
                 sequence_number: 0,
@@ -1479,13 +1479,13 @@ pub(crate) fn maybe_body_to_json(request: impl Serialize) -> serde_json::Value {
 mod test {
     #[needs_env_var::needs_env_var(TEST_MINIO = 1)]
     mod minio {
-        use crate::api::iceberg::types::{PageToken, Prefix};
-        use crate::api::iceberg::v1::tables::Service;
-        use crate::api::iceberg::v1::{DataAccess, ListTablesQuery, NamespaceParameters};
-        use crate::api::management::v1::warehouse::TabularDeleteProfile;
         use crate::catalog::test::random_request_metadata;
         use crate::catalog::CatalogServer;
         use crate::modules::authz::implementations::openfga::tests::ObjectHidingMock;
+        use crate::rest::iceberg::types::{PageToken, Prefix};
+        use crate::rest::iceberg::v1::tables::Service;
+        use crate::rest::iceberg::v1::{DataAccess, ListTablesQuery, NamespaceParameters};
+        use crate::rest::management::v1::warehouse::TabularDeleteProfile;
 
         use iceberg::spec::{NestedField, PrimitiveType, Schema, UnboundPartitionSpec};
         use iceberg_ext::catalog::rest::CreateTableRequest;

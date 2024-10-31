@@ -1,9 +1,9 @@
 use super::dbutils::DBErrorHandler;
-use crate::api::iceberg::v1::PaginationQuery;
-use crate::api::management::v1::user::{
+use crate::modules::{CreateOrUpdateUserResponse, Result, UserId};
+use crate::rest::iceberg::v1::PaginationQuery;
+use crate::rest::management::v1::user::{
     ListUsersResponse, SearchUser, SearchUserResponse, User, UserLastUpdatedWith, UserType,
 };
-use crate::modules::{CreateOrUpdateUserResponse, Result, UserId};
 use itertools::Itertools;
 
 #[derive(sqlx::Type, Debug, Clone, Copy)]
@@ -235,8 +235,8 @@ pub(crate) async fn search_user<'e, 'c: 'e, E: sqlx::Executor<'c, Database = sql
 
 #[cfg(test)]
 mod test {
-    use crate::api::iceberg::types::PageToken;
     use crate::implementations::postgres::CatalogState;
+    use crate::rest::iceberg::types::PageToken;
 
     use super::*;
 

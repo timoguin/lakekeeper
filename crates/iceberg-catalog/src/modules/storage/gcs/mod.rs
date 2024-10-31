@@ -2,11 +2,11 @@
 
 use crate::WarehouseIdent;
 
-use crate::api::{iceberg::v1::DataAccess, CatalogConfig};
 use crate::modules::storage::error::{
     CredentialsError, FileIoError, TableConfigError, UpdateError, ValidationError,
 };
 use crate::modules::storage::StoragePermissions;
+use crate::rest::{iceberg::v1::DataAccess, CatalogConfig};
 
 use super::StorageType;
 use base64::Engine;

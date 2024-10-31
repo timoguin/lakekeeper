@@ -9,7 +9,7 @@ use crate::{
 use http::StatusCode;
 use iceberg_ext::NamespaceIdent;
 
-use crate::api::iceberg::v1::{PaginatedTabulars, PaginationQuery, MAX_PAGE_SIZE};
+use crate::rest::iceberg::v1::{PaginatedTabulars, PaginationQuery, MAX_PAGE_SIZE};
 
 use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToken};
 use crate::modules::DeletionDetails;
@@ -556,20 +556,20 @@ pub enum DeletionKind {
     Purge,
 }
 
-impl From<DeletionKind> for crate::api::management::v1::DeleteKind {
+impl From<DeletionKind> for crate::rest::management::v1::DeleteKind {
     fn from(kind: DeletionKind) -> Self {
         match kind {
-            DeletionKind::Default => crate::api::management::v1::DeleteKind::Default,
-            DeletionKind::Purge => crate::api::management::v1::DeleteKind::Purge,
+            DeletionKind::Default => crate::rest::management::v1::DeleteKind::Default,
+            DeletionKind::Purge => crate::rest::management::v1::DeleteKind::Purge,
         }
     }
 }
 
-impl From<TabularType> for crate::api::management::v1::TabularType {
+impl From<TabularType> for crate::rest::management::v1::TabularType {
     fn from(typ: TabularType) -> Self {
         match typ {
-            TabularType::Table => crate::api::management::v1::TabularType::Table,
-            TabularType::View => crate::api::management::v1::TabularType::View,
+            TabularType::Table => crate::rest::management::v1::TabularType::Table,
+            TabularType::View => crate::rest::management::v1::TabularType::View,
         }
     }
 }

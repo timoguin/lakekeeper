@@ -3,15 +3,15 @@ use super::{
     Catalog, NamespaceIdentUuid, ProjectIdent, RoleId, SecretStore, State, TableIdentUuid, UserId,
     ViewIdentUuid, WarehouseIdent,
 };
-use crate::api::iceberg::v1::Result;
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::v1::Result;
 use axum::Router;
 use std::collections::HashSet;
 use strum::EnumIter;
 
 pub mod implementations;
 
-use crate::api::ApiContext;
+use crate::rest::ApiContext;
 use iceberg_ext::catalog::rest::ErrorModel;
 pub use implementations::allow_all::AllowAllAuthorizer;
 

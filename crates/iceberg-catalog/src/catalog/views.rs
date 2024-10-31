@@ -8,22 +8,22 @@ mod rename;
 
 use super::tables::validate_table_properties;
 use super::CatalogServer;
-use crate::api::iceberg::types::DropParams;
-use crate::api::iceberg::v1::{
+use crate::modules::authz::Authorizer;
+use crate::modules::{Catalog, SecretStore, State};
+use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::types::DropParams;
+use crate::rest::iceberg::v1::{
     ApiContext, CommitViewRequest, CreateViewRequest, DataAccess, ListTablesQuery,
     ListTablesResponse, LoadViewResult, NamespaceParameters, Prefix, RenameTableRequest, Result,
     ViewParameters,
 };
-use crate::modules::authz::Authorizer;
-use crate::modules::{Catalog, SecretStore, State};
-use crate::request_metadata::RequestMetadata;
 use iceberg_ext::catalog::rest::{ErrorModel, ViewUpdate};
 use iceberg_ext::configs::Location;
 use std::str::FromStr;
 
 #[async_trait::async_trait]
 impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
-    crate::api::iceberg::v1::views::Service<State<A, C, S>> for CatalogServer<C, A, S>
+    crate::rest::iceberg::v1::views::Service<State<A, C, S>> for CatalogServer<C, A, S>
 {
     /// List all view identifiers underneath a given namespace
     async fn list_views(
@@ -131,7 +131,7 @@ fn parse_view_location(location: &str) -> Result<Location> {
 
 #[cfg(test)]
 mod test {
-    use crate::api::ApiContext;
+    use crate::rest::ApiContext;
     use std::sync::Arc;
 
     use crate::implementations::postgres::warehouse::test::initialize_warehouse;

@@ -18,9 +18,6 @@ use super::{
     },
     CatalogState, PostgresTransaction,
 };
-use crate::api::management::v1::user::{
-    ListUsersResponse, SearchUserResponse, UserLastUpdatedWith, UserType,
-};
 use crate::implementations::postgres::role::search_role;
 use crate::implementations::postgres::tabular::{list_tabulars, mark_tabular_as_deleted};
 use crate::implementations::postgres::user::{
@@ -34,21 +31,24 @@ use crate::modules::{
     NamespaceIdentUuid, ProjectIdent, Result, RoleId, StartupValidationData, TableCreation,
     TableIdent, TableIdentUuid, Transaction, UserId, WarehouseIdent, WarehouseStatus,
 };
+use crate::rest::management::v1::user::{
+    ListUsersResponse, SearchUserResponse, UserLastUpdatedWith, UserType,
+};
 use crate::SecretIdent;
-use crate::{
-    api::iceberg::v1::{PaginatedTabulars, PaginationQuery},
-    modules::TableCommit,
-};
-use crate::{
-    api::management::v1::role::{ListRolesResponse, Role, SearchRoleResponse},
-    modules::ViewIdentUuid,
-};
-use crate::{api::management::v1::warehouse::TabularDeleteProfile, modules::TabularIdentUuid};
 use crate::{
     implementations::postgres::tabular::view::{
         create_view, drop_view, list_views, load_view, rename_view, view_ident_to_id,
     },
     modules::TabularIdentOwned,
+};
+use crate::{
+    modules::TableCommit,
+    rest::iceberg::v1::{PaginatedTabulars, PaginationQuery},
+};
+use crate::{modules::TabularIdentUuid, rest::management::v1::warehouse::TabularDeleteProfile};
+use crate::{
+    modules::ViewIdentUuid,
+    rest::management::v1::role::{ListRolesResponse, Role, SearchRoleResponse},
 };
 use iceberg::spec::ViewMetadata;
 use iceberg_ext::catalog::rest::ErrorModel;

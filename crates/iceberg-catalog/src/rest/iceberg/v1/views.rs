@@ -1,11 +1,11 @@
-use crate::api::iceberg::types::{DropParams, Prefix};
-use crate::api::iceberg::v1::namespace::{NamespaceIdentUrl, NamespaceParameters};
-use crate::api::iceberg::v1::DataAccess;
-use crate::api::{
+use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::types::{DropParams, Prefix};
+use crate::rest::iceberg::v1::namespace::{NamespaceIdentUrl, NamespaceParameters};
+use crate::rest::iceberg::v1::DataAccess;
+use crate::rest::{
     ApiContext, CommitViewRequest, CreateViewRequest, ListTablesResponse, LoadViewResult,
     RenameTableRequest, Result,
 };
-use crate::request_metadata::RequestMetadata;
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::routing::post;
@@ -21,7 +21,7 @@ use iceberg::TableIdent;
 use super::ListTablesQuery;
 
 #[async_trait]
-pub trait Service<S: crate::api::ThreadSafe>
+pub trait Service<S: crate::rest::ThreadSafe>
 where
     Self: Send + Sync + 'static,
 {
@@ -84,7 +84,7 @@ where
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S>> {
+pub fn router<I: Service<S>, S: crate::rest::ThreadSafe>() -> Router<ApiContext<S>> {
     Router::new()
         // /{prefix}/namespaces/{namespace}/views
         .route(
@@ -122,7 +122,7 @@ pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S
                             },
                             request,
                             api_context,
-                            crate::api::iceberg::v1::tables::parse_data_access(&headers),
+                            crate::rest::iceberg::v1::tables::parse_data_access(&headers),
                             metadata,
                         )
                     }
@@ -147,7 +147,7 @@ pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S
                                 },
                             },
                             api_context,
-                            crate::api::iceberg::v1::tables::parse_data_access(&headers),
+                            crate::rest::iceberg::v1::tables::parse_data_access(&headers),
                             metadata,
                         )
                     }
@@ -170,7 +170,7 @@ pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S
                             },
                             request,
                             api_context,
-                            crate::api::iceberg::v1::tables::parse_data_access(&headers),
+                            crate::rest::iceberg::v1::tables::parse_data_access(&headers),
                             metadata,
                         )
                     }

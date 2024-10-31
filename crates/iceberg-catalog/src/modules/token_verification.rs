@@ -13,9 +13,9 @@ use jwks_client_rs::source::WebSource;
 use jwks_client_rs::{JsonWebKey, JwksClient};
 
 use super::{ProjectIdent, RoleId, WarehouseIdent};
-use crate::api::management::v1::user::UserType;
-use crate::api::Result;
 use crate::request_metadata::RequestMetadata;
+use crate::rest::management::v1::user::UserType;
+use crate::rest::Result;
 use axum::Extension;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};

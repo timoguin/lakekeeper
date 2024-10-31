@@ -1,6 +1,6 @@
-use crate::api::{ErrorModel, Result};
 use crate::modules::health::{Health, HealthExt, HealthStatus};
 use crate::modules::secrets::{Secret, SecretIdent, SecretStore};
+use crate::rest::{ErrorModel, Result};
 use std::fmt::Formatter;
 
 use async_trait::async_trait;

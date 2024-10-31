@@ -3,20 +3,20 @@ use super::{
     storage::StorageProfile, NamespaceIdentUuid, ProjectIdent, RoleId, TableIdentUuid, UserId,
     ViewIdentUuid, WarehouseIdent, WarehouseStatus,
 };
-pub use crate::api::iceberg::v1::{
+use crate::modules::health::HealthExt;
+pub use crate::rest::iceberg::v1::{
     CreateNamespaceRequest, CreateNamespaceResponse, ListNamespacesQuery, NamespaceIdent, Result,
     TableIdent, UpdateNamespacePropertiesRequest, UpdateNamespacePropertiesResponse,
 };
-use crate::api::iceberg::v1::{PaginatedTabulars, PaginationQuery};
-use crate::modules::health::HealthExt;
+use crate::rest::iceberg::v1::{PaginatedTabulars, PaginationQuery};
 use crate::SecretIdent;
 
-use crate::api::management::v1::role::{ListRolesResponse, Role, SearchRoleResponse};
-use crate::api::management::v1::user::{
+use crate::modules::tabular_idents::{TabularIdentOwned, TabularIdentUuid};
+use crate::rest::management::v1::role::{ListRolesResponse, Role, SearchRoleResponse};
+use crate::rest::management::v1::user::{
     ListUsersResponse, SearchUserResponse, User, UserLastUpdatedWith, UserType,
 };
-use crate::api::management::v1::warehouse::TabularDeleteProfile;
-use crate::modules::tabular_idents::{TabularIdentOwned, TabularIdentUuid};
+use crate::rest::management::v1::warehouse::TabularDeleteProfile;
 use iceberg::spec::{Schema, SortOrder, TableMetadata, UnboundPartitionSpec, ViewMetadata};
 use iceberg_ext::catalog::rest::{CatalogConfig, ErrorModel};
 pub use iceberg_ext::catalog::rest::{CommitTableResponse, CreateTableRequest};

@@ -39,13 +39,13 @@ mod relations;
 
 mod service_ext;
 
-use crate::api::ApiContext;
 use crate::modules::authz::implementations::openfga::client::ClientConnection;
 use crate::modules::authz::implementations::openfga::relations::OpenFgaRelation;
 use crate::modules::authz::implementations::FgaType;
 use crate::modules::authz::{CatalogRoleAction, CatalogUserAction, NamespaceParent};
 use crate::modules::health::Health;
 use crate::modules::{AuthDetails, Catalog, RoleId, SecretStore, State, UserId, ViewIdentUuid};
+use crate::rest::ApiContext;
 pub(crate) use client::new_client_from_config;
 pub use client::{
     new_authorizer_from_config, BearerOpenFGAAuthorizer, ClientCredentialsOpenFGAAuthorizer,

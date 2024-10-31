@@ -1,21 +1,21 @@
-use crate::api::management::v1::{ApiServer, DeletedTabularResponse, ListDeletedTabularsResponse};
-use crate::api::{ApiContext, Result};
 use crate::modules::authz::{CatalogProjectAction, CatalogWarehouseAction};
 pub use crate::modules::storage::{
     AzCredential, AzdlsProfile, GcsCredential, GcsProfile, GcsServiceKey, S3Credential, S3Profile,
     StorageCredential, StorageProfile,
 };
 use crate::request_metadata::RequestMetadata;
+use crate::rest::management::v1::{ApiServer, DeletedTabularResponse, ListDeletedTabularsResponse};
+use crate::rest::{ApiContext, Result};
 use futures::FutureExt;
 
-use crate::api::iceberg::v1::{PaginatedTabulars, PaginationQuery};
+use crate::rest::iceberg::v1::{PaginatedTabulars, PaginationQuery};
 
-use crate::api::management::v1::role::require_project_id;
 pub use crate::modules::WarehouseStatus;
 use crate::modules::{
     authz::Authorizer, secrets::SecretStore, Catalog, ListFlags, State, TabularIdentUuid,
     Transaction,
 };
+use crate::rest::management::v1::role::require_project_id;
 use crate::{ProjectIdent, WarehouseIdent, CONFIG, DEFAULT_PROJECT_ID};
 use iceberg_ext::catalog::rest::ErrorModel;
 use serde::Deserialize;
@@ -782,18 +782,18 @@ mod test {
 
     // #[needs_env_var::needs_env_var(TEST_MINIO = 1)]
     mod minio {
-        use crate::api::iceberg::types::{PageToken, Prefix};
-        use crate::api::iceberg::v1::{
-            DataAccess, DropParams, NamespaceParameters, PaginationQuery, ViewParameters,
-        };
         use crate::catalog::test::random_request_metadata;
         use crate::catalog::CatalogServer;
         use crate::modules::authz::implementations::openfga::tests::ObjectHidingMock;
+        use crate::rest::iceberg::types::{PageToken, Prefix};
+        use crate::rest::iceberg::v1::{
+            DataAccess, DropParams, NamespaceParameters, PaginationQuery, ViewParameters,
+        };
         use iceberg::TableIdent;
 
-        use crate::api::iceberg::v1::views::Service;
-        use crate::api::management::v1::warehouse::{Service as _, TabularDeleteProfile};
-        use crate::api::management::v1::ApiServer;
+        use crate::rest::iceberg::v1::views::Service;
+        use crate::rest::management::v1::warehouse::{Service as _, TabularDeleteProfile};
+        use crate::rest::management::v1::ApiServer;
         use itertools::Itertools;
 
         #[sqlx::test]

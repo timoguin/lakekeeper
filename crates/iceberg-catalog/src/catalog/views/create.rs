@@ -1,6 +1,3 @@
-use crate::api::iceberg::types::Prefix;
-use crate::api::iceberg::v1::{DataAccess, NamespaceParameters};
-use crate::api::ApiContext;
 use crate::catalog::compression_codec::CompressionCodec;
 use crate::catalog::io::write_metadata_file;
 use crate::catalog::tables::{
@@ -16,6 +13,9 @@ use crate::modules::TabularIdentUuid;
 use crate::modules::{Catalog, SecretStore, State, Transaction};
 use crate::modules::{Result, ViewIdentUuid};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::types::Prefix;
+use crate::rest::iceberg::v1::{DataAccess, NamespaceParameters};
+use crate::rest::ApiContext;
 use iceberg::spec::ViewMetadataBuilder;
 use iceberg::{TableIdent, ViewCreation};
 use iceberg_ext::catalog::rest::{CreateViewRequest, ErrorModel, LoadViewResult};

@@ -11,9 +11,9 @@ pub(crate) mod user;
 pub(crate) mod warehouse;
 
 use self::dbutils::DBErrorHandler;
-use crate::api::Result;
 use crate::config::{DynAppConfig, PgSslMode};
 use crate::modules::health::{Health, HealthExt, HealthStatus};
+use crate::rest::Result;
 use crate::CONFIG;
 use anyhow::anyhow;
 use async_trait::async_trait;

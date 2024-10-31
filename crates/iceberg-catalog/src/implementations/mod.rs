@@ -24,7 +24,7 @@ impl SecretStore for Secrets {
     async fn get_secret_by_id<S: SecretInStorage + serde::de::DeserializeOwned>(
         &self,
         secret_id: &SecretIdent,
-    ) -> crate::api::Result<Secret<S>> {
+    ) -> crate::rest::Result<Secret<S>> {
         match self {
             Self::Postgres(state) => state.get_secret_by_id(secret_id).await,
             Self::KV2(state) => state.get_secret_by_id(secret_id).await,
@@ -36,14 +36,14 @@ impl SecretStore for Secrets {
     >(
         &self,
         secret: S,
-    ) -> crate::api::Result<SecretIdent> {
+    ) -> crate::rest::Result<SecretIdent> {
         match self {
             Self::Postgres(state) => state.create_secret(secret).await,
             Self::KV2(state) => state.create_secret(secret).await,
         }
     }
 
-    async fn delete_secret(&self, secret_id: &SecretIdent) -> crate::api::Result<()> {
+    async fn delete_secret(&self, secret_id: &SecretIdent) -> crate::rest::Result<()> {
         match self {
             Self::Postgres(state) => state.delete_secret(secret_id).await,
             Self::KV2(state) => state.delete_secret(secret_id).await,

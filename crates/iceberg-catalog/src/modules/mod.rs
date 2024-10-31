@@ -24,12 +24,12 @@ pub use tabular_idents::{TabularIdentOwned, TabularIdentUuid};
 pub use token_verification::{Actor, AuthDetails, UserId};
 
 use self::authz::Authorizer;
-use crate::api::iceberg::v1::Prefix;
-use crate::api::ThreadSafe as ServiceState;
-pub use crate::api::{ErrorModel, IcebergErrorResponse};
 use crate::modules::contract_verification::ContractVerifiers;
 use crate::modules::event_publisher::CloudEventsPublisher;
 use crate::modules::task_queue::TaskQueues;
+use crate::rest::iceberg::v1::Prefix;
+use crate::rest::ThreadSafe as ServiceState;
+pub use crate::rest::{ErrorModel, IcebergErrorResponse};
 use http::StatusCode;
 pub use secrets::{SecretIdent, SecretStore};
 use serde::{Deserialize, Serialize};

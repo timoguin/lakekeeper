@@ -1,13 +1,13 @@
 use crate::modules::event_publisher::CloudEventsPublisher;
 use crate::tracing::{MakeRequestUuid7, RestMakeSpan};
 
-use crate::api::management::v1::{api_doc as v1_api_doc, ApiServer};
-use crate::api::{iceberg::v1::new_v1_full_router, shutdown_signal, ApiContext};
 use crate::modules::contract_verification::ContractVerifiers;
 use crate::modules::health::ServiceHealthProvider;
 use crate::modules::task_queue::TaskQueues;
 use crate::modules::token_verification::Verifier;
 use crate::modules::{authz::Authorizer, Catalog, SecretStore, State};
+use crate::rest::management::v1::{api_doc as v1_api_doc, ApiServer};
+use crate::rest::{iceberg::v1::new_v1_full_router, shutdown_signal, ApiContext};
 use axum::response::IntoResponse;
 use axum::{routing::get, Json, Router};
 use axum_extra::middleware::option_layer;

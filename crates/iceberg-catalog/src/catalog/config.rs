@@ -1,12 +1,12 @@
-use crate::api::iceberg::v1::config::GetConfigQueryParams;
-use crate::api::iceberg::v1::{
-    ApiContext, CatalogConfig, ErrorModel, PageToken, PaginationQuery, Result,
-};
-use crate::api::management::v1::user::UserLastUpdatedWith;
 use crate::modules::authz::{CatalogProjectAction, CatalogWarehouseAction};
 use crate::modules::{authz::Authorizer, Catalog, ProjectIdent, State};
 use crate::modules::{AuthDetails, SecretStore, Transaction};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::v1::config::GetConfigQueryParams;
+use crate::rest::iceberg::v1::{
+    ApiContext, CatalogConfig, ErrorModel, PageToken, PaginationQuery, Result,
+};
+use crate::rest::management::v1::user::UserLastUpdatedWith;
 use crate::{CONFIG, DEFAULT_PROJECT_ID};
 use std::str::FromStr;
 
@@ -14,7 +14,7 @@ use super::CatalogServer;
 
 #[async_trait::async_trait]
 impl<A: Authorizer + Clone, C: Catalog, S: SecretStore>
-    crate::api::iceberg::v1::config::Service<State<A, C, S>> for CatalogServer<C, A, S>
+    crate::rest::iceberg::v1::config::Service<State<A, C, S>> for CatalogServer<C, A, S>
 {
     async fn get_config(
         query: GetConfigQueryParams,

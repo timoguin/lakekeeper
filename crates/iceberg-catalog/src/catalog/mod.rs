@@ -13,9 +13,9 @@ use iceberg::spec::{TableMetadata, ViewMetadata};
 use iceberg_ext::catalog::rest::IcebergErrorResponse;
 pub use namespace::{MAX_NAMESPACE_DEPTH, NAMESPACE_ID_PROPERTY, UNSUPPORTED_NAMESPACE_PROPERTIES};
 
-use crate::api::iceberg::v1::{PageToken, MAX_PAGE_SIZE};
-use crate::api::{iceberg::v1::Prefix, ErrorModel, Result};
 use crate::modules::storage::StorageCredential;
+use crate::rest::iceberg::v1::{PageToken, MAX_PAGE_SIZE};
+use crate::rest::{iceberg::v1::Prefix, ErrorModel, Result};
 use crate::{
     modules::{authz::Authorizer, secrets::SecretStore, Catalog},
     WarehouseIdent,
@@ -162,14 +162,6 @@ where
 
 #[cfg(test)]
 pub(crate) mod test {
-    use crate::api::iceberg::types::Prefix;
-    use crate::api::iceberg::v1::namespace::Service;
-    use crate::api::management::v1::project::{CreateProjectRequest, Service as _};
-    use crate::api::management::v1::warehouse::{
-        CreateWarehouseRequest, CreateWarehouseResponse, Service as _, TabularDeleteProfile,
-    };
-    use crate::api::management::v1::ApiServer;
-    use crate::api::ApiContext;
     use crate::catalog::CatalogServer;
     use crate::implementations::postgres::{
         CatalogState, PostgresCatalog, ReadWrite, SecretsState,
@@ -183,6 +175,14 @@ pub(crate) mod test {
     use crate::modules::task_queue::TaskQueues;
     use crate::modules::{AuthDetails, State};
     use crate::request_metadata::RequestMetadata;
+    use crate::rest::iceberg::types::Prefix;
+    use crate::rest::iceberg::v1::namespace::Service;
+    use crate::rest::management::v1::project::{CreateProjectRequest, Service as _};
+    use crate::rest::management::v1::warehouse::{
+        CreateWarehouseRequest, CreateWarehouseResponse, Service as _, TabularDeleteProfile,
+    };
+    use crate::rest::management::v1::ApiServer;
+    use crate::rest::ApiContext;
     use crate::CONFIG;
     use iceberg::NamespaceIdent;
     use iceberg_ext::catalog::rest::{CreateNamespaceRequest, CreateNamespaceResponse};

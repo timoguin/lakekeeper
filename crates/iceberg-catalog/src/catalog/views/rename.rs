@@ -1,5 +1,3 @@
-use crate::api::iceberg::types::Prefix;
-use crate::api::ApiContext;
 use crate::catalog::require_warehouse_id;
 use crate::catalog::tables::{maybe_body_to_json, validate_table_or_view_ident};
 use crate::modules::authz::{
@@ -11,6 +9,8 @@ use crate::modules::Result;
 use crate::modules::TabularIdentUuid;
 use crate::modules::{Catalog, SecretStore, State, Transaction};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::types::Prefix;
+use crate::rest::ApiContext;
 use http::StatusCode;
 use iceberg_ext::catalog::rest::RenameTableRequest;
 use uuid::Uuid;
@@ -116,11 +116,11 @@ pub(crate) async fn rename_view<C: Catalog, A: Authorizer + Clone, S: SecretStor
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::api::iceberg::v1::ViewParameters;
     use crate::catalog::views::create::test::create_view;
     use crate::catalog::views::load::test::load_view;
     use crate::catalog::views::test::setup;
     use crate::implementations::postgres::namespace::tests::initialize_namespace;
+    use crate::rest::iceberg::v1::ViewParameters;
     use iceberg::{NamespaceIdent, TableIdent};
     use iceberg_ext::catalog::rest::CreateViewRequest;
     use sqlx::PgPool;

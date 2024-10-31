@@ -1,5 +1,5 @@
-use crate::api::{ErrorModel, Result};
 use crate::modules::storage::path_utils;
+use crate::rest::{ErrorModel, Result};
 use futures::stream::BoxStream;
 use futures::StreamExt;
 use iceberg::io::FileIO;

@@ -14,7 +14,6 @@ use super::relations::{
     WarehouseRelation as AllWarehouseRelation,
 };
 use super::OPENFGA_SERVER;
-use crate::api::ApiContext;
 use crate::modules::authz::implementations::openfga::entities::OpenFgaEntity;
 use crate::modules::authz::implementations::openfga::service_ext::MAX_TUPLES_PER_WRITE;
 use crate::modules::authz::implementations::openfga::{
@@ -25,6 +24,7 @@ use crate::modules::{
     ViewIdentUuid,
 };
 use crate::request_metadata::RequestMetadata;
+use crate::rest::ApiContext;
 use crate::{ProjectIdent, WarehouseIdent, DEFAULT_PROJECT_ID};
 use axum::extract::{Path, Query, State as AxumState};
 use axum::routing::{get, post};

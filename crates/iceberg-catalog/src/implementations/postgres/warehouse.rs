@@ -1,6 +1,6 @@
 use super::dbutils::DBErrorHandler as _;
-use crate::api::{CatalogConfig, ErrorModel, Result};
 use crate::modules::{GetProjectResponse, GetWarehouseResponse, WarehouseStatus};
+use crate::rest::{CatalogConfig, ErrorModel, Result};
 use crate::{modules::storage::StorageProfile, ProjectIdent, SecretIdent, WarehouseIdent};
 use http::StatusCode;
 use sqlx::Error;
@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::ops::Deref;
 
 use super::CatalogState;
-use crate::api::management::v1::warehouse::TabularDeleteProfile;
+use crate::rest::management::v1::warehouse::TabularDeleteProfile;
 use sqlx::types::Json;
 
 pub(super) async fn get_warehouse_by_name(

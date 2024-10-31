@@ -1,8 +1,3 @@
-use crate::api::iceberg::types::{DropParams, Prefix};
-use crate::api::iceberg::v1::ViewParameters;
-use crate::api::management::v1::warehouse::TabularDeleteProfile;
-use crate::api::management::v1::TabularType;
-use crate::api::ApiContext;
 use crate::catalog::require_warehouse_id;
 use crate::catalog::tables::validate_table_or_view_ident;
 use crate::modules::authz::{Authorizer, CatalogViewAction, CatalogWarehouseAction};
@@ -14,6 +9,11 @@ use crate::modules::TabularIdentUuid;
 use crate::modules::{Catalog, SecretStore, State, Transaction};
 use crate::modules::{Result, ViewIdentUuid};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::types::{DropParams, Prefix};
+use crate::rest::iceberg::v1::ViewParameters;
+use crate::rest::management::v1::warehouse::TabularDeleteProfile;
+use crate::rest::management::v1::TabularType;
+use crate::rest::ApiContext;
 use uuid::Uuid;
 
 pub(crate) async fn drop_view<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -130,13 +130,13 @@ pub(crate) async fn drop_view<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
 #[cfg(test)]
 mod test {
-    use crate::api::iceberg::types::{DropParams, Prefix};
-    use crate::api::iceberg::v1::ViewParameters;
     use crate::catalog::views::create::test::create_view;
     use crate::catalog::views::drop::drop_view;
     use crate::catalog::views::load::test::load_view;
     use crate::catalog::views::test::setup;
     use crate::request_metadata::RequestMetadata;
+    use crate::rest::iceberg::types::{DropParams, Prefix};
+    use crate::rest::iceberg::v1::ViewParameters;
     use http::StatusCode;
     use iceberg::TableIdent;
     use iceberg_ext::catalog::rest::CreateViewRequest;

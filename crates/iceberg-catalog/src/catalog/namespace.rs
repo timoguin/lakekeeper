@@ -1,15 +1,15 @@
 use super::{require_warehouse_id, CatalogServer};
-use crate::api::iceberg::v1::namespace::GetNamespacePropertiesQuery;
-use crate::api::iceberg::v1::{
-    ApiContext, CreateNamespaceRequest, CreateNamespaceResponse, ErrorModel, GetNamespaceResponse,
-    ListNamespacesQuery, ListNamespacesResponse, NamespaceParameters, Prefix, Result,
-    UpdateNamespacePropertiesRequest, UpdateNamespacePropertiesResponse,
-};
-use crate::api::set_not_found_status_code;
 use crate::modules::authz::{CatalogNamespaceAction, CatalogWarehouseAction, NamespaceParent};
 use crate::modules::{authz::Authorizer, secrets::SecretStore, Catalog, State, Transaction as _};
 use crate::modules::{GetWarehouseResponse, NamespaceIdentUuid};
 use crate::request_metadata::RequestMetadata;
+use crate::rest::iceberg::v1::namespace::GetNamespacePropertiesQuery;
+use crate::rest::iceberg::v1::{
+    ApiContext, CreateNamespaceRequest, CreateNamespaceResponse, ErrorModel, GetNamespaceResponse,
+    ListNamespacesQuery, ListNamespacesResponse, NamespaceParameters, Prefix, Result,
+    UpdateNamespacePropertiesRequest, UpdateNamespacePropertiesResponse,
+};
+use crate::rest::set_not_found_status_code;
 use crate::{catalog, CONFIG};
 use futures::FutureExt;
 use http::StatusCode;
@@ -29,7 +29,7 @@ pub(crate) const MANAGED_ACCESS_PROPERTY: &str = "managed_access";
 
 #[async_trait::async_trait]
 impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
-    crate::api::iceberg::v1::namespace::Service<State<A, C, S>> for CatalogServer<C, A, S>
+    crate::rest::iceberg::v1::namespace::Service<State<A, C, S>> for CatalogServer<C, A, S>
 {
     async fn list_namespaces(
         prefix: Option<Prefix>,
@@ -609,13 +609,13 @@ mod tests {
 
     #[needs_env_var::needs_env_var(TEST_MINIO = 1)]
     mod minio {
-        use crate::api::iceberg::types::{PageToken, Prefix};
-        use crate::api::iceberg::v1::namespace::Service;
-        use crate::api::management::v1::warehouse::TabularDeleteProfile;
         use crate::catalog::test::random_request_metadata;
         use crate::catalog::CatalogServer;
         use crate::modules::authz::implementations::openfga::tests::ObjectHidingMock;
         use crate::modules::ListNamespacesQuery;
+        use crate::rest::iceberg::types::{PageToken, Prefix};
+        use crate::rest::iceberg::v1::namespace::Service;
+        use crate::rest::management::v1::warehouse::TabularDeleteProfile;
         use iceberg::NamespaceIdent;
         use iceberg_ext::catalog::rest::CreateNamespaceRequest;
         use std::collections::HashSet;
