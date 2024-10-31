@@ -11,8 +11,8 @@ use crate::api::iceberg::types::{DropParams, PageToken};
 use crate::api::iceberg::v1::{
     ApiContext, CommitTableRequest, CommitTableResponse, CommitTransactionRequest,
     CreateTableRequest, DataAccess, ErrorModel, ListTablesQuery, ListTablesResponse,
-    LoadTableResult, NamespaceParameters, Prefix, RegisterTableRequest, RenameTableRequest, Result,
-    TableIdent, TableParameters,
+    LoadTableResult, NamespaceParameters, PaginationQuery, Prefix, RegisterTableRequest,
+    RenameTableRequest, Result, TableIdent, TableParameters,
 };
 use crate::api::management::v1::warehouse::TabularDeleteProfile;
 use crate::api::management::v1::TabularType;
@@ -34,11 +34,13 @@ use crate::service::{
     GetNamespaceResponse, TableCommit, TableCreation, TableIdentUuid, WarehouseStatus,
 };
 
+use crate::catalog;
 use http::StatusCode;
 use iceberg::spec::{
     MetadataLog, TableMetadataBuildResult, PROPERTY_METADATA_PREVIOUS_VERSIONS_MAX,
 };
 use iceberg::{NamespaceIdent, TableUpdate};
+use iceberg_ext::catalog::rest::IcebergErrorResponse;
 use iceberg_ext::configs::namespace::NamespaceProperties;
 use iceberg_ext::configs::Location;
 use serde::Serialize;
@@ -52,10 +54,11 @@ const PROPERTY_METADATA_DELETE_AFTER_COMMIT_ENABLED_DEFAULT: bool = false;
 impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
     crate::api::iceberg::v1::tables::Service<State<A, C, S>> for CatalogServer<C, A, S>
 {
+    #[allow(clippy::too_many_lines)]
     /// List all table identifiers underneath a given namespace
     async fn list_tables(
         parameters: NamespaceParameters,
-        mut query: ListTablesQuery,
+        query: ListTablesQuery,
         state: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
     ) -> Result<ListTablesResponse> {
@@ -92,81 +95,74 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         let include_deleted = false;
         let include_active = true;
 
-        let mut next_page_token = query.page_token.as_option().map(ToString::to_string);
-        let page_size = query.page_size.unwrap_or(1000);
-        let page_size_usize = page_size.try_into().map_err(|e| {
-            ErrorModel::internal(
-                "Internal server error, failed to convert i64 to usize after clamping i64 to 1000",
-                "InternalServerError",
-                Some(Box::new(e)),
-            )
-        })?;
-
-        let mut identifiers = vec![];
-        let mut table_uuids = vec![];
-
-        while identifiers.len() < page_size_usize {
-            query.page_size = Some((page_size_usize - identifiers.len()).try_into().map_err(
-                |e| {
-                    ErrorModel::internal(
-                        "Failed to convert usize to i64",
-                        "InternalServerError",
-                        Some(Box::new(e)),
-                    )
+        let (identifiers, table_uuids, next_page_token) =
+            catalog::fetch_until_full_page::<_, _, _, _, C>(
+                query.page_size.unwrap_or(100),
+                match query.page_token {
+                    PageToken::Present(ref inner) => Some(inner.clone()),
+                    PageToken::Empty | PageToken::NotSpecified => None,
                 },
-            )?);
+                |ps, page_token, trx| {
+                    let namespace = namespace.clone();
+                    Box::pin(async move {
+                        let query = PaginationQuery {
+                            page_size: Some(ps),
+                            page_token: match page_token {
+                                Some(token) => PageToken::Present(token.clone()),
+                                None => PageToken::NotSpecified,
+                            },
+                        };
 
-            let next_page = C::list_tables(
-                warehouse_id,
-                &namespace,
-                ListFlags {
-                    include_active,
-                    include_staged,
-                    include_deleted,
+                        let list_tables = C::list_tables(
+                            warehouse_id,
+                            &namespace,
+                            ListFlags {
+                                include_active,
+                                include_staged,
+                                include_deleted,
+                            },
+                            trx.transaction(),
+                            query,
+                        )
+                        .await?;
+
+                        let (ids, idents) = list_tables
+                            .tabulars
+                            .into_iter()
+                            .unzip::<_, _, Vec<_>, Vec<_>>();
+                        Ok((idents, ids, list_tables.next_page_token))
+                    })
                 },
-                t.transaction(),
-                query.clone().into(),
+                |(fetched_t, fetched_t2)| {
+                    let authorizer = authorizer.clone();
+                    let request_metadata = request_metadata.clone();
+                    async move {
+                        let (next_tables, next_uuids): (Vec<_>, Vec<_>) =
+                            futures::future::try_join_all(fetched_t2.iter().map(|n| {
+                                authorizer.is_allowed_table_action(
+                                    &request_metadata,
+                                    warehouse_id,
+                                    *n,
+                                    &CatalogTableAction::CanGetMetadata,
+                                )
+                            }))
+                            .await?
+                            .into_iter()
+                            .zip(fetched_t.into_iter().zip(fetched_t2.into_iter()))
+                            .filter_map(|(allowed, table)| allowed.then_some((table.0, table.1)))
+                            .unzip();
+
+                        Ok::<_, IcebergErrorResponse>((next_tables, next_uuids))
+                    }
+                },
+                &mut t,
             )
             .await?;
 
-            if let Some(next_page_token_inner) = next_page.next_page_token.as_deref() {
-                query.page_token = PageToken::Present(next_page_token_inner.to_string());
-                next_page_token = Some(next_page_token_inner.to_string());
-            } else {
-                return Ok(ListTablesResponse {
-                    next_page_token: None,
-                    identifiers,
-                    table_uuids: return_uuids.then_some(table_uuids),
-                });
-            }
-
-            let (next_table_uuids, next_identifiers): (Vec<_>, Vec<_>) =
-                futures::future::try_join_all(next_page.tabulars.iter().map(|t| {
-                    authorizer.is_allowed_table_action(
-                        &request_metadata,
-                        warehouse_id,
-                        *t.0,
-                        &CatalogTableAction::CanIncludeInList,
-                    )
-                }))
-                .await?
-                .into_iter()
-                .zip(next_page.tabulars.into_iter())
-                .filter_map(|(allowed, table)| allowed.then_some((*table.0, table.1)))
-                .collect();
-
-            identifiers.extend(next_identifiers);
-            table_uuids.extend(next_table_uuids);
-        }
-
         Ok(ListTablesResponse {
-            next_page_token: if identifiers.len() < page_size_usize {
-                None
-            } else {
-                next_page_token
-            },
+            next_page_token,
             identifiers,
-            table_uuids: return_uuids.then_some(table_uuids),
+            table_uuids: return_uuids.then_some(table_uuids.into_iter().map(|u| *u).collect()),
         })
     }
 

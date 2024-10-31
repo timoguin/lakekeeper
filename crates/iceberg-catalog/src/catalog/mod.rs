@@ -13,6 +13,7 @@ use iceberg::spec::{TableMetadata, ViewMetadata};
 use iceberg_ext::catalog::rest::IcebergErrorResponse;
 pub use namespace::{MAX_NAMESPACE_DEPTH, NAMESPACE_ID_PROPERTY, UNSUPPORTED_NAMESPACE_PROPERTIES};
 
+use crate::api::iceberg::v1::MAX_PAGE_SIZE;
 use crate::api::{iceberg::v1::Prefix, ErrorModel, Result};
 use crate::service::storage::StorageCredential;
 use crate::{
@@ -77,27 +78,58 @@ pub(crate) async fn maybe_get_secret<S: SecretStore>(
 // Helper fn that fetches data using `fetch_fn` and then filters the data using `filter_fn` until
 // a full page is fetched. The `fetch_fn` is commonly a closure that fetches data from the catalog,
 // `filter_fn` is a closure that filters the data based on some criteria, usually authz.
-pub(crate) async fn fetch_until_full_page<'b, 'd: 'b, T, Z, FUN, F2, C: Catalog>(
-    page_size: usize,
+pub(crate) async fn fetch_until_full_page<
+    'b,
+    'd: 'b,
+    Entity,
+    EntityId,
+    FetchFun,
+    FilteredFuture,
+    C: Catalog,
+>(
+    page_size: i64,
     page_token: Option<String>,
-    mut fetch_fn: FUN,
-    mut filter_fn: impl FnMut((Vec<T>, Vec<Z>)) -> F2,
+    mut fetch_fn: FetchFun,
+    mut filter_fn: impl FnMut((Vec<Entity>, Vec<EntityId>)) -> FilteredFuture,
     t: &'d mut C::Transaction,
-) -> Result<(Vec<T>, Vec<Z>, Option<String>)>
+) -> Result<(Vec<Entity>, Vec<EntityId>, Option<String>)>
 where
-    FUN: for<'c> FnMut(
-        usize,
+    FetchFun: for<'c> FnMut(
+        i64,
         Option<String>,
         &'c mut C::Transaction,
-    ) -> BoxFuture<'c, Result<(Vec<T>, Vec<Z>, Option<String>)>>,
-    F2: Future<Output = Result<(Vec<T>, Vec<Z>)>>,
+    )
+        -> BoxFuture<'c, Result<(Vec<Entity>, Vec<EntityId>, Option<String>)>>,
+    FilteredFuture: Future<Output = Result<(Vec<Entity>, Vec<EntityId>)>>,
 {
+    let usize_page_size = page_size.try_into().map_err(|e| {
+        ErrorModel::internal(
+            format!(
+                "Received page size larger than '{}', max page_size is: '{MAX_PAGE_SIZE}'",
+                usize::MAX
+            ),
+            "TooLargePageSize",
+            Some(Box::new(e)),
+        )
+    })?;
     let (fetched_t, fetched_t2, mut next_page) = fetch_fn(page_size, page_token, t).await?;
     let (mut fetched_t, mut fetched_t2) = filter_fn((fetched_t, fetched_t2)).await?;
 
-    while fetched_t.len() < page_size {
-        let (more_t, more_id, next_p) =
-            fetch_fn(page_size - fetched_t.len(), next_page.clone(), t).await?;
+    while fetched_t.len() < usize_page_size {
+        let (more_t, more_id, next_p) = fetch_fn(
+            (usize_page_size - fetched_t.len())
+                .try_into()
+                .map_err(|e| {
+                    ErrorModel::internal(
+                        "Failed to convert usize to i64",
+                        "InternalServerError",
+                        Some(Box::new(e)),
+                    )
+                })?,
+            next_page.clone(),
+            t,
+        )
+        .await?;
         if more_t.is_empty() {
             break;
         }

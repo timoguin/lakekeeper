@@ -8,9 +8,7 @@ use crate::api::iceberg::v1::{
 use crate::api::set_not_found_status_code;
 use crate::request_metadata::RequestMetadata;
 use crate::service::authz::{CatalogNamespaceAction, CatalogWarehouseAction, NamespaceParent};
-use crate::service::{
-    authz::Authorizer, secrets::SecretStore, Catalog, State, Transaction as _, Transaction,
-};
+use crate::service::{authz::Authorizer, secrets::SecretStore, Catalog, State, Transaction as _};
 use crate::service::{GetWarehouseResponse, NamespaceIdentUuid};
 use crate::{catalog, CONFIG};
 use http::StatusCode;
@@ -19,7 +17,6 @@ use iceberg_ext::catalog::rest::IcebergErrorResponse;
 use iceberg_ext::configs::namespace::NamespaceProperties;
 use iceberg_ext::configs::{ConfigProperty as _, Location};
 use std::collections::HashMap;
-use std::future::Future;
 use std::ops::Deref;
 
 pub const UNSUPPORTED_NAMESPACE_PROPERTIES: &[&str] = &[];
@@ -75,12 +72,8 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // ------------------- BUSINESS LOGIC -------------------
         let (idents, ids, next_page_token) = catalog::fetch_until_full_page::<_, _, _, _, C>(
-            query.page_size.unwrap_or(1000) as usize,
-            match query.page_token {
-                PageToken::Present(ref inner) => Some(inner.clone()),
-                PageToken::NotSpecified => None,
-                PageToken::Empty => None,
-            },
+            query.page_size.unwrap_or(100),
+            query.page_token.as_option().map(ToString::to_string),
             |ps, page_token, trx| {
                 let parent = parent.clone();
                 Box::pin(async move {
@@ -100,7 +93,6 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                     let (ids, idents) = list_namespaces
                         .namespaces
                         .into_iter()
-                        .map(|(k, v)| (k, v))
                         .unzip::<_, _, Vec<_>, Vec<_>>();
                     Ok((idents, ids, list_namespaces.next_page_token))
                 })
