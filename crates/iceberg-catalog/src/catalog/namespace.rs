@@ -11,6 +11,7 @@ use crate::service::authz::{CatalogNamespaceAction, CatalogWarehouseAction, Name
 use crate::service::{authz::Authorizer, secrets::SecretStore, Catalog, State, Transaction as _};
 use crate::service::{GetWarehouseResponse, NamespaceIdentUuid};
 use crate::{catalog, CONFIG};
+use futures::FutureExt;
 use http::StatusCode;
 use iceberg::NamespaceIdent;
 use iceberg_ext::catalog::rest::IcebergErrorResponse;
@@ -72,13 +73,13 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // ------------------- BUSINESS LOGIC -------------------
         let (idents, ids, next_page_token) = catalog::fetch_until_full_page::<_, _, _, _, C>(
-            query.page_size.unwrap_or(100),
-            query.page_token.as_option().map(ToString::to_string),
+            query.page_size,
+            query.page_token.clone(),
             |ps, page_token, trx| {
                 let parent = parent.clone();
-                Box::pin(async move {
+                async move {
                     let query = ListNamespacesQuery {
-                        page_size: Some(ps as i64),
+                        page_size: Some(ps),
                         page_token: match page_token {
                             Some(token) => PageToken::Present(token.clone()),
                             None => PageToken::NotSpecified,
@@ -95,7 +96,8 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                         .into_iter()
                         .unzip::<_, _, Vec<_>, Vec<_>>();
                     Ok((idents, ids, list_namespaces.next_page_token))
-                })
+                }
+                .boxed()
             },
             |(fetched_t, fetched_t2)| {
                 let authorizer = authorizer.clone();

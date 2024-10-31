@@ -1,11 +1,11 @@
-use std::collections::{HashMap, HashSet};
-use std::str::FromStr as _;
-
 use super::commit_tables::apply_commit;
 use super::{
     io::write_metadata_file, maybe_get_secret, namespace::validate_namespace_ident,
     require_warehouse_id, CatalogServer,
 };
+use futures::FutureExt;
+use std::collections::{HashMap, HashSet};
+use std::str::FromStr as _;
 
 use crate::api::iceberg::types::{DropParams, PageToken};
 use crate::api::iceberg::v1::{
@@ -97,14 +97,11 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         let (identifiers, table_uuids, next_page_token) =
             catalog::fetch_until_full_page::<_, _, _, _, C>(
-                query.page_size.unwrap_or(100),
-                match query.page_token {
-                    PageToken::Present(ref inner) => Some(inner.clone()),
-                    PageToken::Empty | PageToken::NotSpecified => None,
-                },
+                query.page_size,
+                query.page_token,
                 |ps, page_token, trx| {
                     let namespace = namespace.clone();
-                    Box::pin(async move {
+                    async move {
                         let query = PaginationQuery {
                             page_size: Some(ps),
                             page_token: match page_token {
@@ -131,7 +128,8 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                             .into_iter()
                             .unzip::<_, _, Vec<_>, Vec<_>>();
                         Ok((idents, ids, list_tables.next_page_token))
-                    })
+                    }
+                    .boxed()
                 },
                 |(fetched_t, fetched_t2)| {
                     let authorizer = authorizer.clone();
@@ -158,6 +156,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 &mut t,
             )
             .await?;
+        t.commit().await?;
 
         Ok(ListTablesResponse {
             next_page_token,
@@ -1481,7 +1480,7 @@ pub(crate) fn maybe_body_to_json(request: impl Serialize) -> serde_json::Value {
 
 #[cfg(test)]
 mod test {
-    // #[needs_env_var::needs_env_var(TEST_MINIO = 1)]
+    #[needs_env_var::needs_env_var(TEST_MINIO = 1)]
     mod minio {
         use crate::api::iceberg::types::{PageToken, Prefix};
         use crate::api::iceberg::v1::tables::Service;

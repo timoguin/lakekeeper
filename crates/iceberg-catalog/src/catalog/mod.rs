@@ -13,7 +13,7 @@ use iceberg::spec::{TableMetadata, ViewMetadata};
 use iceberg_ext::catalog::rest::IcebergErrorResponse;
 pub use namespace::{MAX_NAMESPACE_DEPTH, NAMESPACE_ID_PROPERTY, UNSUPPORTED_NAMESPACE_PROPERTIES};
 
-use crate::api::iceberg::v1::MAX_PAGE_SIZE;
+use crate::api::iceberg::v1::{PageToken, MAX_PAGE_SIZE};
 use crate::api::{iceberg::v1::Prefix, ErrorModel, Result};
 use crate::service::storage::StorageCredential;
 use crate::{
@@ -75,6 +75,8 @@ pub(crate) async fn maybe_get_secret<S: SecretStore>(
     }
 }
 
+pub const DEFAULT_PAGE_SIZE: i64 = 100;
+
 // Helper fn that fetches data using `fetch_fn` and then filters the data using `filter_fn` until
 // a full page is fetched. The `fetch_fn` is commonly a closure that fetches data from the catalog,
 // `filter_fn` is a closure that filters the data based on some criteria, usually authz.
@@ -87,8 +89,8 @@ pub(crate) async fn fetch_until_full_page<
     FilteredFuture,
     C: Catalog,
 >(
-    page_size: i64,
-    page_token: Option<String>,
+    page_size: Option<i64>,
+    page_token: PageToken,
     mut fetch_fn: FetchFun,
     mut filter_fn: impl FnMut((Vec<Entity>, Vec<EntityId>)) -> FilteredFuture,
     t: &'d mut C::Transaction,
@@ -102,16 +104,20 @@ where
         -> BoxFuture<'c, Result<(Vec<Entity>, Vec<EntityId>, Option<String>)>>,
     FilteredFuture: Future<Output = Result<(Vec<Entity>, Vec<EntityId>)>>,
 {
+    let page_size = page_size
+        .unwrap_or(DEFAULT_PAGE_SIZE)
+        .clamp(1, MAX_PAGE_SIZE);
     let usize_page_size = page_size.try_into().map_err(|e| {
         ErrorModel::internal(
             format!(
-                "Received page size larger than '{}', max page_size is: '{MAX_PAGE_SIZE}'",
+                "Encountered an impossible error: page size is larger than '{}' after clamping it to '1, {MAX_PAGE_SIZE}'",
                 usize::MAX
             ),
-            "TooLargePageSize",
+            "InternalServerError",
             Some(Box::new(e)),
         )
     })?;
+    let page_token = page_token.as_option().map(ToString::to_string);
     let (fetched_t, fetched_t2, mut next_page) = fetch_fn(page_size, page_token, t).await?;
     let (mut fetched_t, mut fetched_t2) = filter_fn((fetched_t, fetched_t2)).await?;
 
