@@ -566,12 +566,12 @@ mod test {
                     "appid": "d53edae2-1b58-4c56-a243-xxxxxxxxxxxx",
                     "appidacr": "1",
                     "aud": "00000003-0000-0000-c000-000000000000",
-                    "exp": 1730052519,
-                    "iat": 1730048619,
+                    "exp": 1_730_052_519,
+                    "iat": 1_730_048_619,
                     "idp": "https://sts.windows.net/00000003-1234-0000-c000-000000000000/",
                     "idtyp": "app",
                     "iss": "https://sts.windows.net/00000003-1234-0000-c000-000000000000/",
-                    "nbf": 1730048619,
+                    "nbf": 1_730_048_619,
                     "oid": "f621fc83-4ec9-4bf8-bc8d-xxxxxxxxxxxx",
                     "rh": "0.AU8A4hqJeoi7wkGOJROkB9ygQAMAAAAAAAAAwAAAAAAAAABPAAA.",
                     "sub": "f621fc83-4ec9-4bf8-bc8d-xxxxxxxxxxxx",
@@ -581,7 +581,7 @@ mod test {
                     "ver": "1.0",
                     "wids": ["0997a1d0-0d1d-4acb-b408-xxxxxxxxxxxx"],
                     "xms_idrel": "7 24",
-                    "xms_tcdt": 1638946153,
+                    "xms_tcdt": 1_638_946_153,
                     "xms_tdbr": "EU"
         }))
         .unwrap();
@@ -607,15 +607,15 @@ mod test {
             "appid": "d53edae2-1b58-4c56-a243-xxxxxxxxxxxx",
             "appidacr": "0",
             "aud": "00000003-0000-0000-c000-000000000000",
-            "exp": 1730054207,
+            "exp": 1_730_054_207,
             "family_name": "Frost",
             "given_name": "Jack",
-            "iat": 1730049088,
+            "iat": 1_730_049_088,
             "idtyp": "user",
             "ipaddr": "12.206.221.219",
             "iss": "https://sts.windows.net/00000003-1234-0000-c000-000000000000/",
             "name": "Jack Frost",
-            "nbf": 1730049088,
+            "nbf": 1_730_049_088,
             "oid": "eb54b4f5-0d20-46eb-b703-b1c910262e89",
             "platf": "14",
             "puid": "100320025A52FAC4",
@@ -633,7 +633,7 @@ mod test {
                     "b79fbf4d-3ef9-4689-8143-xxxxxxxxxxxx"],
             "xms_idrel": "1 8",
             "xms_st": {"sub": "VZ5XLBqhasu6qISBjalO9e45lQjr_EyLLtKzCFcWw-8"},
-            "xms_tcdt": 1638946153,
+            "xms_tcdt": 1_638_946_153,
             "xms_tdbr": "EU"
         })).unwrap();
 
@@ -704,8 +704,8 @@ mod test {
     #[test]
     fn test_machine_discovery_keycloak() {
         let claims: Claims = serde_json::from_value(serde_json::json!({
-          "exp": 1730050563,
-          "iat": 1730050263,
+          "exp": 1_730_050_563,
+          "iat": 1_730_050_563,
           "jti": "b1e96701-b718-4714-88a2-d25d985c38ed",
           "iss": "http://keycloak:8080/realms/iceberg",
           "aud": [
