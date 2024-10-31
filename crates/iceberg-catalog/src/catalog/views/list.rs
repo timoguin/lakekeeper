@@ -82,7 +82,7 @@ pub(crate) async fn list_views<C: Catalog, A: Authorizer + Clone, S: SecretStore
                                 &request_metadata,
                                 warehouse_id,
                                 *n,
-                                &CatalogViewAction::CanGetMetadata,
+                                &CatalogViewAction::CanIncludeInList,
                             )
                         }))
                         .await?
