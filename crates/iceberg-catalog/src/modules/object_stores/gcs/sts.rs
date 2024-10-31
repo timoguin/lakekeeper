@@ -1,6 +1,6 @@
-use crate::modules::storage::error::TableConfigError;
-use crate::modules::storage::gcs::GcsServiceKey;
-use crate::modules::storage::StoragePermissions;
+use crate::modules::object_stores::error::TableConfigError;
+use crate::modules::object_stores::gcs::GcsServiceKey;
+use crate::modules::object_stores::StoragePermissions;
 use google_cloud_auth::credentials::CredentialsFile;
 use iceberg_ext::configs::Location;
 use serde::{Deserialize, Serialize};

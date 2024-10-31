@@ -170,7 +170,7 @@ impl SecretStore for SecretsState {
 
 #[cfg(test)]
 mod tests {
-    use crate::modules::storage::{S3Credential, StorageCredential};
+    use crate::modules::object_stores::{S3Credential, StorageCredential};
 
     use super::*;
 

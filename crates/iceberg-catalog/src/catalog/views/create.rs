@@ -8,7 +8,7 @@ use crate::catalog::views::validate_view_properties;
 use crate::catalog::{maybe_get_secret, require_warehouse_id};
 use crate::modules::authz::{Authorizer, CatalogNamespaceAction, CatalogWarehouseAction};
 use crate::modules::event_publisher::EventMetadata;
-use crate::modules::storage::{StorageLocations as _, StoragePermissions};
+use crate::modules::object_stores::{StorageLocations as _, StoragePermissions};
 use crate::modules::TabularIdentUuid;
 use crate::modules::{Catalog, SecretStore, State, Transaction};
 use crate::modules::{Result, ViewIdentUuid};

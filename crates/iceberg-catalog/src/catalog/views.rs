@@ -141,7 +141,7 @@ mod test {
     use crate::modules::authz::AllowAllAuthorizer;
     use crate::modules::contract_verification::ContractVerifiers;
     use crate::modules::event_publisher::CloudEventsPublisher;
-    use crate::modules::storage::{StorageProfile, TestProfile};
+    use crate::modules::object_stores::{StorageProfile, TestProfile};
     use crate::modules::State;
     use crate::{WarehouseIdent, CONFIG};
 

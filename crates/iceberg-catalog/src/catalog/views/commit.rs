@@ -9,7 +9,7 @@ use crate::catalog::views::{parse_view_location, validate_view_updates};
 use crate::modules::authz::{CatalogViewAction, CatalogWarehouseAction};
 use crate::modules::contract_verification::ContractVerification;
 use crate::modules::event_publisher::EventMetadata;
-use crate::modules::storage::{StorageLocations as _, StoragePermissions};
+use crate::modules::object_stores::{StorageLocations as _, StoragePermissions};
 use crate::modules::{
     authz::Authorizer, secrets::SecretStore, Catalog, GetWarehouseResponse, State, Transaction,
     ViewMetadataWithLocation,

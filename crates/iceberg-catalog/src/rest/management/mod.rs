@@ -15,8 +15,8 @@ pub mod v1 {
     use crate::rest::iceberg::v1::PaginationQuery;
 
     use crate::modules::{
-        authz::Authorizer, storage::S3Flavor, Actor, Catalog, CreateOrUpdateUserResponse, RoleId,
-        SecretStore, State, TabularIdentUuid, UserId,
+        authz::Authorizer, object_stores::S3Flavor, Actor, Catalog, CreateOrUpdateUserResponse,
+        RoleId, SecretStore, State, TabularIdentUuid, UserId,
     };
     use crate::rest::management::v1::user::{ListUsersQuery, ListUsersResponse};
     use crate::ProjectIdent;

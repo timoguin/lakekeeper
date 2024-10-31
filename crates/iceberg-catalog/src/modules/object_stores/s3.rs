@@ -2,10 +2,10 @@
 
 use crate::{WarehouseIdent, CONFIG};
 
-use crate::modules::storage::error::{
+use crate::modules::object_stores::error::{
     CredentialsError, FileIoError, TableConfigError, UpdateError, ValidationError,
 };
-use crate::modules::storage::StoragePermissions;
+use crate::modules::object_stores::StoragePermissions;
 use crate::rest::{iceberg::v1::DataAccess, CatalogConfig};
 use aws_config::{BehaviorVersion, SdkConfig};
 
@@ -750,7 +750,7 @@ impl From<S3Location> for Location {
 mod test {
     use super::*;
     use crate::modules::{
-        storage::{StorageLocations as _, StorageProfile},
+        object_stores::{StorageLocations as _, StorageProfile},
         tabular_idents::TabularIdentUuid,
         NamespaceIdentUuid,
     };
@@ -858,7 +858,7 @@ mod test {
 
     #[needs_env_var(TEST_MINIO = 1)]
     mod minio {
-        use crate::modules::storage::{
+        use crate::modules::object_stores::{
             S3Credential, S3Flavor, S3Profile, StorageCredential, StorageProfile,
         };
 
@@ -896,7 +896,7 @@ mod test {
 
     #[needs_env_var(TEST_AWS = 1)]
     mod aws {
-        use crate::modules::storage::{StorageCredential, StorageProfile};
+        use crate::modules::object_stores::{StorageCredential, StorageProfile};
 
         use super::super::*;
 

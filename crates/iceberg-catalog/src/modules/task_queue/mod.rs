@@ -233,7 +233,7 @@ mod test {
         use crate::implementations::postgres::warehouse::test::initialize_warehouse;
         use crate::implementations::postgres::{CatalogState, PostgresCatalog};
         use crate::modules::authz::AllowAllAuthorizer;
-        use crate::modules::storage::{
+        use crate::modules::object_stores::{
             S3Credential, S3Flavor, S3Profile, StorageCredential, StorageProfile,
         };
         use crate::modules::task_queue::tabular_expiration_queue::TabularExpirationInput;

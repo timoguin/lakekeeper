@@ -1,4 +1,4 @@
-use crate::modules::storage::path_utils;
+use crate::modules::object_stores::path_utils;
 use crate::rest::{ErrorModel, Result};
 use futures::stream::BoxStream;
 use futures::StreamExt;

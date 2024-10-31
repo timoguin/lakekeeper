@@ -2,7 +2,7 @@ use crate::implementations::postgres::{dbutils::DBErrorHandler as _, CatalogStat
 use crate::modules::{TableCommit, TableCreation};
 use crate::{
     modules::{
-        storage::StorageProfile, CreateTableResponse, ErrorModel, GetTableMetadataResponse,
+        object_stores::StorageProfile, CreateTableResponse, ErrorModel, GetTableMetadataResponse,
         LoadTableResponse, Result, TableIdent, TableIdentUuid,
     },
     SecretIdent, WarehouseIdent,

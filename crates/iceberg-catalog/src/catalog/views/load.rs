@@ -2,7 +2,7 @@ use crate::catalog::require_warehouse_id;
 use crate::catalog::tables::{require_active_warehouse, validate_table_or_view_ident};
 use crate::catalog::views::parse_view_location;
 use crate::modules::authz::{Authorizer, CatalogViewAction, CatalogWarehouseAction};
-use crate::modules::storage::{StorageCredential, StoragePermissions};
+use crate::modules::object_stores::{StorageCredential, StoragePermissions};
 use crate::modules::{Catalog, SecretStore, State, Transaction, ViewMetadataWithLocation};
 use crate::modules::{GetWarehouseResponse, Result};
 use crate::request_metadata::RequestMetadata;

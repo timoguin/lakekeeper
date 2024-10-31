@@ -259,7 +259,7 @@ mod tests {
 
     #[needs_env_var(TEST_KV2 = 1)]
     mod kv2 {
-        use crate::modules::storage::{S3Credential, StorageCredential};
+        use crate::modules::object_stores::{S3Credential, StorageCredential};
         use crate::CONFIG;
 
         use super::super::*;

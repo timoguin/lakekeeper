@@ -4,7 +4,7 @@ pub mod contract_verification;
 pub mod event_publisher;
 pub mod health;
 pub mod secrets;
-pub mod storage;
+pub mod object_stores;
 mod tabular_idents;
 pub mod task_queue;
 pub mod token_verification;

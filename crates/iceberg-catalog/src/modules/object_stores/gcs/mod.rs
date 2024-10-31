@@ -2,10 +2,10 @@
 
 use crate::WarehouseIdent;
 
-use crate::modules::storage::error::{
+use crate::modules::object_stores::error::{
     CredentialsError, FileIoError, TableConfigError, UpdateError, ValidationError,
 };
-use crate::modules::storage::StoragePermissions;
+use crate::modules::object_stores::StoragePermissions;
 use crate::rest::{iceberg::v1::DataAccess, CatalogConfig};
 
 use super::StorageType;
@@ -321,7 +321,7 @@ fn validate_bucket_name(bucket: &str) -> Result<(), ValidationError> {
 
 #[cfg(test)]
 mod test {
-    use crate::modules::storage::gcs::validate_bucket_name;
+    use crate::modules::object_stores::gcs::validate_bucket_name;
     use needs_env_var::needs_env_var;
 
     // Bucket names: Your bucket names must meet the following requirements:
@@ -358,9 +358,9 @@ mod test {
 
     #[needs_env_var(TEST_GCS = 1)]
     mod cloud_tests {
-        use crate::modules::storage::gcs::{GcsCredential, GcsProfile, GcsServiceKey};
-        use crate::modules::storage::StorageCredential;
-        use crate::modules::storage::StorageProfile;
+        use crate::modules::object_stores::gcs::{GcsCredential, GcsProfile, GcsServiceKey};
+        use crate::modules::object_stores::StorageCredential;
+        use crate::modules::object_stores::StorageProfile;
 
         #[tokio::test]
         async fn test_can_validate() {

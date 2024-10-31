@@ -1,7 +1,7 @@
 use super::authz::TableUuid;
 use super::{
-    storage::StorageProfile, NamespaceIdentUuid, ProjectIdent, RoleId, TableIdentUuid, UserId,
-    ViewIdentUuid, WarehouseIdent, WarehouseStatus,
+    object_stores::StorageProfile, NamespaceIdentUuid, ProjectIdent, RoleId, TableIdentUuid,
+    UserId, ViewIdentUuid, WarehouseIdent, WarehouseStatus,
 };
 use crate::modules::health::HealthExt;
 pub use crate::rest::iceberg::v1::{

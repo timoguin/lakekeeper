@@ -13,7 +13,7 @@ use iceberg::spec::{TableMetadata, ViewMetadata};
 use iceberg_ext::catalog::rest::IcebergErrorResponse;
 pub use namespace::{MAX_NAMESPACE_DEPTH, NAMESPACE_ID_PROPERTY, UNSUPPORTED_NAMESPACE_PROPERTIES};
 
-use crate::modules::storage::StorageCredential;
+use crate::modules::object_stores::StorageCredential;
 use crate::rest::iceberg::v1::{PageToken, MAX_PAGE_SIZE};
 use crate::rest::{iceberg::v1::Prefix, ErrorModel, Result};
 use crate::{
@@ -169,7 +169,7 @@ pub(crate) mod test {
     use crate::modules::authz::Authorizer;
     use crate::modules::contract_verification::ContractVerifiers;
     use crate::modules::event_publisher::CloudEventsPublisher;
-    use crate::modules::storage::{
+    use crate::modules::object_stores::{
         S3Credential, S3Flavor, S3Profile, StorageCredential, StorageProfile,
     };
     use crate::modules::task_queue::TaskQueues;

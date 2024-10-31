@@ -1,11 +1,11 @@
 use crate::WarehouseIdent;
 
 use crate::catalog::io::IoError;
-use crate::modules::storage::error::{
+use crate::modules::object_stores::error::{
     CredentialsError, FileIoError, TableConfigError, UpdateError, ValidationError,
 };
-use crate::modules::storage::path_utils::reduce_scheme_string;
-use crate::modules::storage::{StoragePermissions, StorageProfile, StorageType};
+use crate::modules::object_stores::path_utils::reduce_scheme_string;
+use crate::modules::object_stores::{StoragePermissions, StorageProfile, StorageType};
 use crate::rest::{iceberg::v1::DataAccess, CatalogConfig, Result};
 use azure_storage::prelude::{BlobSasPermissions, BlobSignedResource};
 use azure_storage::shared_access_signature::service_sas::BlobSharedAccessSignature;
@@ -753,7 +753,7 @@ fn validate_account_name(account_name: &str) -> Result<(), ValidationError> {
 #[cfg(test)]
 mod test {
     use crate::modules::{
-        storage::StorageLocations, tabular_idents::TabularIdentUuid, NamespaceIdentUuid,
+        object_stores::StorageLocations, tabular_idents::TabularIdentUuid, NamespaceIdentUuid,
     };
 
     use super::*;
@@ -761,8 +761,8 @@ mod test {
 
     #[needs_env_var(TEST_AZURE = 1)]
     mod azure_tests {
-        use crate::modules::storage::{AzCredential, AzdlsProfile};
-        use crate::modules::storage::{StorageCredential, StorageProfile};
+        use crate::modules::object_stores::{AzCredential, AzdlsProfile};
+        use crate::modules::object_stores::{StorageCredential, StorageProfile};
 
         #[tokio::test]
         async fn test_can_validate() {

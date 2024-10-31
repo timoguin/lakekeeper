@@ -24,7 +24,7 @@ use crate::implementations::postgres::user::{
     create_or_update_user, delete_user, list_users, search_user,
 };
 use crate::modules::{
-    storage::StorageProfile, Catalog, CreateNamespaceRequest, CreateNamespaceResponse,
+    object_stores::StorageProfile, Catalog, CreateNamespaceRequest, CreateNamespaceResponse,
     CreateOrUpdateUserResponse, CreateTableResponse, DeletionDetails, GetNamespaceResponse,
     GetProjectResponse, GetTableMetadataResponse, GetWarehouseResponse, ListFlags,
     ListNamespacesQuery, ListNamespacesResponse, LoadTableResponse, NamespaceIdent,

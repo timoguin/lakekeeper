@@ -1,4 +1,4 @@
-pub use crate::modules::storage::{
+pub use crate::modules::object_stores::{
     AzCredential, AzdlsProfile, GcsCredential, GcsProfile, GcsServiceKey, S3Credential, S3Profile,
     StorageCredential, StorageProfile,
 };

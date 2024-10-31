@@ -1,6 +1,6 @@
 use crate::catalog::compression_codec::UnsupportedCompressionCodec;
 use crate::catalog::io::IoError;
-use crate::modules::storage::{StorageProfile, StorageType};
+use crate::modules::object_stores::{StorageProfile, StorageType};
 use iceberg_ext::catalog::rest::{ErrorModel, IcebergErrorResponse};
 
 #[derive(Debug, thiserror::Error)]
