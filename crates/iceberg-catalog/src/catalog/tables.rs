@@ -131,7 +131,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                     }
                     .boxed()
                 },
-                |(fetched_t, fetched_t2)| {
+                |fetched_t, fetched_t2| {
                     let authorizer = authorizer.clone();
                     let request_metadata = request_metadata.clone();
                     async move {
@@ -1485,6 +1485,7 @@ mod test {
         use crate::api::iceberg::types::{PageToken, Prefix};
         use crate::api::iceberg::v1::tables::Service;
         use crate::api::iceberg::v1::{DataAccess, ListTablesQuery, NamespaceParameters};
+        use crate::api::management::v1::warehouse::TabularDeleteProfile;
         use crate::catalog::test::random_request_metadata;
         use crate::catalog::CatalogServer;
         use crate::service::authz::implementations::openfga::tests::ObjectHidingMock;
@@ -1530,8 +1531,14 @@ mod test {
             let hiding_mock = ObjectHidingMock::new();
             let authz = hiding_mock.to_authorizer();
 
-            let (ctx, warehouse) =
-                crate::catalog::test::setup(pool.clone(), prof, Some(cred), authz).await;
+            let (ctx, warehouse) = crate::catalog::test::setup(
+                pool.clone(),
+                prof,
+                Some(cred),
+                authz,
+                TabularDeleteProfile::Hard {},
+            )
+            .await;
             let ns = crate::catalog::test::create_ns(
                 ctx.clone(),
                 warehouse.warehouse_id.to_string(),

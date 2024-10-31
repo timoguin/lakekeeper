@@ -58,21 +58,16 @@ pub(crate) async fn list_views<C: Catalog, A: Authorizer + Clone, S: SecretStore
                         page_size: Some(ps),
                         page_token: page_token.into(),
                     };
-                    let views = C::list_views(
-                        warehouse_id,
-                        &namespace,
-                        false,
-                        trx.transaction(),
-                        query.into(),
-                    )
-                    .await?;
+                    let views =
+                        C::list_views(warehouse_id, &namespace, false, trx.transaction(), query)
+                            .await?;
 
                     let (ids, idents) = views.tabulars.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
                     Ok((idents, ids, views.next_page_token))
                 }
                 .boxed()
             },
-            |(fetched_t, fetched_t2)| {
+            |fetched_t, fetched_t2| {
                 let authorizer = authorizer.clone();
                 let request_metadata = request_metadata.clone();
                 async move {
@@ -112,6 +107,7 @@ mod test {
     mod minio {
         use crate::api::iceberg::types::{PageToken, Prefix};
         use crate::api::iceberg::v1::{DataAccess, ListTablesQuery, NamespaceParameters};
+        use crate::api::management::v1::warehouse::TabularDeleteProfile;
         use crate::catalog::test::random_request_metadata;
         use crate::catalog::CatalogServer;
         use crate::service::authz::implementations::openfga::tests::ObjectHidingMock;
@@ -126,8 +122,14 @@ mod test {
             let hiding_mock = ObjectHidingMock::new();
             let authz = hiding_mock.to_authorizer();
 
-            let (ctx, warehouse) =
-                crate::catalog::test::setup(pool.clone(), prof, Some(cred), authz).await;
+            let (ctx, warehouse) = crate::catalog::test::setup(
+                pool.clone(),
+                prof,
+                Some(cred),
+                authz,
+                TabularDeleteProfile::Hard {},
+            )
+            .await;
             let ns = crate::catalog::test::create_ns(
                 ctx.clone(),
                 warehouse.warehouse_id.to_string(),

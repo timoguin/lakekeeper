@@ -7,7 +7,7 @@ pub(crate) mod namespace;
 #[cfg(feature = "s3-signer")]
 mod s3_signer;
 mod tables;
-mod views;
+pub(crate) mod views;
 
 use iceberg::spec::{TableMetadata, ViewMetadata};
 use iceberg_ext::catalog::rest::IcebergErrorResponse;
@@ -92,7 +92,7 @@ pub(crate) async fn fetch_until_full_page<
     page_size: Option<i64>,
     page_token: PageToken,
     mut fetch_fn: FetchFun,
-    mut filter_fn: impl FnMut((Vec<Entity>, Vec<EntityId>)) -> FilteredFuture,
+    mut filter_fn: impl FnMut(Vec<Entity>, Vec<EntityId>) -> FilteredFuture,
     t: &'d mut C::Transaction,
 ) -> Result<(Vec<Entity>, Vec<EntityId>, Option<String>)>
 where
@@ -119,7 +119,7 @@ where
     })?;
     let page_token = page_token.as_option().map(ToString::to_string);
     let (fetched_t, fetched_t2, mut next_page) = fetch_fn(page_size, page_token, t).await?;
-    let (mut fetched_t, mut fetched_t2) = filter_fn((fetched_t, fetched_t2)).await?;
+    let (mut fetched_t, mut fetched_t2) = filter_fn(fetched_t, fetched_t2).await?;
 
     while fetched_t.len() < usize_page_size {
         let (more_t, more_id, next_p) = fetch_fn(
@@ -140,7 +140,7 @@ where
             break;
         }
         next_page = next_p;
-        let (more_t, more_id) = filter_fn((more_t, more_id)).await?;
+        let (more_t, more_id) = filter_fn(more_t, more_id).await?;
         fetched_t.extend(more_t);
         fetched_t2.extend(more_id);
     }
@@ -149,7 +149,7 @@ where
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use crate::api::iceberg::types::Prefix;
     use crate::api::iceberg::v1::namespace::Service;
     use crate::api::management::v1::project::{CreateProjectRequest, Service as _};
@@ -235,6 +235,7 @@ mod test {
         storage_profile: StorageProfile,
         storage_credential: Option<StorageCredential>,
         authorizer: T,
+        delete_profile: TabularDeleteProfile,
     ) -> (
         ApiContext<State<T, PostgresCatalog, SecretsState>>,
         CreateWarehouseResponse,
@@ -257,7 +258,7 @@ mod test {
                 project_id: Some(proj.project_id),
                 storage_profile,
                 storage_credential,
-                delete_profile: TabularDeleteProfile::Hard {},
+                delete_profile,
             },
             api_context.clone(),
             random_request_metadata(),
