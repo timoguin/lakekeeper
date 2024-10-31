@@ -1,7 +1,7 @@
 use crate::api::iceberg::v1::PaginationQuery;
 use crate::api::management::v1::role::{ListRolesResponse, Role, SearchRoleResponse};
 use crate::implementations::postgres::dbutils::DBErrorHandler;
-use crate::service::{Result, RoleId};
+use crate::modules::{Result, RoleId};
 use crate::ProjectIdent;
 use iceberg_ext::catalog::rest::ErrorModel;
 use uuid::Uuid;
@@ -213,7 +213,7 @@ mod test {
     use super::*;
     use crate::api::iceberg::v1::PageToken;
     use crate::implementations::postgres::{CatalogState, PostgresCatalog, PostgresTransaction};
-    use crate::service::{Catalog, Transaction};
+    use crate::modules::{Catalog, Transaction};
 
     #[sqlx::test]
     async fn test_create_role(pool: sqlx::PgPool) {

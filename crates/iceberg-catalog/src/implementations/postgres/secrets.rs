@@ -1,7 +1,7 @@
 use super::ReadWrite;
 use crate::api::{ErrorModel, Result};
-use crate::service::health::{Health, HealthExt};
-use crate::service::secrets::{Secret, SecretIdent, SecretStore};
+use crate::modules::health::{Health, HealthExt};
+use crate::modules::secrets::{Secret, SecretIdent, SecretStore};
 use crate::CONFIG;
 use async_trait::async_trait;
 use http::StatusCode;
@@ -170,7 +170,7 @@ impl SecretStore for SecretsState {
 
 #[cfg(test)]
 mod tests {
-    use crate::service::storage::{S3Credential, StorageCredential};
+    use crate::modules::storage::{S3Credential, StorageCredential};
 
     use super::*;
 

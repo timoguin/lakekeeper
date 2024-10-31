@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use url::Url;
 
-use crate::service::task_queue::TaskQueueConfig;
+use crate::modules::task_queue::TaskQueueConfig;
 use crate::{ProjectIdent, WarehouseIdent};
 use itertools::Itertools;
 use serde::{Deserialize, Deserializer, Serialize};

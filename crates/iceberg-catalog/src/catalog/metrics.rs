@@ -1,7 +1,7 @@
 use crate::api::iceberg::v1::{ApiContext, Result, TableParameters};
 use crate::request_metadata::RequestMetadata;
 
-use crate::service::{authz::Authorizer, secrets::SecretStore, Catalog, State};
+use crate::modules::{authz::Authorizer, secrets::SecretStore, Catalog, State};
 
 use super::CatalogServer;
 

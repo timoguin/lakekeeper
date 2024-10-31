@@ -3,7 +3,7 @@ use crate::api::iceberg::v1::PaginationQuery;
 use crate::api::management::v1::user::{
     ListUsersResponse, SearchUser, SearchUserResponse, User, UserLastUpdatedWith, UserType,
 };
-use crate::service::{CreateOrUpdateUserResponse, Result, UserId};
+use crate::modules::{CreateOrUpdateUserResponse, Result, UserId};
 use itertools::Itertools;
 
 #[derive(sqlx::Type, Debug, Clone, Copy)]

@@ -9,13 +9,13 @@ use crate::catalog::tables::{
 };
 use crate::catalog::views::validate_view_properties;
 use crate::catalog::{maybe_get_secret, require_warehouse_id};
+use crate::modules::authz::{Authorizer, CatalogNamespaceAction, CatalogWarehouseAction};
+use crate::modules::event_publisher::EventMetadata;
+use crate::modules::storage::{StorageLocations as _, StoragePermissions};
+use crate::modules::TabularIdentUuid;
+use crate::modules::{Catalog, SecretStore, State, Transaction};
+use crate::modules::{Result, ViewIdentUuid};
 use crate::request_metadata::RequestMetadata;
-use crate::service::authz::{Authorizer, CatalogNamespaceAction, CatalogWarehouseAction};
-use crate::service::event_publisher::EventMetadata;
-use crate::service::storage::{StorageLocations as _, StoragePermissions};
-use crate::service::TabularIdentUuid;
-use crate::service::{Catalog, SecretStore, State, Transaction};
-use crate::service::{Result, ViewIdentUuid};
 use iceberg::spec::ViewMetadataBuilder;
 use iceberg::{TableIdent, ViewCreation};
 use iceberg_ext::catalog::rest::{CreateViewRequest, ErrorModel, LoadViewResult};
@@ -196,7 +196,7 @@ pub(crate) mod test {
 
     use crate::implementations::postgres::namespace::tests::initialize_namespace;
     use crate::implementations::postgres::secrets::SecretsState;
-    use crate::service::authz::AllowAllAuthorizer;
+    use crate::modules::authz::AllowAllAuthorizer;
     use iceberg::NamespaceIdent;
     use serde_json::json;
     use sqlx::PgPool;

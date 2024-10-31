@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use iceberg_catalog::api::management::v1::api_doc as v1_api_doc;
-use iceberg_catalog::service::authz::implementations::openfga::UnauthenticatedOpenFGAAuthorizer;
-use iceberg_catalog::service::authz::AllowAllAuthorizer;
+use iceberg_catalog::modules::authz::implementations::openfga::UnauthenticatedOpenFGAAuthorizer;
+use iceberg_catalog::modules::authz::AllowAllAuthorizer;
 use iceberg_catalog::{AuthZBackend, CONFIG};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -114,7 +114,7 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Migrate {}) => {
             print_info();
             println!("Migrating authorizer...");
-            iceberg_catalog::service::authz::implementations::migrate_default_authorizer().await?;
+            iceberg_catalog::modules::authz::implementations::migrate_default_authorizer().await?;
             println!("Authorizer migration complete.");
 
             println!("Migrating database...");

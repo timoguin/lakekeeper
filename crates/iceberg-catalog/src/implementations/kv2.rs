@@ -1,6 +1,6 @@
 use crate::api::{ErrorModel, Result};
-use crate::service::health::{Health, HealthExt, HealthStatus};
-use crate::service::secrets::{Secret, SecretIdent, SecretStore};
+use crate::modules::health::{Health, HealthExt, HealthStatus};
+use crate::modules::secrets::{Secret, SecretIdent, SecretStore};
 use std::fmt::Formatter;
 
 use async_trait::async_trait;
@@ -259,7 +259,7 @@ mod tests {
 
     #[needs_env_var(TEST_KV2 = 1)]
     mod kv2 {
-        use crate::service::storage::{S3Credential, StorageCredential};
+        use crate::modules::storage::{S3Credential, StorageCredential};
         use crate::CONFIG;
 
         use super::super::*;

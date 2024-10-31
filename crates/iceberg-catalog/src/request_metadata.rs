@@ -1,4 +1,4 @@
-use crate::service::token_verification::{Actor, AuthDetails};
+use crate::modules::token_verification::{Actor, AuthDetails};
 use axum::middleware::Next;
 use axum::response::Response;
 use http::HeaderMap;

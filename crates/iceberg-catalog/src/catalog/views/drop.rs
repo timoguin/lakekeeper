@@ -5,15 +5,15 @@ use crate::api::management::v1::TabularType;
 use crate::api::ApiContext;
 use crate::catalog::require_warehouse_id;
 use crate::catalog::tables::validate_table_or_view_ident;
+use crate::modules::authz::{Authorizer, CatalogViewAction, CatalogWarehouseAction};
+use crate::modules::contract_verification::ContractVerification;
+use crate::modules::event_publisher::EventMetadata;
+use crate::modules::task_queue::tabular_expiration_queue::TabularExpirationInput;
+use crate::modules::task_queue::tabular_purge_queue::TabularPurgeInput;
+use crate::modules::TabularIdentUuid;
+use crate::modules::{Catalog, SecretStore, State, Transaction};
+use crate::modules::{Result, ViewIdentUuid};
 use crate::request_metadata::RequestMetadata;
-use crate::service::authz::{Authorizer, CatalogViewAction, CatalogWarehouseAction};
-use crate::service::contract_verification::ContractVerification;
-use crate::service::event_publisher::EventMetadata;
-use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
-use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
-use crate::service::TabularIdentUuid;
-use crate::service::{Catalog, SecretStore, State, Transaction};
-use crate::service::{Result, ViewIdentUuid};
 use uuid::Uuid;
 
 pub(crate) async fn drop_view<C: Catalog, A: Authorizer + Clone, S: SecretStore>(

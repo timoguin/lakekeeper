@@ -15,9 +15,9 @@ pub use namespace::{MAX_NAMESPACE_DEPTH, NAMESPACE_ID_PROPERTY, UNSUPPORTED_NAME
 
 use crate::api::iceberg::v1::{PageToken, MAX_PAGE_SIZE};
 use crate::api::{iceberg::v1::Prefix, ErrorModel, Result};
-use crate::service::storage::StorageCredential;
+use crate::modules::storage::StorageCredential;
 use crate::{
-    service::{authz::Authorizer, secrets::SecretStore, Catalog},
+    modules::{authz::Authorizer, secrets::SecretStore, Catalog},
     WarehouseIdent,
 };
 use futures::future::BoxFuture;
@@ -174,15 +174,15 @@ pub(crate) mod test {
     use crate::implementations::postgres::{
         CatalogState, PostgresCatalog, ReadWrite, SecretsState,
     };
-    use crate::request_metadata::RequestMetadata;
-    use crate::service::authz::Authorizer;
-    use crate::service::contract_verification::ContractVerifiers;
-    use crate::service::event_publisher::CloudEventsPublisher;
-    use crate::service::storage::{
+    use crate::modules::authz::Authorizer;
+    use crate::modules::contract_verification::ContractVerifiers;
+    use crate::modules::event_publisher::CloudEventsPublisher;
+    use crate::modules::storage::{
         S3Credential, S3Flavor, S3Profile, StorageCredential, StorageProfile,
     };
-    use crate::service::task_queue::TaskQueues;
-    use crate::service::{AuthDetails, State};
+    use crate::modules::task_queue::TaskQueues;
+    use crate::modules::{AuthDetails, State};
+    use crate::request_metadata::RequestMetadata;
     use crate::CONFIG;
     use iceberg::NamespaceIdent;
     use iceberg_ext::catalog::rest::{CreateNamespaceRequest, CreateNamespaceResponse};

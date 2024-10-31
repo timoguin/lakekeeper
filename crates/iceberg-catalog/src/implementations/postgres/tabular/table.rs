@@ -1,7 +1,7 @@
 use crate::implementations::postgres::{dbutils::DBErrorHandler as _, CatalogState};
-use crate::service::{TableCommit, TableCreation};
+use crate::modules::{TableCommit, TableCreation};
 use crate::{
-    service::{
+    modules::{
         storage::StorageProfile, CreateTableResponse, ErrorModel, GetTableMetadataResponse,
         LoadTableResponse, Result, TableIdent, TableIdentUuid,
     },
@@ -33,7 +33,7 @@ const MAX_PARAMETERS: usize = 30000;
 pub(crate) async fn table_ident_to_id<'e, 'c: 'e, E>(
     warehouse_id: WarehouseIdent,
     table: &TableIdent,
-    list_flags: crate::service::ListFlags,
+    list_flags: crate::modules::ListFlags,
     catalog_state: E,
 ) -> Result<Option<TableIdentUuid>>
 where
@@ -61,7 +61,7 @@ where
 pub(crate) async fn table_idents_to_ids<'e, 'c: 'e, E>(
     warehouse_id: WarehouseIdent,
     tables: HashSet<&TableIdent>,
-    list_flags: crate::service::ListFlags,
+    list_flags: crate::modules::ListFlags,
     catalog_state: E,
 ) -> Result<HashMap<TableIdent, Option<TableIdentUuid>>>
 where
@@ -258,7 +258,7 @@ pub(crate) async fn load_tables(
 pub(crate) async fn list_tables<'e, 'c: 'e, E>(
     warehouse_id: WarehouseIdent,
     namespace: &NamespaceIdent,
-    list_flags: crate::service::ListFlags,
+    list_flags: crate::modules::ListFlags,
     transaction: E,
     pagination_query: PaginationQuery,
 ) -> Result<PaginatedTabulars<TableIdentUuid, TableIdent>>
@@ -295,7 +295,7 @@ where
 pub(crate) async fn get_table_metadata_by_id(
     warehouse_id: WarehouseIdent,
     table: TableIdentUuid,
-    list_flags: crate::service::ListFlags,
+    list_flags: crate::modules::ListFlags,
     catalog_state: CatalogState,
 ) -> Result<Option<GetTableMetadataResponse>> {
     let table = sqlx::query!(
@@ -359,7 +359,7 @@ pub(crate) async fn get_table_metadata_by_id(
 pub(crate) async fn get_table_metadata_by_s3_location(
     warehouse_id: WarehouseIdent,
     location: &Location,
-    list_flags: crate::service::ListFlags,
+    list_flags: crate::modules::ListFlags,
     catalog_state: CatalogState,
 ) -> Result<Option<GetTableMetadataResponse>> {
     let query_strings = location
@@ -598,7 +598,7 @@ pub(crate) mod tests {
     use crate::implementations::postgres::namespace::tests::initialize_namespace;
     use crate::implementations::postgres::warehouse::set_warehouse_status;
     use crate::implementations::postgres::warehouse::test::initialize_warehouse;
-    use crate::service::{ListFlags, NamespaceIdentUuid};
+    use crate::modules::{ListFlags, NamespaceIdentUuid};
 
     use crate::implementations::postgres::tabular::mark_tabular_as_deleted;
     use iceberg::spec::{NestedField, PrimitiveType, Schema, UnboundPartitionSpec};

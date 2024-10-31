@@ -4,10 +4,10 @@ use crate::api::Result;
 use crate::catalog::namespace::validate_namespace_ident;
 use crate::catalog::require_warehouse_id;
 use crate::request_metadata::RequestMetadata;
-use crate::service::authz::{
+use crate::modules::authz::{
     Authorizer, CatalogNamespaceAction, CatalogViewAction, CatalogWarehouseAction,
 };
-use crate::service::{Catalog, SecretStore, State, Transaction};
+use crate::modules::{Catalog, SecretStore, State, Transaction};
 use futures::FutureExt;
 use iceberg_ext::catalog::rest::{IcebergErrorResponse, ListTablesResponse};
 
@@ -110,7 +110,7 @@ mod test {
         use crate::api::management::v1::warehouse::TabularDeleteProfile;
         use crate::catalog::test::random_request_metadata;
         use crate::catalog::CatalogServer;
-        use crate::service::authz::implementations::openfga::tests::ObjectHidingMock;
+        use crate::modules::authz::implementations::openfga::tests::ObjectHidingMock;
 
         use crate::api::iceberg::v1::views::Service;
         use itertools::Itertools;

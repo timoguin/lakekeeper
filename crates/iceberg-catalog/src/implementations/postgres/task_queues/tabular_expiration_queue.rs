@@ -5,10 +5,10 @@ use crate::implementations::postgres::task_queues::{
     pick_task, queue_task, record_failure, record_success,
 };
 use crate::implementations::postgres::DeletionKind;
-use crate::service::task_queue::tabular_expiration_queue::{
+use crate::modules::task_queue::tabular_expiration_queue::{
     TabularExpirationInput, TabularExpirationTask,
 };
-use crate::service::task_queue::{TaskQueue, TaskQueueConfig};
+use crate::modules::task_queue::{TaskQueue, TaskQueueConfig};
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -163,8 +163,8 @@ impl TaskQueue for TabularExpirationQueue {
 #[cfg(test)]
 mod test {
     use super::super::test::setup;
-    use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
-    use crate::service::task_queue::{TaskQueue, TaskQueueConfig};
+    use crate::modules::task_queue::tabular_expiration_queue::TabularExpirationInput;
+    use crate::modules::task_queue::{TaskQueue, TaskQueueConfig};
     use sqlx::PgPool;
 
     #[sqlx::test]

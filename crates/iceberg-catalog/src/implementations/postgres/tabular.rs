@@ -3,7 +3,7 @@ pub(crate) mod view;
 
 use super::dbutils::DBErrorHandler as _;
 use crate::{
-    service::{ErrorModel, Result, TableIdent},
+    modules::{ErrorModel, Result, TableIdent},
     WarehouseIdent,
 };
 use http::StatusCode;
@@ -12,8 +12,8 @@ use iceberg_ext::NamespaceIdent;
 use crate::api::iceberg::v1::{PaginatedTabulars, PaginationQuery, MAX_PAGE_SIZE};
 
 use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToken};
-use crate::service::DeletionDetails;
-use crate::service::{TabularIdentBorrowed, TabularIdentOwned, TabularIdentUuid};
+use crate::modules::DeletionDetails;
+use crate::modules::{TabularIdentBorrowed, TabularIdentOwned, TabularIdentUuid};
 use iceberg_ext::configs::Location;
 use sqlx::postgres::PgArguments;
 use sqlx::{Arguments, Execute, FromRow, Postgres, QueryBuilder};
@@ -34,7 +34,7 @@ pub(crate) enum TabularType {
 pub(crate) async fn tabular_ident_to_id<'a, 'e, 'c: 'e, E>(
     warehouse_id: WarehouseIdent,
     table: &TabularIdentBorrowed<'a>,
-    list_flags: crate::service::ListFlags,
+    list_flags: crate::modules::ListFlags,
     transaction: E,
 ) -> Result<Option<TabularIdentUuid>>
 where
@@ -97,7 +97,7 @@ struct TabularRow {
 pub(crate) async fn tabular_idents_to_ids<'e, 'c: 'e, E>(
     warehouse_id: WarehouseIdent,
     tables: HashSet<TabularIdentBorrowed<'_>>,
-    list_flags: crate::service::ListFlags,
+    list_flags: crate::modules::ListFlags,
     catalog_state: E,
 ) -> Result<HashMap<TabularIdentOwned, Option<TabularIdentUuid>>>
 where
@@ -333,7 +333,7 @@ pub(crate) async fn create_tabular<'a>(
 pub(crate) async fn list_tabulars<'e, 'c, E>(
     warehouse_id: WarehouseIdent,
     namespace: Option<&NamespaceIdent>,
-    list_flags: crate::service::ListFlags,
+    list_flags: crate::modules::ListFlags,
     catalog_state: E,
     typ: Option<TabularType>,
     pagination_query: PaginationQuery,

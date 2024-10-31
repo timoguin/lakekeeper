@@ -1,5 +1,5 @@
 use crate::{
-    service::{
+    modules::{
         health::{Health, HealthExt},
         secrets::{Secret, SecretInStorage},
         SecretStore,

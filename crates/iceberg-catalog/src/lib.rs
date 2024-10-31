@@ -9,8 +9,8 @@
 
 pub mod catalog;
 mod config;
-pub mod service;
-pub use service::{ProjectIdent, SecretIdent, WarehouseIdent};
+pub mod modules;
+pub use modules::{ProjectIdent, SecretIdent, WarehouseIdent};
 
 pub use config::{AuthZBackend, OpenFGAAuth, SecretBackend, CONFIG, DEFAULT_PROJECT_ID};
 

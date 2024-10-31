@@ -2,25 +2,25 @@ use anyhow::{anyhow, Error};
 use iceberg_catalog::api::router::{new_full_router, serve as service_serve};
 use iceberg_catalog::implementations::postgres::{CatalogState, PostgresCatalog, ReadWrite};
 use iceberg_catalog::implementations::Secrets;
-use iceberg_catalog::service::authz::implementations::{
+use iceberg_catalog::modules::authz::implementations::{
     get_default_authorizer_from_config, Authorizers,
 };
-use iceberg_catalog::service::authz::Authorizer;
-use iceberg_catalog::service::contract_verification::ContractVerifiers;
-use iceberg_catalog::service::event_publisher::{
+use iceberg_catalog::modules::authz::Authorizer;
+use iceberg_catalog::modules::contract_verification::ContractVerifiers;
+use iceberg_catalog::modules::event_publisher::{
     CloudEventBackend, CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message,
     NatsBackend,
 };
-use iceberg_catalog::service::health::ServiceHealthProvider;
-use iceberg_catalog::service::token_verification::Verifier;
-use iceberg_catalog::service::{Catalog, StartupValidationData};
+use iceberg_catalog::modules::health::ServiceHealthProvider;
+use iceberg_catalog::modules::token_verification::Verifier;
+use iceberg_catalog::modules::{Catalog, StartupValidationData};
 use iceberg_catalog::{SecretBackend, CONFIG};
 use reqwest::Url;
 
 use iceberg_catalog::implementations::postgres::task_queues::{
     TabularExpirationQueue, TabularPurgeQueue,
 };
-use iceberg_catalog::service::task_queue::TaskQueues;
+use iceberg_catalog::modules::task_queue::TaskQueues;
 use std::sync::Arc;
 
 pub(crate) async fn serve(bind_addr: std::net::SocketAddr) -> Result<(), anyhow::Error> {

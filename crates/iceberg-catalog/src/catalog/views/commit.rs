@@ -10,16 +10,16 @@ use crate::catalog::tables::{
     validate_table_or_view_ident,
 };
 use crate::catalog::views::{parse_view_location, validate_view_updates};
-use crate::request_metadata::RequestMetadata;
-use crate::service::authz::{CatalogViewAction, CatalogWarehouseAction};
-use crate::service::contract_verification::ContractVerification;
-use crate::service::event_publisher::EventMetadata;
-use crate::service::storage::{StorageLocations as _, StoragePermissions};
-use crate::service::{
+use crate::modules::authz::{CatalogViewAction, CatalogWarehouseAction};
+use crate::modules::contract_verification::ContractVerification;
+use crate::modules::event_publisher::EventMetadata;
+use crate::modules::storage::{StorageLocations as _, StoragePermissions};
+use crate::modules::{
     authz::Authorizer, secrets::SecretStore, Catalog, GetWarehouseResponse, State, Transaction,
     ViewMetadataWithLocation,
 };
-use crate::service::{TabularIdentUuid, ViewIdentUuid};
+use crate::modules::{TabularIdentUuid, ViewIdentUuid};
+use crate::request_metadata::RequestMetadata;
 use http::StatusCode;
 use iceberg::spec::{AppendViewVersion, ViewMetadata, ViewMetadataBuilder};
 use iceberg_ext::catalog::rest::ViewUpdate;

@@ -7,8 +7,8 @@ use crate::implementations::postgres::tabular::TabularType as DbTabularType;
 use crate::implementations::postgres::task_queues::{
     pick_task, queue_task, record_failure, record_success,
 };
-use crate::service::task_queue::tabular_purge_queue::{TabularPurgeInput, TabularPurgeTask};
-use crate::service::task_queue::{TaskQueue, TaskQueueConfig};
+use crate::modules::task_queue::tabular_purge_queue::{TabularPurgeInput, TabularPurgeTask};
+use crate::modules::task_queue::{TaskQueue, TaskQueueConfig};
 
 super::impl_pg_task_queue!(TabularPurgeQueue);
 
@@ -157,8 +157,8 @@ impl TaskQueue for TabularPurgeQueue {
 #[cfg(test)]
 mod test {
     use super::super::test::setup;
-    use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
-    use crate::service::task_queue::{TaskQueue, TaskQueueConfig};
+    use crate::modules::task_queue::tabular_purge_queue::TabularPurgeInput;
+    use crate::modules::task_queue::{TaskQueue, TaskQueueConfig};
     use sqlx::PgPool;
 
     #[sqlx::test]

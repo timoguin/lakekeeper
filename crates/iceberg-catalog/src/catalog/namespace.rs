@@ -6,10 +6,10 @@ use crate::api::iceberg::v1::{
     UpdateNamespacePropertiesRequest, UpdateNamespacePropertiesResponse,
 };
 use crate::api::set_not_found_status_code;
+use crate::modules::authz::{CatalogNamespaceAction, CatalogWarehouseAction, NamespaceParent};
+use crate::modules::{authz::Authorizer, secrets::SecretStore, Catalog, State, Transaction as _};
+use crate::modules::{GetWarehouseResponse, NamespaceIdentUuid};
 use crate::request_metadata::RequestMetadata;
-use crate::service::authz::{CatalogNamespaceAction, CatalogWarehouseAction, NamespaceParent};
-use crate::service::{authz::Authorizer, secrets::SecretStore, Catalog, State, Transaction as _};
-use crate::service::{GetWarehouseResponse, NamespaceIdentUuid};
 use crate::{catalog, CONFIG};
 use futures::FutureExt;
 use http::StatusCode;
@@ -614,8 +614,8 @@ mod tests {
         use crate::api::management::v1::warehouse::TabularDeleteProfile;
         use crate::catalog::test::random_request_metadata;
         use crate::catalog::CatalogServer;
-        use crate::service::authz::implementations::openfga::tests::ObjectHidingMock;
-        use crate::service::ListNamespacesQuery;
+        use crate::modules::authz::implementations::openfga::tests::ObjectHidingMock;
+        use crate::modules::ListNamespacesQuery;
         use iceberg::NamespaceIdent;
         use iceberg_ext::catalog::rest::CreateNamespaceRequest;
         use std::collections::HashSet;

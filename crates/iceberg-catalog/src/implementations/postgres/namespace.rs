@@ -1,11 +1,11 @@
 use super::dbutils::DBErrorHandler;
 use crate::api::iceberg::v1::MAX_PAGE_SIZE;
 use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToken};
-use crate::service::{
+use crate::modules::{
     CreateNamespaceRequest, CreateNamespaceResponse, ErrorModel, GetNamespaceResponse,
     ListNamespacesQuery, ListNamespacesResponse, NamespaceIdent, Result,
 };
-use crate::{catalog::namespace::MAX_NAMESPACE_DEPTH, service::NamespaceIdentUuid, WarehouseIdent};
+use crate::{catalog::namespace::MAX_NAMESPACE_DEPTH, modules::NamespaceIdentUuid, WarehouseIdent};
 use chrono::Utc;
 use http::StatusCode;
 use sqlx::types::Json;
@@ -389,7 +389,7 @@ pub(crate) async fn update_namespace_properties(
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::implementations::postgres::{CatalogState, PostgresTransaction};
-    use crate::service::{Catalog as _, Transaction as _};
+    use crate::modules::{Catalog as _, Transaction as _};
 
     use super::super::warehouse::test::initialize_warehouse;
     use super::super::PostgresCatalog;

@@ -1,13 +1,13 @@
-use crate::service::event_publisher::CloudEventsPublisher;
+use crate::modules::event_publisher::CloudEventsPublisher;
 use crate::tracing::{MakeRequestUuid7, RestMakeSpan};
 
 use crate::api::management::v1::{api_doc as v1_api_doc, ApiServer};
 use crate::api::{iceberg::v1::new_v1_full_router, shutdown_signal, ApiContext};
-use crate::service::contract_verification::ContractVerifiers;
-use crate::service::health::ServiceHealthProvider;
-use crate::service::task_queue::TaskQueues;
-use crate::service::token_verification::Verifier;
-use crate::service::{authz::Authorizer, Catalog, SecretStore, State};
+use crate::modules::contract_verification::ContractVerifiers;
+use crate::modules::health::ServiceHealthProvider;
+use crate::modules::task_queue::TaskQueues;
+use crate::modules::token_verification::Verifier;
+use crate::modules::{authz::Authorizer, Catalog, SecretStore, State};
 use axum::response::IntoResponse;
 use axum::{routing::get, Json, Router};
 use axum_extra::middleware::option_layer;
@@ -59,7 +59,7 @@ pub fn new_full_router<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
     let maybe_auth_layer = option_layer(token_verifier.map(|o| {
         axum::middleware::from_fn_with_state(
             o,
-            crate::service::token_verification::auth_middleware_fn,
+            crate::modules::token_verification::auth_middleware_fn,
         )
     }));
 

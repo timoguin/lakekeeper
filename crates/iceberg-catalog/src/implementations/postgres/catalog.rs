@@ -26,7 +26,7 @@ use crate::implementations::postgres::tabular::{list_tabulars, mark_tabular_as_d
 use crate::implementations::postgres::user::{
     create_or_update_user, delete_user, list_users, search_user,
 };
-use crate::service::{
+use crate::modules::{
     storage::StorageProfile, Catalog, CreateNamespaceRequest, CreateNamespaceResponse,
     CreateOrUpdateUserResponse, CreateTableResponse, DeletionDetails, GetNamespaceResponse,
     GetProjectResponse, GetTableMetadataResponse, GetWarehouseResponse, ListFlags,
@@ -37,18 +37,18 @@ use crate::service::{
 use crate::SecretIdent;
 use crate::{
     api::iceberg::v1::{PaginatedTabulars, PaginationQuery},
-    service::TableCommit,
+    modules::TableCommit,
 };
 use crate::{
     api::management::v1::role::{ListRolesResponse, Role, SearchRoleResponse},
-    service::ViewIdentUuid,
+    modules::ViewIdentUuid,
 };
-use crate::{api::management::v1::warehouse::TabularDeleteProfile, service::TabularIdentUuid};
+use crate::{api::management::v1::warehouse::TabularDeleteProfile, modules::TabularIdentUuid};
 use crate::{
     implementations::postgres::tabular::view::{
         create_view, drop_view, list_views, load_view, rename_view, view_ident_to_id,
     },
-    service::TabularIdentOwned,
+    modules::TabularIdentOwned,
 };
 use iceberg::spec::ViewMetadata;
 use iceberg_ext::catalog::rest::ErrorModel;

@@ -1,18 +1,18 @@
 use crate::api::management::v1::{ApiServer, DeletedTabularResponse, ListDeletedTabularsResponse};
 use crate::api::{ApiContext, Result};
-use crate::request_metadata::RequestMetadata;
-use crate::service::authz::{CatalogProjectAction, CatalogWarehouseAction};
-pub use crate::service::storage::{
+use crate::modules::authz::{CatalogProjectAction, CatalogWarehouseAction};
+pub use crate::modules::storage::{
     AzCredential, AzdlsProfile, GcsCredential, GcsProfile, GcsServiceKey, S3Credential, S3Profile,
     StorageCredential, StorageProfile,
 };
+use crate::request_metadata::RequestMetadata;
 use futures::FutureExt;
 
 use crate::api::iceberg::v1::{PaginatedTabulars, PaginationQuery};
 
 use crate::api::management::v1::role::require_project_id;
-pub use crate::service::WarehouseStatus;
-use crate::service::{
+pub use crate::modules::WarehouseStatus;
+use crate::modules::{
     authz::Authorizer, secrets::SecretStore, Catalog, ListFlags, State, TabularIdentUuid,
     Transaction,
 };
@@ -648,13 +648,13 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                                 &request_metadata,
                                 warehouse_id,
                                 (*id).into(),
-                                &crate::service::authz::CatalogViewAction::CanIncludeInList,
+                                &crate::modules::authz::CatalogViewAction::CanIncludeInList,
                             ),
                             TabularIdentUuid::Table(id) => authorizer.is_allowed_table_action(
                                 &request_metadata,
                                 warehouse_id,
                                 (*id).into(),
-                                &crate::service::authz::CatalogTableAction::CanIncludeInList,
+                                &crate::modules::authz::CatalogTableAction::CanIncludeInList,
                             ),
                         }))
                         .await?
@@ -712,8 +712,8 @@ impl axum::response::IntoResponse for GetWarehouseResponse {
     }
 }
 
-impl From<crate::service::GetWarehouseResponse> for GetWarehouseResponse {
-    fn from(warehouse: crate::service::GetWarehouseResponse) -> Self {
+impl From<crate::modules::GetWarehouseResponse> for GetWarehouseResponse {
+    fn from(warehouse: crate::modules::GetWarehouseResponse) -> Self {
         Self {
             id: warehouse.id.to_uuid(),
             name: warehouse.name,
@@ -788,7 +788,7 @@ mod test {
         };
         use crate::catalog::test::random_request_metadata;
         use crate::catalog::CatalogServer;
-        use crate::service::authz::implementations::openfga::tests::ObjectHidingMock;
+        use crate::modules::authz::implementations::openfga::tests::ObjectHidingMock;
         use iceberg::TableIdent;
 
         use crate::api::iceberg::v1::views::Service;

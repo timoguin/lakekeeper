@@ -1,16 +1,16 @@
 use crate::api::management::v1::ApiServer;
 use crate::api::{ApiContext, Result};
-use crate::request_metadata::RequestMetadata;
-pub use crate::service::storage::{
+pub use crate::modules::storage::{
     AzCredential, AzdlsProfile, GcsCredential, GcsProfile, GcsServiceKey, S3Credential, S3Profile,
     StorageCredential, StorageProfile,
 };
+use crate::request_metadata::RequestMetadata;
 use serde::{Deserialize, Serialize};
 
 use crate::api::management::v1::role::require_project_id;
-use crate::service::authz::{CatalogProjectAction, CatalogServerAction};
-pub use crate::service::WarehouseStatus;
-use crate::service::{
+use crate::modules::authz::{CatalogProjectAction, CatalogServerAction};
+pub use crate::modules::WarehouseStatus;
+use crate::modules::{
     authz::{Authorizer, ListProjectsResponse as AuthZListProjectsResponse},
     secrets::SecretStore,
     Catalog, State, Transaction,

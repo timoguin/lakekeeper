@@ -3,10 +3,10 @@ use crate::api::iceberg::v1::{
     ApiContext, CatalogConfig, ErrorModel, PageToken, PaginationQuery, Result,
 };
 use crate::api::management::v1::user::UserLastUpdatedWith;
+use crate::modules::authz::{CatalogProjectAction, CatalogWarehouseAction};
+use crate::modules::{authz::Authorizer, Catalog, ProjectIdent, State};
+use crate::modules::{AuthDetails, SecretStore, Transaction};
 use crate::request_metadata::RequestMetadata;
-use crate::service::authz::{CatalogProjectAction, CatalogWarehouseAction};
-use crate::service::{authz::Authorizer, Catalog, ProjectIdent, State};
-use crate::service::{AuthDetails, SecretStore, Transaction};
 use crate::{CONFIG, DEFAULT_PROJECT_ID};
 use std::str::FromStr;
 

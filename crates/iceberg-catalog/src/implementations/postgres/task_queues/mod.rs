@@ -3,7 +3,7 @@ mod tabular_purge_queue;
 
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use crate::implementations::postgres::ReadWrite;
-use crate::service::task_queue::{Task, TaskQueueConfig, TaskStatus};
+use crate::modules::task_queue::{Task, TaskQueueConfig, TaskStatus};
 use crate::WarehouseIdent;
 pub use tabular_expiration_queue::TabularExpirationQueue;
 pub use tabular_purge_queue::TabularPurgeQueue;

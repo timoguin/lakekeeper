@@ -2,15 +2,15 @@ use crate::api::iceberg::types::Prefix;
 use crate::api::ApiContext;
 use crate::catalog::require_warehouse_id;
 use crate::catalog::tables::{maybe_body_to_json, validate_table_or_view_ident};
-use crate::request_metadata::RequestMetadata;
-use crate::service::authz::{
+use crate::modules::authz::{
     Authorizer, CatalogNamespaceAction, CatalogViewAction, CatalogWarehouseAction,
 };
-use crate::service::contract_verification::ContractVerification;
-use crate::service::event_publisher::EventMetadata;
-use crate::service::Result;
-use crate::service::TabularIdentUuid;
-use crate::service::{Catalog, SecretStore, State, Transaction};
+use crate::modules::contract_verification::ContractVerification;
+use crate::modules::event_publisher::EventMetadata;
+use crate::modules::Result;
+use crate::modules::TabularIdentUuid;
+use crate::modules::{Catalog, SecretStore, State, Transaction};
+use crate::request_metadata::RequestMetadata;
 use http::StatusCode;
 use iceberg_ext::catalog::rest::RenameTableRequest;
 use uuid::Uuid;

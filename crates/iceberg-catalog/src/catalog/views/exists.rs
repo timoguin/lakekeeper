@@ -2,10 +2,10 @@ use crate::api::iceberg::v1::ViewParameters;
 use crate::api::{set_not_found_status_code, ApiContext};
 use crate::catalog::require_warehouse_id;
 use crate::catalog::tables::validate_table_or_view_ident;
+use crate::modules::authz::{Authorizer, CatalogViewAction, CatalogWarehouseAction};
+use crate::modules::Result;
+use crate::modules::{Catalog, SecretStore, State, Transaction};
 use crate::request_metadata::RequestMetadata;
-use crate::service::authz::{Authorizer, CatalogViewAction, CatalogWarehouseAction};
-use crate::service::Result;
-use crate::service::{Catalog, SecretStore, State, Transaction};
 
 pub(crate) async fn view_exists<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
     parameters: ViewParameters,

@@ -13,7 +13,7 @@ pub(crate) mod warehouse;
 use self::dbutils::DBErrorHandler;
 use crate::api::Result;
 use crate::config::{DynAppConfig, PgSslMode};
-use crate::service::health::{Health, HealthExt, HealthStatus};
+use crate::modules::health::{Health, HealthExt, HealthStatus};
 use crate::CONFIG;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -116,7 +116,7 @@ pub struct PostgresTransaction {
 }
 
 #[async_trait::async_trait]
-impl crate::service::Transaction<CatalogState> for PostgresTransaction {
+impl crate::modules::Transaction<CatalogState> for PostgresTransaction {
     type Transaction<'a> = &'a mut sqlx::Transaction<'static, sqlx::Postgres>;
 
     async fn begin_write(db_state: CatalogState) -> Result<Self> {

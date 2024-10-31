@@ -1,10 +1,10 @@
 use crate::api::management::v1::ApiServer;
 use crate::api::ApiContext;
-use crate::request_metadata::RequestMetadata;
-use crate::service::authz::Authorizer;
-use crate::service::{
+use crate::modules::authz::Authorizer;
+use crate::modules::{
     Actor, AuthDetails, Catalog, Result, SecretStore, StartupValidationData, State, Transaction,
 };
+use crate::request_metadata::RequestMetadata;
 use crate::{config, ProjectIdent, CONFIG, DEFAULT_PROJECT_ID};
 use iceberg_ext::catalog::rest::ErrorModel;
 use serde::{Deserialize, Serialize};

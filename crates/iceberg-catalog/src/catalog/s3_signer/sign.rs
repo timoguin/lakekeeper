@@ -6,7 +6,7 @@ use std::vec;
 use crate::api::iceberg::types::Prefix;
 use crate::api::{ApiContext, Result};
 use crate::api::{ErrorModel, IcebergErrorResponse, S3SignRequest, S3SignResponse};
-use crate::service::authz::{CatalogTableAction, CatalogWarehouseAction};
+use crate::modules::authz::{CatalogTableAction, CatalogWarehouseAction};
 use aws_sigv4::http_request::{sign as aws_sign, SignableBody, SignableRequest, SigningSettings};
 use aws_sigv4::sign::v4;
 use aws_sigv4::{self};
@@ -14,10 +14,10 @@ use aws_sigv4::{self};
 use super::super::CatalogServer;
 use super::error::SignError;
 use crate::catalog::require_warehouse_id;
+use crate::modules::storage::{S3Location, S3Profile, StorageCredential};
+use crate::modules::{authz::Authorizer, secrets::SecretStore, Catalog, ListFlags, State};
+use crate::modules::{GetTableMetadataResponse, TableIdentUuid};
 use crate::request_metadata::RequestMetadata;
-use crate::service::storage::{S3Location, S3Profile, StorageCredential};
-use crate::service::{authz::Authorizer, secrets::SecretStore, Catalog, ListFlags, State};
-use crate::service::{GetTableMetadataResponse, TableIdentUuid};
 use crate::WarehouseIdent;
 
 const READ_METHODS: &[&str] = &["GET", "HEAD"];
@@ -410,7 +410,7 @@ fn validate_uri(
 
 pub(super) mod s3_utils {
     use super::{ErrorModel, Result};
-    use crate::service::storage::S3Location;
+    use crate::modules::storage::S3Location;
     use lazy_regex::regex;
 
     #[derive(Debug)]
@@ -491,7 +491,7 @@ pub(super) mod s3_utils {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::service::storage::S3Flavor;
+    use crate::modules::storage::S3Flavor;
 
     #[derive(Debug)]
     struct TC {

@@ -1,7 +1,7 @@
 use crate::api::Result;
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use crate::implementations::postgres::tabular::view::{ViewFormatVersion, ViewRepresentationType};
-use crate::service::{ViewIdentUuid, ViewMetadataWithLocation};
+use crate::modules::{ViewIdentUuid, ViewMetadataWithLocation};
 use chrono::{DateTime, Utc};
 use iceberg::spec::{
     Schema, SqlViewRepresentation, ViewMetadata, ViewRepresentation, ViewRepresentations,

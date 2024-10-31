@@ -15,7 +15,7 @@ pub mod v1 {
     use crate::api::iceberg::v1::PaginationQuery;
 
     use crate::api::management::v1::user::{ListUsersQuery, ListUsersResponse};
-    use crate::service::{
+    use crate::modules::{
         authz::Authorizer, storage::S3Flavor, Actor, Catalog, CreateOrUpdateUserResponse, RoleId,
         SecretStore, State, TabularIdentUuid, UserId,
     };
