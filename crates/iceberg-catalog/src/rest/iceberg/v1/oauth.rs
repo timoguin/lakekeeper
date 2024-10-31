@@ -6,6 +6,8 @@ use axum::routing::post;
 use axum::{Extension, Form, Router};
 use iceberg_ext::catalog::rest::{OAuthTokenRequest, OAuthTokenResponse};
 
+// TODO: @c-thiel delete this?
+
 #[async_trait]
 pub trait Service<S: crate::rest::ThreadSafe>
 where

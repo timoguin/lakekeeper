@@ -31,22 +31,23 @@ pub mod v1 {
         RegisterTableRequest, RenameTableRequest, Result, UpdateNamespacePropertiesRequest,
         UpdateNamespacePropertiesResponse,
     };
+    use crate::service::catalog;
 
     // according to crates/iceberg-ext/src/catalog/rest/namespace.rs:115 we should
     // return everything - in order to block malicious requests, we still cap to 1000
     pub const MAX_PAGE_SIZE: i64 = 1000;
 
     pub fn new_v1_full_router<
-        #[cfg(feature = "s3-signer")] T: config::Service<S>
+        #[cfg(feature = "s3-signer")] T: catalog::config::Service<S>
             + namespace::Service<S>
-            + tables::Service<S>
-            + metrics::Service<S>
-            + s3_signer::Service<S>
+            + catalog::tables::Service<S>
+            + catalog::metrics::Service<S>
+            + catalog::s3_signer::Service<S>
             + views::Service<S>,
-        #[cfg(not(feature = "s3-signer"))] T: config::Service<S>
+        #[cfg(not(feature = "s3-signer"))] T: catalog::config::Service<S>
             + namespace::Service<S>
-            + tables::Service<S>
-            + metrics::Service<S>
+            + catalog::tables::Service<S>
+            + catalog::metrics::Service<S>
             + views::Service<S>,
         S: ThreadSafe,
     >() -> Router<ApiContext<S>> {
@@ -63,7 +64,8 @@ pub mod v1 {
         router
     }
 
-    pub fn new_v1_config_router<C: config::Service<S>, S: ThreadSafe>() -> Router<ApiContext<S>> {
+    pub fn new_v1_config_router<C: catalog::config::Service<S>, S: ThreadSafe>(
+    ) -> Router<ApiContext<S>> {
         config::router::<C, S>()
     }
 

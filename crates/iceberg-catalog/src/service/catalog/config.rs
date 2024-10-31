@@ -1,3 +1,4 @@
+use super::CatalogServer;
 use crate::modules::authz::{CatalogProjectAction, CatalogWarehouseAction};
 use crate::modules::{authz::Authorizer, CatalogBackend, ProjectIdent, State};
 use crate::modules::{AuthDetails, SecretStore, Transaction};
@@ -8,9 +9,9 @@ use crate::rest::iceberg::v1::{
 };
 use crate::rest::management::v1::user::UserLastUpdatedWith;
 use crate::{CONFIG, DEFAULT_PROJECT_ID};
+use async_trait::async_trait;
+use iceberg_ext::catalog::rest::IcebergErrorResponse;
 use std::str::FromStr;
-
-use super::CatalogServer;
 
 #[async_trait::async_trait]
 impl<A: Authorizer + Clone, C: CatalogBackend, S: SecretStore>
@@ -150,4 +151,16 @@ async fn maybe_register_user<D: CatalogBackend>(
     }
 
     Ok(())
+}
+
+#[async_trait]
+pub trait Service<S: crate::rest::ThreadSafe>
+where
+    Self: Send + Sync + 'static,
+{
+    async fn get_config(
+        query: GetConfigQueryParams,
+        api_context: ApiContext<S>,
+        request_metadata: RequestMetadata,
+    ) -> Result<CatalogConfig, IcebergErrorResponse>;
 }

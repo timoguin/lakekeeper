@@ -1,23 +1,9 @@
 use crate::request_metadata::RequestMetadata;
 use crate::rest::ApiContext;
-use crate::rest::Result;
-use async_trait::async_trait;
+use crate::service::catalog::config::Service;
 use axum::extract::{Query, State};
 use axum::routing::get;
 use axum::{Extension, Router};
-use iceberg_ext::catalog::rest::{CatalogConfig, IcebergErrorResponse};
-
-#[async_trait]
-pub trait Service<S: crate::rest::ThreadSafe>
-where
-    Self: Send + Sync + 'static,
-{
-    async fn get_config(
-        query: GetConfigQueryParams,
-        api_context: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<CatalogConfig, IcebergErrorResponse>;
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GetConfigQueryParams {

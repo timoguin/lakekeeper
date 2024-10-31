@@ -1,87 +1,19 @@
+use super::ListTablesQuery;
 use crate::request_metadata::RequestMetadata;
 use crate::rest::iceberg::types::{DropParams, Prefix};
 use crate::rest::iceberg::v1::namespace::{NamespaceIdentUrl, NamespaceParameters};
-use crate::rest::iceberg::v1::DataAccess;
-use crate::rest::{
-    ApiContext, CommitViewRequest, CreateViewRequest, ListTablesResponse, LoadViewResult,
-    RenameTableRequest, Result,
-};
+use crate::rest::{ApiContext, CommitViewRequest, CreateViewRequest, RenameTableRequest};
+use crate::service::catalog::views::Service;
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{
-    async_trait,
     extract::{Path, Query},
     routing::get,
     Extension, Json, Router,
 };
 use http::{HeaderMap, StatusCode};
 use iceberg::TableIdent;
-
-use super::ListTablesQuery;
-
-#[async_trait]
-pub trait Service<S: crate::rest::ThreadSafe>
-where
-    Self: Send + Sync + 'static,
-{
-    /// List all views underneath a given namespace
-    async fn list_views(
-        parameters: NamespaceParameters,
-        query: ListTablesQuery,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<ListTablesResponse>;
-
-    /// Create a view in the given namespace
-    async fn create_view(
-        parameters: NamespaceParameters,
-        request: CreateViewRequest,
-        state: ApiContext<S>,
-        data_access: DataAccess,
-        request_metadata: RequestMetadata,
-    ) -> Result<LoadViewResult>;
-
-    /// Load a view from the catalog
-    async fn load_view(
-        parameters: ViewParameters,
-        state: ApiContext<S>,
-        data_access: DataAccess,
-        request_metadata: RequestMetadata,
-    ) -> Result<LoadViewResult>;
-
-    /// Commit updates to a view.
-    async fn commit_view(
-        parameters: ViewParameters,
-        request: CommitViewRequest,
-        state: ApiContext<S>,
-        data_access: DataAccess,
-        request_metadata: RequestMetadata,
-    ) -> Result<LoadViewResult>;
-
-    /// Remove a view from the catalog
-    async fn drop_view(
-        parameters: ViewParameters,
-        drop_params: DropParams,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<()>;
-
-    /// Check if a view exists
-    async fn view_exists(
-        parameters: ViewParameters,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<()>;
-
-    /// Rename a view from its current name to a new name
-    async fn rename_view(
-        prefix: Option<Prefix>,
-        request: RenameTableRequest,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<()>;
-}
 
 #[allow(clippy::too_many_lines)]
 pub fn router<I: Service<S>, S: crate::rest::ThreadSafe>() -> Router<ApiContext<S>> {

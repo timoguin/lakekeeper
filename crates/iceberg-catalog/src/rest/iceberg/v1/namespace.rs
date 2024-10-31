@@ -3,6 +3,7 @@ use std::ops::Deref;
 use crate::request_metadata::RequestMetadata;
 use crate::rest::iceberg::types::{PageToken, Prefix};
 use crate::rest::{ApiContext, Result};
+use crate::service::catalog::namespace::Service;
 use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -14,62 +15,6 @@ use iceberg_ext::catalog::rest::{
     UpdateNamespacePropertiesRequest, UpdateNamespacePropertiesResponse,
 };
 use serde::{Deserialize, Deserializer, Serialize};
-
-#[async_trait]
-pub trait Service<S: crate::rest::ThreadSafe>
-where
-    Self: Send + Sync + 'static,
-{
-    /// List all namespaces at a certain level, optionally starting from a given parent namespace.
-    /// If table accounting.tax.paid.info exists, using 'SELECT NAMESPACE IN accounting'
-    /// would translate into `GET /namespaces?parent=accounting` and must return a namespace,
-    /// ["accounting", "tax"] only. Using 'SELECT NAMESPACE IN accounting.tax' would translate into `GET /namespaces?parent=accounting%1Ftax` and must return a namespace, ["accounting", "tax", "paid"]. If `parent` is not provided, all top-level namespaces should be listed.
-    async fn list_namespaces(
-        prefix: Option<Prefix>,
-        query: ListNamespacesQuery,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<ListNamespacesResponse>;
-
-    /// Create a namespace, with an optional set of properties.
-    /// The server might also add properties, such as `last_modified_time` etc.
-    async fn create_namespace(
-        prefix: Option<Prefix>,
-        request: CreateNamespaceRequest,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<CreateNamespaceResponse>;
-
-    /// Return all stored metadata properties for a given namespace
-    async fn load_namespace_metadata(
-        parameters: NamespaceParameters,
-        query: GetNamespacePropertiesQuery,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<GetNamespaceResponse>;
-
-    /// Check if a namespace exists
-    async fn namespace_exists(
-        parameters: NamespaceParameters,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<()>;
-
-    /// Drop a namespace from the catalog. Namespace must be empty.
-    async fn drop_namespace(
-        parameters: NamespaceParameters,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<()>;
-
-    /// Set or remove properties on a namespace
-    async fn update_namespace_properties(
-        parameters: NamespaceParameters,
-        request: UpdateNamespacePropertiesRequest,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<UpdateNamespacePropertiesResponse>;
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamespaceIdentUrl(Vec<String>);

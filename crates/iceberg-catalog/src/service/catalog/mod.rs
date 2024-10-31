@@ -1,12 +1,12 @@
 mod commit_tables;
 pub(crate) mod compression_codec;
-mod config;
+pub(crate) mod config;
 pub(crate) mod io;
-mod metrics;
+pub(crate) mod metrics;
 pub(crate) mod namespace;
 #[cfg(feature = "s3-signer")]
-mod s3_signer;
-mod tables;
+pub(crate) mod s3_signer;
+pub(crate) mod tables;
 pub(crate) mod views;
 
 use iceberg::spec::{TableMetadata, ViewMetadata};
@@ -175,13 +175,13 @@ pub(crate) mod test {
     use crate::modules::{AuthDetails, State};
     use crate::request_metadata::RequestMetadata;
     use crate::rest::iceberg::types::Prefix;
-    use crate::rest::iceberg::v1::namespace::Service;
     use crate::rest::management::v1::project::{CreateProjectRequest, Service as _};
     use crate::rest::management::v1::warehouse::{
         CreateWarehouseRequest, CreateWarehouseResponse, TabularDeleteProfile,
     };
     use crate::rest::management::v1::ApiServer;
     use crate::rest::ApiContext;
+    use crate::service::catalog::namespace::Service;
     use crate::service::catalog::CatalogServer;
     use crate::service::management::warehouse::Service as _;
     use crate::CONFIG;

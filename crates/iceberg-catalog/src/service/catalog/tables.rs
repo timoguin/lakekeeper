@@ -35,6 +35,7 @@ use crate::rest::set_not_found_status_code;
 use crate::service::catalog::compression_codec::CompressionCodec;
 
 use crate::service;
+use async_trait::async_trait;
 use http::StatusCode;
 use iceberg::spec::{
     MetadataLog, TableMetadataBuildResult, PROPERTY_METADATA_PREVIOUS_VERSIONS_MAX,
@@ -50,9 +51,87 @@ const PROPERTY_METADATA_DELETE_AFTER_COMMIT_ENABLED: &str =
     "write.metadata.delete-after-commit.enabled";
 const PROPERTY_METADATA_DELETE_AFTER_COMMIT_ENABLED_DEFAULT: bool = false;
 
+#[async_trait]
+pub trait Service<S: crate::rest::ThreadSafe>
+where
+    Self: Send + Sync + 'static,
+{
+    /// List all table identifiers underneath a given namespace
+    async fn list_tables(
+        parameters: NamespaceParameters,
+        query: ListTablesQuery,
+        state: ApiContext<S>,
+        request_metadata: RequestMetadata,
+    ) -> Result<ListTablesResponse>;
+
+    /// Create a table in the given namespace
+    async fn create_table(
+        parameters: NamespaceParameters,
+        request: CreateTableRequest,
+        data_access: DataAccess,
+        state: ApiContext<S>,
+        request_metadata: RequestMetadata,
+    ) -> Result<LoadTableResult>;
+
+    /// Register a table in the given namespace using given metadata file location
+    async fn register_table(
+        parameters: NamespaceParameters,
+        request: RegisterTableRequest,
+        state: ApiContext<S>,
+        request_metadata: RequestMetadata,
+    ) -> Result<LoadTableResult>;
+
+    /// Load a table from the catalog
+    async fn load_table(
+        parameters: TableParameters,
+        data_access: DataAccess,
+        state: ApiContext<S>,
+        request_metadata: RequestMetadata,
+    ) -> Result<LoadTableResult>;
+
+    /// Commit updates to a table
+    async fn commit_table(
+        parameters: TableParameters,
+        request: CommitTableRequest,
+        state: ApiContext<S>,
+        request_metadata: RequestMetadata,
+    ) -> Result<CommitTableResponse>;
+
+    /// Drop a table from the catalog
+    async fn drop_table(
+        parameters: TableParameters,
+        drop_params: DropParams,
+        state: ApiContext<S>,
+        request_metadata: RequestMetadata,
+    ) -> Result<()>;
+
+    /// Check if a table exists
+    async fn table_exists(
+        parameters: TableParameters,
+        state: ApiContext<S>,
+        request_metadata: RequestMetadata,
+    ) -> Result<()>;
+
+    /// Rename a table
+    async fn rename_table(
+        prefix: Option<Prefix>,
+        request: RenameTableRequest,
+        state: ApiContext<S>,
+        request_metadata: RequestMetadata,
+    ) -> Result<()>;
+
+    /// Commit updates to multiple tables in an atomic operation
+    async fn commit_transaction(
+        prefix: Option<Prefix>,
+        request: CommitTransactionRequest,
+        state: ApiContext<S>,
+        request_metadata: RequestMetadata,
+    ) -> Result<()>;
+}
+
 #[async_trait::async_trait]
-impl<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore>
-    crate::rest::iceberg::v1::tables::Service<State<A, C, S>> for CatalogServer<C, A, S>
+impl<C: CatalogBackend, A: Authorizer + Clone, S: SecretStore> Service<State<A, C, S>>
+    for CatalogServer<C, A, S>
 {
     #[allow(clippy::too_many_lines)]
     /// List all table identifiers underneath a given namespace
@@ -1481,9 +1560,9 @@ mod test {
     mod minio {
         use crate::modules::authz::implementations::openfga::tests::ObjectHidingMock;
         use crate::rest::iceberg::types::{PageToken, Prefix};
-        use crate::rest::iceberg::v1::tables::Service;
         use crate::rest::iceberg::v1::{DataAccess, ListTablesQuery, NamespaceParameters};
         use crate::rest::management::v1::warehouse::TabularDeleteProfile;
+        use crate::service::catalog::tables::Service;
         use crate::service::catalog::test::random_request_metadata;
         use crate::service::catalog::CatalogServer;
 

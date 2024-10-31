@@ -1,19 +1,18 @@
+use super::{PageToken, PaginationQuery};
 use crate::request_metadata::RequestMetadata;
 use crate::rest::iceberg::types::{DropParams, Prefix};
 use crate::rest::iceberg::v1::namespace::{NamespaceIdentUrl, NamespaceParameters};
 use crate::rest::{
-    ApiContext, CommitTableRequest, CommitTableResponse, CommitTransactionRequest,
-    CreateTableRequest, ListTablesResponse, LoadTableResult, RegisterTableRequest,
-    RenameTableRequest, Result,
+    ApiContext, CommitTableRequest, CommitTransactionRequest, CreateTableRequest,
+    RegisterTableRequest, RenameTableRequest,
 };
+use crate::service::catalog::tables::Service;
 use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum::{async_trait, Extension, Json, Router};
+use axum::{Extension, Json, Router};
 use http::{HeaderMap, StatusCode};
 use iceberg::TableIdent;
-
-use super::{PageToken, PaginationQuery};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,84 +36,6 @@ impl From<ListTablesQuery> for PaginationQuery {
             page_size: query.page_size,
         }
     }
-}
-
-#[async_trait]
-pub trait Service<S: crate::rest::ThreadSafe>
-where
-    Self: Send + Sync + 'static,
-{
-    /// List all table identifiers underneath a given namespace
-    async fn list_tables(
-        parameters: NamespaceParameters,
-        query: ListTablesQuery,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<ListTablesResponse>;
-
-    /// Create a table in the given namespace
-    async fn create_table(
-        parameters: NamespaceParameters,
-        request: CreateTableRequest,
-        data_access: DataAccess,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<LoadTableResult>;
-
-    /// Register a table in the given namespace using given metadata file location
-    async fn register_table(
-        parameters: NamespaceParameters,
-        request: RegisterTableRequest,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<LoadTableResult>;
-
-    /// Load a table from the catalog
-    async fn load_table(
-        parameters: TableParameters,
-        data_access: DataAccess,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<LoadTableResult>;
-
-    /// Commit updates to a table
-    async fn commit_table(
-        parameters: TableParameters,
-        request: CommitTableRequest,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<CommitTableResponse>;
-
-    /// Drop a table from the catalog
-    async fn drop_table(
-        parameters: TableParameters,
-        drop_params: DropParams,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<()>;
-
-    /// Check if a table exists
-    async fn table_exists(
-        parameters: TableParameters,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<()>;
-
-    /// Rename a table
-    async fn rename_table(
-        prefix: Option<Prefix>,
-        request: RenameTableRequest,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<()>;
-
-    /// Commit updates to multiple tables in an atomic operation
-    async fn commit_transaction(
-        prefix: Option<Prefix>,
-        request: CommitTransactionRequest,
-        state: ApiContext<S>,
-        request_metadata: RequestMetadata,
-    ) -> Result<()>;
 }
 
 #[allow(clippy::too_many_lines)]

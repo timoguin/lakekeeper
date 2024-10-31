@@ -112,7 +112,7 @@ mod test {
         use crate::service::catalog::test::random_request_metadata;
         use crate::service::catalog::CatalogServer;
 
-        use crate::rest::iceberg::v1::views::Service;
+        use crate::service::catalog::views::Service;
         use itertools::Itertools;
 
         #[sqlx::test]
