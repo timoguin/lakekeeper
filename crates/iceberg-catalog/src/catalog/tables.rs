@@ -7,7 +7,7 @@ use futures::FutureExt;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr as _;
 
-use crate::api::iceberg::types::{DropParams, PageToken};
+use crate::api::iceberg::types::DropParams;
 use crate::api::iceberg::v1::{
     ApiContext, CommitTableRequest, CommitTableResponse, CommitTransactionRequest,
     CreateTableRequest, DataAccess, ErrorModel, ListTablesQuery, ListTablesResponse,
@@ -104,10 +104,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                     async move {
                         let query = PaginationQuery {
                             page_size: Some(ps),
-                            page_token: match page_token {
-                                Some(token) => PageToken::Present(token.clone()),
-                                None => PageToken::NotSpecified,
-                            },
+                            page_token: page_token.into(),
                         };
 
                         let list_tables = C::list_tables(
@@ -1608,6 +1605,7 @@ mod test {
             )
             .await
             .unwrap();
+
             assert_eq!(next.identifiers.len(), 0);
             assert!(next.next_page_token.is_none());
 

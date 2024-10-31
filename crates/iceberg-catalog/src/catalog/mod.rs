@@ -93,7 +93,7 @@ pub(crate) async fn fetch_until_full_page<
     page_token: PageToken,
     mut fetch_fn: FetchFun,
     mut filter_fn: impl FnMut(Vec<Entity>, Vec<EntityId>) -> FilteredFuture,
-    t: &'d mut C::Transaction,
+    transaction: &'d mut C::Transaction,
 ) -> Result<(Vec<Entity>, Vec<EntityId>, Option<String>)>
 where
     FetchFun: for<'c> FnMut(
@@ -107,6 +107,7 @@ where
     let page_size = page_size
         .unwrap_or(DEFAULT_PAGE_SIZE)
         .clamp(1, MAX_PAGE_SIZE);
+    let page_as_usize: usize = page_size.try_into().expect("1, 1000 is a valid usize");
     let usize_page_size = page_size.try_into().map_err(|e| {
         ErrorModel::internal(
             format!(
@@ -118,34 +119,45 @@ where
         )
     })?;
     let page_token = page_token.as_option().map(ToString::to_string);
-    let (fetched_t, fetched_t2, mut next_page) = fetch_fn(page_size, page_token, t).await?;
-    let (mut fetched_t, mut fetched_t2) = filter_fn(fetched_t, fetched_t2).await?;
-
-    while fetched_t.len() < usize_page_size {
-        let (more_t, more_id, next_p) = fetch_fn(
-            (usize_page_size - fetched_t.len())
-                .try_into()
-                .map_err(|e| {
-                    ErrorModel::internal(
-                        "Failed to convert usize to i64",
-                        "InternalServerError",
-                        Some(Box::new(e)),
-                    )
-                })?,
+    let (fetched_entities, fetched_entity_ids, mut next_page) =
+        fetch_fn(page_size, page_token, transaction).await?;
+    let fetched_len = fetched_entities.len();
+    let (mut entities, mut entity_ids) = filter_fn(fetched_entities, fetched_entity_ids).await?;
+    if entities.len() == fetched_len {
+        return Ok((
+            entities,
+            entity_ids,
+            if fetched_len == page_as_usize {
+                next_page
+            } else {
+                None
+            },
+        ));
+    }
+    while entities.len() < usize_page_size {
+        let (more_entities, more_ids, more_page_token) = fetch_fn(
+            (usize_page_size - entities.len()).try_into().map_err(|e| {
+                ErrorModel::internal(
+                    "Failed to convert usize to i64",
+                    "InternalServerError",
+                    Some(Box::new(e)),
+                )
+            })?,
             next_page.clone(),
-            t,
+            transaction,
         )
         .await?;
-        if more_t.is_empty() {
+        if more_entities.is_empty() {
+            next_page = None;
             break;
         }
-        next_page = next_p;
-        let (more_t, more_id) = filter_fn(more_t, more_id).await?;
-        fetched_t.extend(more_t);
-        fetched_t2.extend(more_id);
+        next_page = more_page_token;
+        let (more_entities, more_ids) = filter_fn(more_entities, more_ids).await?;
+        entities.extend(more_entities);
+        entity_ids.extend(more_ids);
     }
 
-    Ok((fetched_t, fetched_t2, next_page))
+    Ok((entities, entity_ids, next_page))
 }
 
 #[cfg(test)]

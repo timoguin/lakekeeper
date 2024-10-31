@@ -2,7 +2,7 @@ use super::{require_warehouse_id, CatalogServer};
 use crate::api::iceberg::v1::namespace::GetNamespacePropertiesQuery;
 use crate::api::iceberg::v1::{
     ApiContext, CreateNamespaceRequest, CreateNamespaceResponse, ErrorModel, GetNamespaceResponse,
-    ListNamespacesQuery, ListNamespacesResponse, NamespaceParameters, PageToken, Prefix, Result,
+    ListNamespacesQuery, ListNamespacesResponse, NamespaceParameters, Prefix, Result,
     UpdateNamespacePropertiesRequest, UpdateNamespacePropertiesResponse,
 };
 use crate::api::set_not_found_status_code;
@@ -80,10 +80,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 async move {
                     let query = ListNamespacesQuery {
                         page_size: Some(ps),
-                        page_token: match page_token {
-                            Some(token) => PageToken::Present(token.clone()),
-                            None => PageToken::NotSpecified,
-                        },
+                        page_token: page_token.into(),
                         parent,
                         return_uuids: true,
                     };
@@ -683,7 +680,7 @@ mod tests {
             .await
             .unwrap();
             assert_eq!(all.namespaces.len(), 10);
-            eprintln!("befsix");
+
             let first_six = CatalogServer::list_namespaces(
                 Some(Prefix(warehouse.warehouse_id.to_string())),
                 ListNamespacesQuery {
@@ -697,7 +694,7 @@ mod tests {
             )
             .await
             .unwrap();
-            eprintln!("fsix");
+
             assert_eq!(first_six.namespaces.len(), 6);
             let first_six_items: HashSet<String, RandomState> = first_six
                 .namespaces
