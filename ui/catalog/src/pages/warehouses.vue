@@ -4,18 +4,9 @@
       <v-col cols="6">
         <v-btn class="mb-6">Add Warehouse</v-btn>
 
-        <v-treeview
-          v-if="!warehouseIsEmpty"
-          :items="treeItems.items"
-          item-key="id"
-          item-title="title"
-          :load-children="loadTree"
-          select-strategy="independent"
-          @click:select="updateSelected"
-          v-model:selected="selected"
-          open-strategy="list"
-          return-object
-        >
+        <v-treeview v-if="!warehouseIsEmpty" :items="treeItems.items" item-key="id" item-title="title"
+          :load-children="loadTree" select-strategy="independent" @click:select="updateSelected"
+          v-model:selected="selected" open-strategy="list" return-object>
           <template #prepend="{ item }">
             <v-icon v-if="item.itemType == 'project'"> mdi-bookmark</v-icon>
             <v-icon v-else-if="item.itemType == 'warehouse'">
@@ -58,6 +49,7 @@ import {
 } from "../common/interfaces";
 import { useUserStore } from "@/stores/user";
 import { useVisualStore } from "@/stores/visual";
+import { AuthMethodsConfiguration, Configuration, createConfiguration, ServerConfiguration, TokenProvider, WarehouseApi } from "@/gen";
 
 const user = useUserStore();
 const visual = useVisualStore();
@@ -79,9 +71,44 @@ const ip = reactive({
   itemType: "projectLevel",
 });
 
+class StaticTokenProvider implements TokenProvider {
+  private token: string;
+
+  constructor(token: string) {
+    this.token = token;
+  }
+
+  async getToken(): Promise<string> {
+    // In a real-world scenario, you might fetch the token from a secure storage or an API
+    return this.token;
+  }
+}
+
+const authConfig: AuthMethodsConfiguration = {
+  bearerAuth: {
+    tokenProvider: new StaticTokenProvider(access_token),
+  }
+};
+
+const server = new ServerConfiguration<{ "basePath": string, "host": string, "scheme": string }>("{scheme}://{host}", { "basePath": "", "host": "localhost:8080", "scheme": "http" })
+
+// Define your custom configuration parameters
+const configParams = {
+  baseServer: server, // Custom server configuration
+  promiseMiddleware: [], // Custom promise-based middleware
+  authMethods: authConfig // Custom authentication methods
+};
+
+const config: Configuration = createConfiguration(configParams);
+
+const warehouseApi = new WarehouseApi(config);
+
 onMounted(async () => {
   try {
-    await loadTree(ip);
+    // await loadTree(ip);
+    console.log("Hello workd");
+    const whL = await warehouseApi.listWarehouses();
+    console.log("WHL:", whL);
   } catch (err) {
     console.error("Failed to load data:", err);
   }

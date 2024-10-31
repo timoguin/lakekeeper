@@ -43,4 +43,4 @@ update-management-openapi:
     LAKEKEEPER__AUTHZ_BACKEND=openfga RUST_LOG=error cargo run management-openapi > openapi/management-open-api.yaml
 
 generate-management-client:
-    npx @openapitools/openapi-generator-cli generate -i openapi/management-open-api.yaml -g typescript-node -o ui/catalog/src/gen/
+    npx @openapitools/openapi-generator-cli generate -i openapi/management-open-api.yaml -g typescript -o ui/catalog/src/gen/
