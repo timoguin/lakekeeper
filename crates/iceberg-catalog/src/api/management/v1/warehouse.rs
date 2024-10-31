@@ -596,6 +596,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         pagination_query: PaginationQuery,
     ) -> Result<ListDeletedTabularsResponse> {
         // ------------------- AuthZ -------------------
+        let catalog = context.v1_state.catalog;
         let authorizer = context.v1_state.authz;
         authorizer
             .require_warehouse_action(
@@ -606,7 +607,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             .await?;
 
         // ------------------- Business Logic -------------------
-        let mut t = C::Transaction::begin_read(context.v1_state.catalog.clone()).await?;
+        let mut t = C::Transaction::begin_read(catalog.clone()).await?;
         let (tabulars, idents, next_page_token) = crate::catalog::fetch_until_full_page::<
             _,
             _,
@@ -617,7 +618,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             pagination_query.page_size,
             pagination_query.page_token,
             |page_size, page_token, _| {
-                let context = context.clone();
+                let catalog = catalog.clone();
                 async move {
                     let PaginatedTabulars {
                         tabulars,
@@ -625,7 +626,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                     } = C::list_tabulars(
                         warehouse_id,
                         ListFlags::only_deleted(),
-                        context.v1_state.catalog,
+                        catalog,
                         PaginationQuery {
                             page_size: Some(page_size),
                             page_token: page_token.into(),
@@ -638,7 +639,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                 .boxed()
             },
             |tabular_idents, tabular_ids| {
-                let authorizer = context.clone().v1_state.authz;
+                let authorizer = authorizer.clone();
                 let request_metadata = request_metadata.clone();
                 async move {
                     let (next_tabulars, next_uuids): (Vec<_>, Vec<_>) =
@@ -824,7 +825,7 @@ mod test {
             };
             // create 10 staged tables
             for i in 0..10 {
-                let v = CatalogServer::create_view(
+                let _ = CatalogServer::create_view(
                     ns_params.clone(),
                     crate::catalog::views::create::test::create_view_request(
                         Some(&format!("view-{i}")),
@@ -930,7 +931,7 @@ mod test {
                 ctx.clone(),
                 PaginationQuery {
                     page_size: Some(6),
-                    page_token: all.next_page_token.into(),
+                    page_token: first_six.next_page_token.into(),
                 },
             )
             .await
