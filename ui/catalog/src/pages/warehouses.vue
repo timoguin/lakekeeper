@@ -49,7 +49,6 @@ import {
 } from "../common/interfaces";
 import { useUserStore } from "@/stores/user";
 import { useVisualStore } from "@/stores/visual";
-import { AuthMethodsConfiguration, Configuration, createConfiguration, ServerConfiguration, TokenProvider, WarehouseApi } from "@/gen";
 
 const user = useUserStore();
 const visual = useVisualStore();
@@ -71,44 +70,46 @@ const ip = reactive({
   itemType: "projectLevel",
 });
 
-class StaticTokenProvider implements TokenProvider {
-  private token: string;
+import createClient, { Middleware } from "openapi-fetch";
+import { client, createWarehouse, listWarehouses } from '../gen/services.gen';
 
-  constructor(token: string) {
-    this.token = token;
-  }
-
-  async getToken(): Promise<string> {
-    // In a real-world scenario, you might fetch the token from a secure storage or an API
-    return this.token;
-  }
-}
-
-const authConfig: AuthMethodsConfiguration = {
-  bearerAuth: {
-    tokenProvider: new StaticTokenProvider(access_token),
-  }
-};
-
-const server = new ServerConfiguration<{ "basePath": string, "host": string, "scheme": string }>("{scheme}://{host}", { "basePath": "", "host": "localhost:8080", "scheme": "http" })
-
-// Define your custom configuration parameters
-const configParams = {
-  baseServer: server, // Custom server configuration
-  promiseMiddleware: [], // Custom promise-based middleware
-  authMethods: authConfig // Custom authentication methods
-};
-
-const config: Configuration = createConfiguration(configParams);
-
-const warehouseApi = new WarehouseApi(config);
+client.setConfig({
+  baseUrl: "http://localhost:8081",
+});
+client.interceptors.request.use((request, options) => {
+  request.headers.set('Authorization', `Bearer ${access_token}`);
+  return request;
+});
 
 onMounted(async () => {
   try {
     // await loadTree(ip);
-    console.log("Hello workd");
-    const whL = await warehouseApi.listWarehouses();
-    console.log("WHL:", whL);
+    console.log("Hello wold");
+    const data1  = await listWarehouses({client});
+    console.log("WHL:", data1);
+
+    const data = await createWarehouse({client, body: {
+      "warehouse-name": "aws_sts",
+      "project-id": "00000000-0000-0000-0000-000000000000",
+      "storage-profile": {
+          "type": "s3",
+          "bucket": "cth-iceberg-catalog",
+          "key-prefix": "test_warehouse",
+          "assume-role-arn": null,
+          "endpoint": null,
+          "region": "eu-central-1",
+          "path-style-access": null,
+          "sts-enabled": true,
+          "sts-role-arn": "arn:aws:iam::156193252594:role/sts-s3"
+      },
+      "storage-credential": {
+          "type": "s3",
+          "credential-type": "access-key",
+          "aws-access-key-id": "fo",
+          "aws-secret-access-key": "bar"
+      }
+  }});
+  console.log("WHL:", data);
   } catch (err) {
     console.error("Failed to load data:", err);
   }

@@ -37,7 +37,7 @@ const userManager = new UserManager(settings);
     const fetchUsers = async () => {
       try {
         const response = await fetch(
-          "http://localhost:8080/management/v1/info",
+          "http://localhost:8081/management/v1/info",
           {
             method: "GET",
             headers: {

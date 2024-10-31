@@ -1,5 +1,5 @@
 <template>
-  <div v-if="!visual.project.bootstrapped">
+  <div v-if="!visual.projectInfo.bootstrapped">
     <v-row>
       <v-col cols="10" offset="1">
         <v-stepper :items="['Global Admin', 'EULA', 'Submit']">
