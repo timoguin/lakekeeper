@@ -59,7 +59,6 @@ lazy-regex = { workspace = true }
 lazy_static = { workspace = true }
 lru = { workspace = true }
 maplit = { workspace = true }
-mockall = { workspace = true }
 openfga-rs = { workspace = true, optional = false }
 percent-encoding = { workspace = true }
 rand = "0.8.5"
@@ -94,6 +93,7 @@ veil = { workspace = true }
 [dev-dependencies]
 figment = { workspace = true, features = ["test"] }
 http-body-util = { workspace = true }
+mockall = { workspace = true }
 needs_env_var = { workspace = true }
 pretty_assertions = { workspace = true }
 serde_urlencoded = "0.7.1"

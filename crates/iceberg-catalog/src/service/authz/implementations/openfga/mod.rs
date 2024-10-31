@@ -1083,7 +1083,7 @@ impl OpenFGAAuthorizer {
     }
 }
 
-#[mockall::automock]
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait Client {
     async fn write(&self, request: WriteRequest) -> Result<Response<WriteResponse>, tonic::Status>;
