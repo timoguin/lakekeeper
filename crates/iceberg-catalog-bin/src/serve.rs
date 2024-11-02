@@ -8,8 +8,8 @@ use iceberg_catalog::service::authz::implementations::{
 use iceberg_catalog::service::authz::Authorizer;
 use iceberg_catalog::service::contract_verification::ContractVerifiers;
 use iceberg_catalog::service::event_publisher::{
-    CloudEventBackend, CloudEventsPublisher, CloudEventsPublisherBackgroundTask, KafkaBackend,
-    KafkaConfig, Message, NatsBackend,
+    kafka::KafkaBackend, kafka::KafkaConfig, nats::NatsBackend, CloudEventBackend,
+    CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message,
 };
 use iceberg_catalog::service::health::ServiceHealthProvider;
 use iceberg_catalog::service::token_verification::Verifier;
@@ -235,7 +235,7 @@ fn build_kafka_producer(
         || kafka_config.conf.contains_key("metadata.broker.list"))
     {
         return Err(anyhow!(
-            "Kafka config map does not conain 'bootstrap.servers' or 'metadata.broker.list'. You need to provide either of those, in addition with any other parameters you need."
+            "Kafka config map does not contain 'bootstrap.servers' or 'metadata.broker.list'. You need to provide either of those, in addition with any other parameters you need."
         ));
     }
     let mut producer_client_config = rdkafka::ClientConfig::new();

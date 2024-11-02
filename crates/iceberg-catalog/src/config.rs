@@ -1,22 +1,20 @@
 //! Contains Configuration of the service Module
+use std::collections::HashSet;
+use std::convert::Infallible;
+use std::ops::{Deref, DerefMut};
+use std::path::PathBuf;
+use std::str::FromStr;
+
 use crate::service::task_queue::TaskQueueConfig;
-use crate::service::task_queue::TaskQueueConfig;
-use crate::WarehouseIdent;
 use crate::{ProjectIdent, WarehouseIdent};
-use anyhow::anyhow;
 use anyhow::{anyhow, Context};
 use http::HeaderValue;
 use itertools::Itertools;
-use itertools::Itertools;
-use itertools::Itertools;
 use serde::{Deserialize, Deserializer, Serialize};
-use serde::{Deserialize, Deserializer, Serialize};
-use serde::{Deserialize, Deserializer, Serialize};
+use url::Url;
 use veil::Redact;
 
-use crate::service::event_publisher::KafkaConfig;
-use crate::service::task_queue::TaskQueueConfig;
-use crate::WarehouseIdent;
+use crate::service::event_publisher::kafka::KafkaConfig;
 const DEFAULT_RESERVED_NAMESPACES: [&str; 2] = ["system", "examples"];
 const DEFAULT_ENCRYPTION_KEY: &str = "<This is unsafe, please set a proper key>";
 
