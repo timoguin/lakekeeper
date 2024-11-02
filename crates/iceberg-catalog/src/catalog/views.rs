@@ -10,24 +10,25 @@ use super::tables::validate_table_properties;
 use super::CatalogServer;
 use crate::api::iceberg::types::DropParams;
 use crate::api::iceberg::v1::{
-    ApiContext, CommitViewRequest, CreateViewRequest, DataAccess, ListTablesResponse,
-    LoadViewResult, NamespaceParameters, PaginationQuery, Prefix, RenameTableRequest, Result,
+    ApiContext, CommitViewRequest, CreateViewRequest, DataAccess, ListTablesQuery,
+    ListTablesResponse, LoadViewResult, NamespaceParameters, Prefix, RenameTableRequest, Result,
     ViewParameters,
 };
 use crate::request_metadata::RequestMetadata;
-use crate::service::{auth::AuthZHandler, secrets::SecretStore, Catalog, State};
+use crate::service::authz::Authorizer;
+use crate::service::{Catalog, SecretStore, State};
 use iceberg_ext::catalog::rest::{ErrorModel, ViewUpdate};
 use iceberg_ext::configs::Location;
 use std::str::FromStr;
 
 #[async_trait::async_trait]
-impl<C: Catalog, A: AuthZHandler, S: SecretStore>
+impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
     crate::api::iceberg::v1::views::Service<State<A, C, S>> for CatalogServer<C, A, S>
 {
     /// List all view identifiers underneath a given namespace
     async fn list_views(
         parameters: NamespaceParameters,
-        query: PaginationQuery,
+        query: ListTablesQuery,
         state: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
     ) -> Result<ListTablesResponse> {
@@ -137,7 +138,7 @@ mod test {
     use crate::implementations::postgres::{
         CatalogState, PostgresCatalog, ReadWrite, SecretsState,
     };
-    use crate::implementations::{AllowAllAuthState, AllowAllAuthZHandler};
+    use crate::service::authz::AllowAllAuthorizer;
     use crate::service::contract_verification::ContractVerifiers;
     use crate::service::event_publisher::CloudEventsPublisher;
     use crate::service::storage::{StorageProfile, TestProfile};
@@ -155,7 +156,7 @@ mod test {
         pool: PgPool,
         namespace_name: Option<Vec<String>>,
     ) -> (
-        ApiContext<State<AllowAllAuthZHandler, PostgresCatalog, SecretsState>>,
+        ApiContext<State<AllowAllAuthorizer, PostgresCatalog, SecretsState>>,
         NamespaceIdent,
         WarehouseIdent,
     ) {
@@ -166,6 +167,7 @@ mod test {
             Some(StorageProfile::Test(TestProfile)),
             None,
             None,
+            true,
         )
         .await;
 
@@ -177,18 +179,19 @@ mod test {
             None,
         )
         .await
+        .1
         .namespace;
         (api_context, namespace, warehouse_id)
     }
 
     pub(crate) fn get_api_context(
         pool: PgPool,
-    ) -> ApiContext<State<AllowAllAuthZHandler, PostgresCatalog, SecretsState>> {
+    ) -> ApiContext<State<AllowAllAuthorizer, PostgresCatalog, SecretsState>> {
         let (tx, _) = tokio::sync::mpsc::channel(1000);
 
         ApiContext {
             v1_state: State {
-                auth: AllowAllAuthState,
+                authz: AllowAllAuthorizer,
                 catalog: CatalogState::from_pools(pool.clone(), pool.clone()),
                 secrets: SecretsState::from_pools(pool.clone(), pool.clone()),
                 publisher: CloudEventsPublisher::new(tx.clone()),

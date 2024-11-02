@@ -11,40 +11,40 @@ import pytest
 import requests
 
 # ---- Core
-MANAGEMENT_URL = os.environ.get("ICEBERG_REST_TEST_MANAGEMENT_URL")
-CATALOG_URL = os.environ.get("ICEBERG_REST_TEST_CATALOG_URL")
+MANAGEMENT_URL = os.environ.get("LAKEKEEPER_TEST__MANAGEMENT_URL")
+CATALOG_URL = os.environ.get("LAKEKEEPER_TEST__CATALOG_URL")
 # ---- S3
-S3_ACCESS_KEY = os.environ.get("ICEBERG_REST_TEST_S3_ACCESS_KEY")
-S3_SECRET_KEY = os.environ.get("ICEBERG_REST_TEST_S3_SECRET_KEY")
-S3_BUCKET = os.environ.get("ICEBERG_REST_TEST_S3_BUCKET")
-S3_ENDPOINT = os.environ.get("ICEBERG_REST_TEST_S3_ENDPOINT")
-S3_REGION = os.environ.get("ICEBERG_REST_TEST_S3_REGION", None)
-S3_PATH_STYLE_ACCESS = os.environ.get("ICEBERG_REST_TEST_S3_PATH_STYLE_ACCESS")
-S3_STS_MODE = os.environ.get("ICEBERG_REST_TEST_S3_STS_MODE", "both")
+S3_ACCESS_KEY = os.environ.get("LAKEKEEPER_TEST__S3_ACCESS_KEY")
+S3_SECRET_KEY = os.environ.get("LAKEKEEPER_TEST__S3_SECRET_KEY")
+S3_BUCKET = os.environ.get("LAKEKEEPER_TEST__S3_BUCKET")
+S3_ENDPOINT = os.environ.get("LAKEKEEPER_TEST__S3_ENDPOINT")
+S3_REGION = os.environ.get("LAKEKEEPER_TEST__S3_REGION", None)
+S3_PATH_STYLE_ACCESS = os.environ.get("LAKEKEEPER_TEST__S3_PATH_STYLE_ACCESS")
+S3_STS_MODE = os.environ.get("LAKEKEEPER_TEST__S3_STS_MODE", "both")
 # ---- ADLS
-AZURE_CLIENT_ID = os.environ.get("ICEBERG_REST_TEST_AZURE_CLIENT_ID")
-AZURE_CLIENT_SECRET = os.environ.get("ICEBERG_REST_TEST_AZURE_CLIENT_SECRET")
+AZURE_CLIENT_ID = os.environ.get("LAKEKEEPER_TEST__AZURE_CLIENT_ID")
+AZURE_CLIENT_SECRET = os.environ.get("LAKEKEEPER_TEST__AZURE_CLIENT_SECRET")
 AZURE_STORAGE_ACCOUNT_NAME = os.environ.get(
-    "ICEBERG_REST_TEST_AZURE_STORAGE_ACCOUNT_NAME"
+    "LAKEKEEPER_TEST__AZURE_STORAGE_ACCOUNT_NAME"
 )
-AZURE_STORAGE_FILESYSTEM = os.environ.get("ICEBERG_REST_TEST_AZURE_STORAGE_FILESYSTEM")
-AZURE_TENANT_ID = os.environ.get("ICEBERG_REST_TEST_AZURE_TENANT_ID")
+AZURE_STORAGE_FILESYSTEM = os.environ.get("LAKEKEEPER_TEST__AZURE_STORAGE_FILESYSTEM")
+AZURE_TENANT_ID = os.environ.get("LAKEKEEPER_TEST__AZURE_TENANT_ID")
 # ---- GCS
-GCS_CREDENTIAL = os.environ.get("ICEBERG_REST_TEST_GCS_CREDENTIAL")
-GCS_BUCKET = os.environ.get("ICEBERG_REST_TEST_GCS_BUCKET")
+GCS_CREDENTIAL = os.environ.get("LAKEKEEPER_TEST__GCS_CREDENTIAL")
+GCS_BUCKET = os.environ.get("LAKEKEEPER_TEST__GCS_BUCKET")
 # ---- OAUTH
-OPENID_PROVIDER_URI = os.environ.get("ICEBERG_REST_TEST_OPENID_PROVIDER_URI")
-OPENID_CLIENT_ID = os.environ.get("ICEBERG_REST_TEST_OPENID_CLIENT_ID")
-OPENID_CLIENT_SECRET = os.environ.get("ICEBERG_REST_TEST_OPENID_CLIENT_SECRET")
+OPENID_PROVIDER_URI = os.environ.get("LAKEKEEPER_TEST__OPENID_PROVIDER_URI")
+OPENID_CLIENT_ID = os.environ.get("LAKEKEEPER_TEST__OPENID_CLIENT_ID")
+OPENID_CLIENT_SECRET = os.environ.get("LAKEKEEPER_TEST__OPENID_CLIENT_SECRET")
 
 # ---- TRINO
-TRINO_URI = os.environ.get("ICEBERG_REST_TEST_TRINO_URI")
+TRINO_URI = os.environ.get("LAKEKEEPER_TEST__TRINO_URI")
 # ---- SPARK
 SPARK_ICEBERG_VERSION = os.environ.get(
-    "ICEBERG_REST_TEST_SPARK_ICEBERG_VERSION", "1.5.2"
+    "LAKEKEEPER_TEST__SPARK_ICEBERG_VERSION", "1.5.2"
 )
 # ---- STARROCKS
-STARROCKS_URI = os.environ.get("ICEBERG_REST_TEST_STARROCKS_URI")
+STARROCKS_URI = os.environ.get("LAKEKEEPER_TEST__STARROCKS_URI")
 
 STORAGE_CONFIGS = []
 
@@ -58,7 +58,7 @@ if S3_ACCESS_KEY is not None:
         STORAGE_CONFIGS.append({"type": "s3", "sts-enabled": False})
     else:
         raise ValueError(
-            f"Invalid ICEBERG_REST_TEST_S3_STS_MODE: {S3_STS_MODE}. "
+            f"Invalid LAKEKEEPER_TEST__S3_STS_MODE: {S3_STS_MODE}. "
             "must be one of 'both', 'enabled', 'disabled'"
         )
 
@@ -77,7 +77,7 @@ def string_to_bool(s: str) -> bool:
 def storage_config(request) -> dict:
     if request.param["type"] == "s3":
         if S3_BUCKET is None or S3_BUCKET == "":
-            pytest.skip("ICEBERG_REST_TEST_S3_BUCKET is not set")
+            pytest.skip("LAKEKEEPER_TEST__S3_BUCKET is not set")
 
         if S3_PATH_STYLE_ACCESS is not None and S3_PATH_STYLE_ACCESS != "":
             path_style_access = string_to_bool(S3_PATH_STYLE_ACCESS)
@@ -85,7 +85,7 @@ def storage_config(request) -> dict:
             path_style_access = None
 
         if S3_REGION is None:
-            pytest.skip("ICEBERG_REST_TEST_S3_REGION is not set")
+            pytest.skip("LAKEKEEPER_TEST__S3_REGION is not set")
 
         return {
             "storage-profile": {
@@ -106,9 +106,9 @@ def storage_config(request) -> dict:
         }
     elif request.param["type"] == "azure":
         if AZURE_STORAGE_ACCOUNT_NAME is None or AZURE_STORAGE_ACCOUNT_NAME == "":
-            pytest.skip("ICEBERG_REST_TEST_AZURE_STORAGE_ACCOUNT_NAME is not set")
+            pytest.skip("LAKEKEEPER_TEST__AZURE_STORAGE_ACCOUNT_NAME is not set")
         if AZURE_STORAGE_FILESYSTEM is None or AZURE_STORAGE_FILESYSTEM == "":
-            pytest.skip("ICEBERG_REST_TEST_AZURE_STORAGE_FILESYSTEM is not set")
+            pytest.skip("LAKEKEEPER_TEST__AZURE_STORAGE_FILESYSTEM is not set")
 
         return {
             "storage-profile": {
@@ -126,7 +126,7 @@ def storage_config(request) -> dict:
         }
     elif request.param["type"] == "gcs":
         if GCS_BUCKET is None or GCS_BUCKET == "":
-            pytest.skip("ICEBERG_REST_TEST_GCS_BUCKET is not set")
+            pytest.skip("LAKEKEEPER_TEST__GCS_BUCKET is not set")
 
         return {
             "storage-profile": {
@@ -169,10 +169,27 @@ class Server:
     management_url: str
     access_token: str
 
+    def create_project(self, name: str) -> uuid.UUID:
+        create_payload = {"project-name": name}
+        project_url = self.project_url
+        response = requests.post(
+            project_url,
+            json=create_payload,
+            headers={"Authorization": f"Bearer {self.access_token}"},
+        )
+        if not response.ok:
+            raise ValueError(
+                f"Failed to create project ({response.status_code}): {response.text}"
+            )
+
+        project_id = response.json()["project-id"]
+        return uuid.UUID(project_id)
+
     def create_warehouse(
         self, name: str, project_id: uuid.UUID, storage_config: dict
     ) -> uuid.UUID:
         """Create a warehouse in this server"""
+
         create_payload = {
             "project-id": str(project_id),
             "warehouse-name": name,
@@ -196,6 +213,10 @@ class Server:
     @property
     def warehouse_url(self) -> str:
         return urllib.parse.urljoin(self.management_url, "v1/warehouse")
+
+    @property
+    def project_url(self) -> str:
+        return urllib.parse.urljoin(self.management_url, "v1/project")
 
 
 @dataclasses.dataclass
@@ -254,9 +275,24 @@ def access_token() -> str:
 @pytest.fixture(scope="session")
 def server(access_token) -> Server:
     if MANAGEMENT_URL is None:
-        pytest.skip("ICEBERG_REST_TEST_MANAGEMENT_URL is not set")
+        pytest.skip("LAKEKEEPER_TEST__MANAGEMENT_URL is not set")
     if CATALOG_URL is None:
-        pytest.skip("ICEBERG_REST_TEST_CATALOG_URL is not set")
+        pytest.skip("LAKEKEEPER_TEST__CATALOG_URL is not set")
+
+    # Bootstrap the server if is not yet boostrapped
+    management_url = MANAGEMENT_URL.rstrip("/") + "/"
+    server_info = requests.get(
+        management_url + "v1/info", headers={"Authorization": f"Bearer {access_token}"}
+    )
+    server_info.raise_for_status()
+    server_info = server_info.json()
+    if not server_info["bootstrapped"]:
+        response = requests.post(
+            management_url + "v1/bootstrap",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={"accept-terms-of-use": True},
+        )
+        response.raise_for_status()
 
     return Server(
         catalog_url=CATALOG_URL.rstrip("/") + "/",
@@ -266,24 +302,31 @@ def server(access_token) -> Server:
 
 
 @pytest.fixture(scope="session")
-def warehouse(server: Server, storage_config) -> Warehouse:
-    project_id = uuid.uuid4()
+def project(server: Server) -> uuid.UUID:
+    test_id = uuid.uuid4()
+    project_name = f"project-{test_id}"
+    project_id = server.create_project(project_name)
+    return project_id
+
+
+@pytest.fixture(scope="session")
+def warehouse(server: Server, storage_config, project) -> Warehouse:
     test_id = uuid.uuid4()
     warehouse_name = f"warehouse-{test_id}"
     warehouse_id = server.create_warehouse(
-        warehouse_name, project_id=project_id, storage_config=storage_config
+        warehouse_name, project_id=project, storage_config=storage_config
     )
     return Warehouse(
         access_token=server.access_token,
         server=server,
-        project_id=project_id,
+        project_id=project,
         warehouse_id=warehouse_id,
         warehouse_name=warehouse_name,
     )
 
 
 @pytest.fixture(scope="function")
-def namespace(warehouse: Warehouse):
+def namespace(warehouse: Warehouse) -> Namespace:
     catalog = warehouse.pyiceberg_catalog
     namespace = (f"namespace-{uuid.uuid4()}",)
     catalog.create_namespace(namespace)
@@ -342,7 +385,7 @@ def spark(warehouse: Warehouse):
 @pytest.fixture(scope="session")
 def trino(warehouse: Warehouse, storage_config):
     if TRINO_URI is None:
-        pytest.skip("ICEBERG_REST_TEST_TRINO_URI is not set")
+        pytest.skip("LAKEKEEPER_TEST__TRINO_URI is not set")
 
     from trino.dbapi import connect
 
@@ -394,7 +437,7 @@ def trino(warehouse: Warehouse, storage_config):
 @pytest.fixture(scope="session")
 def starrocks(warehouse: Warehouse, storage_config):
     if STARROCKS_URI is None:
-        pytest.skip("ICEBERG_REST_TEST_STARROCKS_URI is not set")
+        pytest.skip("LAKEKEEPER_TEST__STARROCKS_URI is not set")
 
     from sqlalchemy import create_engine
 

@@ -87,6 +87,7 @@ pub struct Payload {
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum Message {
     Event(Payload),
     Shutdown,

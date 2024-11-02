@@ -26,17 +26,19 @@ use serde::{Deserialize, Serialize};
 /// Storage profile for a warehouse.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, derive_more::From, utoipa::ToSchema)]
 #[serde(tag = "type", rename_all = "kebab-case")]
-#[schema(rename_all = "kebab-case")]
 pub enum StorageProfile {
     /// Azure storage profile
     #[serde(rename = "azdls")]
+    #[schema(title = "StorageProfileAzdls")]
     Azdls(AzdlsProfile),
     /// S3 storage profile
     #[serde(rename = "s3")]
+    #[schema(title = "StorageProfileS3")]
     S3(S3Profile),
     #[cfg(test)]
     Test(TestProfile),
     #[serde(rename = "gcs")]
+    #[schema(title = "StorageProfileGcs")]
     Gcs(GcsProfile),
 }
 
@@ -472,7 +474,6 @@ pub struct TestProfile;
 /// Storage secret for a warehouse.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, derive_more::From, utoipa::ToSchema)]
 #[serde(tag = "type")]
-#[schema(rename_all = "kebab-case")]
 pub enum StorageCredential {
     /// Credentials for S3 storage
     ///
@@ -488,6 +489,7 @@ pub enum StorageCredential {
     ///   }"#).unwrap();
     /// ```
     #[serde(rename = "s3")]
+    #[schema(title = "StorageCredentialS3")]
     S3(S3Credential),
     /// Credentials for Az storage
     ///
@@ -504,6 +506,7 @@ pub enum StorageCredential {
     ///   }"#).unwrap();
     /// ```
     #[serde(rename = "az")]
+    #[schema(title = "StorageCredentialAz")]
     Az(AzCredential),
     /// Credentials for GCS storage
     ///
@@ -532,6 +535,7 @@ pub enum StorageCredential {
     ///
 
     #[serde(rename = "gcs")]
+    #[schema(title = "StorageCredentialGcs")]
     Gcs(GcsCredential),
 }
 
@@ -846,11 +850,11 @@ mod tests {
     #[needs_env_var::needs_env_var(TEST_MINIO = 1)]
     async fn test_vended_minio() {
         let key_prefix = Some(format!("test_prefix-{}", uuid::Uuid::now_v7()));
-        let bucket = std::env::var("ICEBERG_REST_TEST_S3_BUCKET").unwrap();
-        let region = std::env::var("ICEBERG_REST_TEST_S3_REGION").unwrap_or("local".into());
-        let aws_access_key_id = std::env::var("ICEBERG_REST_TEST_S3_ACCESS_KEY").unwrap();
-        let aws_secret_access_key = std::env::var("ICEBERG_REST_TEST_S3_SECRET_KEY").unwrap();
-        let endpoint = std::env::var("ICEBERG_REST_TEST_S3_ENDPOINT").unwrap();
+        let bucket = std::env::var("LAKEKEEPER_TEST__S3_BUCKET").unwrap();
+        let region = std::env::var("LAKEKEEPER_TEST__S3_REGION").unwrap_or("local".into());
+        let aws_access_key_id = std::env::var("LAKEKEEPER_TEST__S3_ACCESS_KEY").unwrap();
+        let aws_secret_access_key = std::env::var("LAKEKEEPER_TEST__S3_SECRET_KEY").unwrap();
+        let endpoint = std::env::var("LAKEKEEPER_TEST__S3_ENDPOINT").unwrap();
 
         let cred: StorageCredential = S3Credential::AccessKey {
             aws_access_key_id,

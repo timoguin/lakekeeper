@@ -1,12 +1,11 @@
-name: Examples Test
+name: Examples Test [no-auth]
 
 on:
   push:
     branches:
       - main
   pull_request:
-    branches:
-      - main
+
 
 env:
   CARGO_TERM_COLOR: always
@@ -74,19 +73,15 @@ jobs:
         run: |
           docker load -i artifacts/iceberg-catalog-amd64.tar
 
+      - name: List docker images
+        run: docker image ls
+
       - name: Test Examples
         run: |
-          cd examples &&
-          sed -i 'sXquay.io/lakehouse/catalog:latest/Xlocalhost/iceberg-catalog-local:amd64Xg' docker-compose.yaml &&
-          docker compose up -d &&
-          # retry 10 times with 1 second sleep if server becomes healthy
-            for i in {1..10}; do
-                docker inspect --format='{{json .State.Health.Status}}' examples-server-1 | grep healthy && break || sleep 1;
-            done
-          # retry 10 times with 1 second sleep if initialproject exits with 0
-            for i in {1..10}; do
-                docker inspect --format='{{json .State.ExitCode}}' examples-initialproject-1 | grep 0 && break || sleep 1;
-            done
+          cd examples/self-contained
+          docker compose run jupyter bash -c "cd /home/jovyan/examples/ && jupyter execute Spark.ipynb"
+        env:
+          LAKEKEEPER_TEST__SERVER_IMAGE: localhost/iceberg-catalog-local:amd64
       - name: Dump docker logs on failure
         if: failure()
         uses: jwalton/gh-docker-logs@v2

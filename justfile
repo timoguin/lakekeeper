@@ -32,13 +32,15 @@ unit-test: doc-test
 test: doc-test
 	cargo test --no-fail-fast --all-targets --all-features --workspace
 
-update-openapi:
+update-rest-openapi:
     # Download from https://raw.githubusercontent.com/apache/iceberg/main/open-api/rest-catalog-open-api.yaml and put into openapi folder
     curl -o openapi/rest-catalog-open-api.yaml https://raw.githubusercontent.com/apache/iceberg/main/open-api/rest-catalog-open-api.yaml
-    # For rust-server generation only:
-    # Fix until https://github.com/OpenAPITools/openapi-generator/issues/7802 is resolved:
-    # Parse the donwloaded yaml. Then set the for the existing object components.schemas.Namespace properties.length.type to integer
-    # yq e '.components.schemas.Namespace.properties.length.type = "integer"' -i openapi/rest-catalog-open-api.yaml
-    # Replace 5XX with 500 (gnu-sed)
-    # gsed -i 's/5XX/500/g' openapi/rest-catalog-open-api.yaml
-    cargo run management-openapi > openapi/management-open-api.yaml
+
+update-openfga:
+    fga model transform --file authz/openfga/v1/schema.fga > authz/openfga/v1/schema.json
+
+update-management-openapi:
+    LAKEKEEPER__AUTHZ_BACKEND=openfga RUST_LOG=error cargo run management-openapi > openapi/management-open-api.yaml
+
+generate-management-client:
+    npx @openapitools/openapi-generator-cli generate -i openapi/management-open-api.yaml -g typescript-node -o ui/catalog/src/gen/
