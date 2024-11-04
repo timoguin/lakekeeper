@@ -209,7 +209,7 @@ pub(crate) async fn list_roles<'e, 'c: 'e, E: sqlx::Executor<'c, Database = sqlx
     .collect();
 
     let next_page_token = roles.last().map(|r| {
-        PaginateToken::V1(V1PaginateToken {
+        PaginateToken::V1(V1PaginateToken::<Uuid> {
             created_at: r.created_at,
             id: r.id.into(),
         })
