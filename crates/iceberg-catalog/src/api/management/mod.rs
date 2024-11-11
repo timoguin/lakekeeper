@@ -48,7 +48,7 @@ pub mod v1 {
         UpdateWarehouseDeleteProfileRequest, UpdateWarehouseStorageRequest, WarehouseStatus,
     };
 
-    pub(crate) fn default_page_size() -> i32 {
+    pub(crate) fn default_page_size() -> i64 {
         100
     }
 

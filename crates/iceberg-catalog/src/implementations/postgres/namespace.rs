@@ -1,13 +1,14 @@
 use super::dbutils::DBErrorHandler;
-use crate::api::iceberg::v1::MAX_PAGE_SIZE;
+use crate::api::iceberg::v1::{PaginatedMapping, MAX_PAGE_SIZE};
 use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToken};
 use crate::service::{
     CreateNamespaceRequest, CreateNamespaceResponse, ErrorModel, GetNamespaceResponse,
-    ListNamespacesQuery, ListNamespacesResponse, NamespaceIdent, Result,
+    ListNamespacesQuery, NamespaceIdent, Result,
 };
 use crate::{catalog::namespace::MAX_NAMESPACE_DEPTH, service::NamespaceIdentUuid, WarehouseIdent};
 use chrono::Utc;
 use http::StatusCode;
+use iceberg_ext::catalog::rest::IcebergErrorResponse;
 use sqlx::types::Json;
 use std::{collections::HashMap, ops::Deref};
 use uuid::Uuid;
@@ -69,10 +70,8 @@ pub(crate) async fn list_namespaces(
         return_uuids: _,
     }: &ListNamespacesQuery,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-) -> Result<ListNamespacesResponse> {
-    let page_size = page_size
-        .map(i64::from)
-        .map_or(MAX_PAGE_SIZE, |i| i.clamp(1, MAX_PAGE_SIZE));
+) -> Result<PaginatedMapping<NamespaceIdentUuid, NamespaceIdent>> {
+    let page_size = page_size.map_or(MAX_PAGE_SIZE, |i| i.clamp(1, MAX_PAGE_SIZE));
 
     // Treat empty parent as None
     let parent = parent
@@ -85,7 +84,11 @@ pub(crate) async fn list_namespaces(
 
     let (token_ts, token_id) = token
         .as_ref()
-        .map(|PaginateToken::V1(V1PaginateToken { created_at, id })| (created_at, id))
+        .map(
+            |PaginateToken::V1(V1PaginateToken { created_at, id }): &PaginateToken<Uuid>| {
+                (created_at, id)
+            },
+        )
         .unzip();
 
     let namespaces: Vec<(Uuid, Vec<String>, chrono::DateTime<Utc>)> = if let Some(parent) = parent {
@@ -158,35 +161,33 @@ pub(crate) async fn list_namespaces(
         .collect()
     };
 
-    let next_page_token = namespaces.last().map(|(id, _, ts)| {
-        PaginateToken::V1(V1PaginateToken {
-            id: *id,
-            created_at: *ts,
-        })
-        .to_string()
-    });
-
     // Convert Vec<Vec<String>> to Vec<NamespaceIdent>
-    let namespaces = namespaces
-        .iter()
-        .map(|(id, n, _)| {
-            NamespaceIdent::from_vec(n.to_owned())
-                .map_err(|e| {
-                    ErrorModel::internal(
-                        "Error converting namespace",
-                        "NamespaceConversionError",
-                        Some(Box::new(e)),
-                    )
-                    .into()
-                })
-                .map(|n| (id.into(), n))
-        })
-        .collect::<Result<HashMap<_, _>>>()?;
+    let mut namespace_map: PaginatedMapping<NamespaceIdentUuid, NamespaceIdent> =
+        PaginatedMapping::with_capacity(namespaces.len());
+    for ns_result in namespaces.into_iter().map(|(id, n, ts)| {
+        NamespaceIdent::from_vec(n.clone())
+            .map_err(|e| {
+                IcebergErrorResponse::from(ErrorModel::internal(
+                    "Error converting namespace",
+                    "NamespaceConversionError",
+                    Some(Box::new(e)),
+                ))
+            })
+            .map(|n| (id.into(), n, ts))
+    }) {
+        let (id, ns, created_at) = ns_result?;
+        namespace_map.insert(
+            id,
+            ns,
+            PaginateToken::V1(V1PaginateToken {
+                id: *id,
+                created_at,
+            })
+            .to_string(),
+        );
+    }
 
-    Ok(ListNamespacesResponse {
-        next_page_token,
-        namespaces,
-    })
+    Ok(namespace_map)
 }
 
 pub(crate) async fn create_namespace(
@@ -303,18 +304,33 @@ pub(crate) async fn drop_namespace(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<()> {
     // Return 404 not found if namespace does not exist
-    let row_count = sqlx::query_scalar!(
+    let record = sqlx::query!(
         r#"
-        WITH deleted AS (
+        WITH namespace_name AS (
+            SELECT namespace_name
+            FROM namespace
+            WHERE warehouse_id = $1 AND namespace_id = $2
+        ),
+        child_namespaces AS (
+            SELECT 1
+            FROM namespace n
+            INNER JOIN namespace_name nn ON n.namespace_name[1:array_length(nn.namespace_name, 1)] = nn.namespace_name
+            WHERE n.warehouse_id = $1 AND n.namespace_id != $2
+        ),
+        deleted AS (
             DELETE FROM namespace
             WHERE warehouse_id = $1 
             AND namespace_id = $2
+            AND NOT EXISTS (SELECT 1 FROM child_namespaces)
             AND warehouse_id IN (
                 SELECT warehouse_id FROM warehouse WHERE status = 'active'
             )
             RETURNING *
         )
-        SELECT count(*) FROM deleted
+        SELECT 
+            count(*) AS deleted_count,
+            EXISTS (SELECT 1 FROM child_namespaces) AS has_child_namespaces
+        FROM deleted;
         "#,
         *warehouse_id,
         *namespace_id
@@ -341,7 +357,13 @@ pub(crate) async fn drop_namespace(
         _ => e.into_error_model("Error deleting namespace".to_string()),
     })?;
 
-    if row_count == Some(0) {
+    if record.has_child_namespaces == Some(true) {
+        return Err(
+            ErrorModel::conflict("Namespace is not empty", "NamespaceNotEmpty", None).into(),
+        );
+    }
+
+    if record.deleted_count == Some(0) {
         return Err(ErrorModel::internal(
             format!("Namespace {namespace_id} not found in warehouse {warehouse_id}"),
             "NamespaceNotFound",
@@ -490,7 +512,7 @@ pub(crate) mod tests {
         .unwrap();
 
         assert_eq!(
-            response.namespaces,
+            response.into_hashmap(),
             HashMap::from_iter(vec![(namespace_id, namespace.clone())])
         );
 
@@ -564,10 +586,7 @@ pub(crate) mod tests {
             .await
             .unwrap();
 
-        let ListNamespacesResponse {
-            namespaces,
-            next_page_token,
-        } = PostgresCatalog::list_namespaces(
+        let namespaces = PostgresCatalog::list_namespaces(
             warehouse_id,
             &ListNamespacesQuery {
                 page_token: crate::api::iceberg::v1::PageToken::NotSpecified,
@@ -579,10 +598,10 @@ pub(crate) mod tests {
         )
         .await
         .unwrap();
-
+        let next_page_token = namespaces.next_token().map(ToString::to_string);
         assert_eq!(namespaces.len(), 1);
         assert_eq!(
-            namespaces,
+            namespaces.into_hashmap(),
             HashMap::from_iter(vec![(response1.0, response1.1.namespace)])
         );
 
@@ -590,10 +609,7 @@ pub(crate) mod tests {
             .await
             .unwrap();
 
-        let ListNamespacesResponse {
-            namespaces,
-            next_page_token,
-        } = PostgresCatalog::list_namespaces(
+        let namespaces = PostgresCatalog::list_namespaces(
             warehouse_id,
             &ListNamespacesQuery {
                 page_token: next_page_token.map_or(
@@ -608,11 +624,11 @@ pub(crate) mod tests {
         )
         .await
         .unwrap();
-
+        let next_page_token = namespaces.next_token().map(ToString::to_string);
         assert_eq!(namespaces.len(), 2);
         assert!(next_page_token.is_some());
         assert_eq!(
-            namespaces,
+            namespaces.into_hashmap(),
             HashMap::from_iter(vec![
                 (response2.0, response2.1.namespace),
                 (response3.0, response3.1.namespace)
@@ -620,10 +636,7 @@ pub(crate) mod tests {
         );
 
         // last page is empty
-        let ListNamespacesResponse {
-            namespaces,
-            next_page_token,
-        } = PostgresCatalog::list_namespaces(
+        let namespaces = PostgresCatalog::list_namespaces(
             warehouse_id,
             &ListNamespacesQuery {
                 page_token: next_page_token.map_or(
@@ -639,8 +652,8 @@ pub(crate) mod tests {
         .await
         .unwrap();
 
-        assert_eq!(next_page_token, None);
-        assert_eq!(namespaces, HashMap::new());
+        assert_eq!(namespaces.next_token(), None);
+        assert_eq!(namespaces.into_hashmap(), HashMap::new());
     }
 
     #[sqlx::test]
@@ -664,6 +677,38 @@ pub(crate) mod tests {
             .unwrap_err();
 
         assert_eq!(result.error.code, StatusCode::CONFLICT);
+    }
+
+    #[sqlx::test]
+    async fn test_cannot_drop_namespace_with_sub_namespaces(pool: sqlx::PgPool) {
+        let state = CatalogState::from_pools(pool.clone(), pool.clone());
+
+        let warehouse_id = initialize_warehouse(state.clone(), None, None, None, true).await;
+        let namespace = NamespaceIdent::from_vec(vec!["test".to_string()]).unwrap();
+
+        let response = initialize_namespace(state.clone(), warehouse_id, &namespace, None).await;
+
+        let namespace =
+            NamespaceIdent::from_vec(vec!["test".to_string(), "test2".to_string()]).unwrap();
+        let response2 = initialize_namespace(state.clone(), warehouse_id, &namespace, None).await;
+
+        let mut transaction = PostgresTransaction::begin_write(state.clone())
+            .await
+            .unwrap();
+
+        let result = drop_namespace(warehouse_id, response.0, transaction.transaction())
+            .await
+            .unwrap_err();
+
+        assert_eq!(result.error.code, StatusCode::CONFLICT);
+
+        drop_namespace(warehouse_id, response2.0, transaction.transaction())
+            .await
+            .unwrap();
+
+        drop_namespace(warehouse_id, response.0, transaction.transaction())
+            .await
+            .unwrap();
     }
 
     #[sqlx::test]

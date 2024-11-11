@@ -341,7 +341,6 @@ mod test {
             )
             .await
             .unwrap()
-            .tabulars
             .remove(&tab.table_id.into())
             .unwrap();
 
@@ -380,12 +379,11 @@ mod test {
             )
             .await
             .unwrap()
-            .tabulars
             .remove(&tab.table_id.into())
             .unwrap();
             del.unwrap();
 
-            tokio::time::sleep(std::time::Duration::from_millis(1050)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(1250)).await;
 
             assert!(<PostgresCatalog as Catalog>::list_tabulars(
                 warehouse,
@@ -399,7 +397,6 @@ mod test {
             )
             .await
             .unwrap()
-            .tabulars
             .remove(&tab.table_id.into())
             .is_none());
         }

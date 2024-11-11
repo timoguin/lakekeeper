@@ -14,7 +14,7 @@ use iceberg::spec::{
 };
 use iceberg_ext::{spec::TableMetadata, NamespaceIdent};
 
-use crate::api::iceberg::v1::{PaginatedTabulars, PaginationQuery};
+use crate::api::iceberg::v1::{PaginatedMapping, PaginationQuery};
 use crate::implementations::postgres::tabular::{
     create_tabular, drop_tabular, list_tabulars, try_parse_namespace_ident, CreateTabular,
     TabularIdentBorrowed, TabularIdentOwned, TabularIdentUuid, TabularType,
@@ -261,7 +261,7 @@ pub(crate) async fn list_tables<'e, 'c: 'e, E>(
     list_flags: crate::service::ListFlags,
     transaction: E,
     pagination_query: PaginationQuery,
-) -> Result<PaginatedTabulars<TableIdentUuid, TableIdent>>
+) -> Result<PaginatedMapping<TableIdentUuid, TableIdent>>
 where
     E: 'e + sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
@@ -274,22 +274,22 @@ where
         pagination_query,
     )
     .await?;
-    let tables = tabulars
-        .tabulars
-        .into_iter()
-        .map(|(k, (v, _))| match k {
-            TabularIdentUuid::Table(t) => Ok((TableIdentUuid::from(t), v.into_inner())),
+
+    tabulars.map::<TableIdentUuid, TableIdent>(
+        |k| match k {
+            TabularIdentUuid::Table(t) => {
+                let r: Result<TableIdentUuid> = Ok(TableIdentUuid::from(t));
+                r
+            }
             TabularIdentUuid::View(_) => Err(ErrorModel::internal(
                 "DB returned a view when filtering for tables.",
                 "InternalDatabaseError",
                 None,
-            )),
-        })
-        .collect::<Result<HashMap<TableIdentUuid, TableIdent>, ErrorModel>>()?;
-    Ok(PaginatedTabulars {
-        tabulars: tables,
-        next_page_token: tabulars.next_page_token,
-    })
+            )
+            .into()),
+        },
+        |(v, _)| Ok(v.into_inner()),
+    )
 }
 
 pub(crate) async fn get_table_metadata_by_id(
@@ -650,10 +650,7 @@ pub(crate) mod tests {
                     ])
                     .build()
                     .unwrap(),
-                partition_spec: Some(UnboundPartitionSpec {
-                    spec_id: None,
-                    fields: vec![],
-                }),
+                partition_spec: Some(UnboundPartitionSpec::builder().build()),
                 write_order: None,
                 stage_create,
                 properties: None,
@@ -1296,7 +1293,7 @@ pub(crate) mod tests {
             },
             &state.read_pool(),
             PaginationQuery {
-                page_token: PageToken::Present(tables.next_page_token.unwrap()),
+                page_token: PageToken::Present(tables.next_token().unwrap().to_string()),
                 page_size: Some(2),
             },
         )
@@ -1315,14 +1312,14 @@ pub(crate) mod tests {
             },
             &state.read_pool(),
             PaginationQuery {
-                page_token: PageToken::Present(tables.next_page_token.unwrap()),
+                page_token: PageToken::Present(tables.next_token().unwrap().to_string()),
                 page_size: Some(2),
             },
         )
         .await
         .unwrap();
         assert_eq!(tables.len(), 0);
-        assert!(tables.next_page_token.is_none());
+        assert!(tables.next_token().is_none());
     }
 
     #[sqlx::test]
