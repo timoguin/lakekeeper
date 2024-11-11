@@ -117,6 +117,7 @@ utoipa = { version = "4.2.3", features = [
     "chrono",
     "url",
     "uuid",
+    "yaml",
 ] }
 serde_yml = "0.0.12"
 utoipa-swagger-ui = { version = "7.1.0", features = ["axum"] }
