@@ -17,8 +17,8 @@ license = "Apache-2.0"
 rdkafka = { version = "0.36.2", default-features = false, features = [
     "tokio",
     "zstd",
-    "curl-static",
-    "gssapi-vendored",
+    # "gssapi-vendored",
+    # "curl-static",
     "ssl-vendored",
     "libz-static",
 ] }
