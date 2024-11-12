@@ -148,8 +148,9 @@ jobs:
 
       - name: Test
         run: |
-          cargo tree -e features --all-features --all-targets
+          export | grep CARGO
           cargo test --no-fail-fast --all-targets --all-features --workspace
+          export | grep CARGO
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
           TEST_KV2: 1
