@@ -18,8 +18,6 @@ all = [
     "router",
     "nats",
     "kafka",
-    "kafka-ssl-vendored",
-    "kafka-curl-vendored",
     "vendored-protoc",
 ]
 default = ["sqlx-postgres", "s3-signer", "router", "vendored-protoc"]
@@ -29,11 +27,6 @@ s3-signer = ["dep:aws-sigv4", "dep:aws-credential-types"]
 router = ["dep:tower-http"]
 nats = ["dep:async-nats"]
 kafka = ["dep:rdkafka"]
-kafka-ssl-vendored = ["rdkafka?/ssl-vendored"]
-kafka-libz-static = ["rdkafka?/libz-static"]
-# kafka-gssapi-vendored = ["rdkafka?/gssapi-vendored"]
-kafka-zstd-vendored = ["rdkafka?/zstd"]
-kafka-curl-vendored = ["rdkafka?/curl-static"]
 vendored-protoc = ["openfga-rs/vendored-protoc"]
 
 [dependencies]

@@ -18,6 +18,9 @@ rdkafka = { version = "0.36.2", default-features = false, features = [
     "tokio",
     "zstd",
     "curl-static",
+    "gssapi-vendored",
+    "ssl-vendored",
+    "libz-static",
 ] }
 async-nats = "0.37.0"
 async-compression = { version = "^0.4", features = ["tokio", "gzip"] }
