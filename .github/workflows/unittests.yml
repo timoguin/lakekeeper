@@ -20,7 +20,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Cargo sqlx-check
         run: |
-          sudo apt-get install libpq-dev -y
+          export DEBIAN_FRONTEND=noninteractive 
+          sudo apt-get update && sudo apt-get install -yqq libpq-dev libsasl2-dev --no-install-recommends
           cargo install -q --version=0.8.2 sqlx-cli --no-default-features --features postgres
           cargo sqlx prepare --check --workspace -- --all-features
 
@@ -40,8 +41,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
+          export DEBIAN_FRONTEND=noninteractive 
           sudo snap install --edge --classic just
-          DEBIAN_FRONTEND=noninteractive sudo apt-get update && sudo apt-get install -yqq libsal2-dev --no-install-recommends
+          sudo apt-get update && sudo apt-get install -yqq libsasl2-dev --no-install-recommends
 
       - uses: actions/checkout@v4
 
@@ -122,7 +124,8 @@ jobs:
 
       - name: Migrate database
         run: |
-          DEBIAN_FRONTEND=noninteractive sudo apt-get update && sudo apt-get install -yqq libpq-dev libsal2-dev --no-install-recommends
+          export DEBIAN_FRONTEND=noninteractive 
+          sudo apt-get update && sudo apt-get install -yqq libpq-dev libsasl2-dev --no-install-recommends
           cargo install -q --version=0.8.2 sqlx-cli --no-default-features --features postgres
           cd crates/iceberg-catalog
           sqlx database create
@@ -150,7 +153,8 @@ jobs:
 
       - name: Test
         run: |
-          DEBIAN_FRONTEND=noninteractive sudo apt-get update && sudo apt-get install -yqq libsal2-dev --no-install-recommends
+          export DEBIAN_FRONTEND=noninteractive 
+          sudo apt-get update && sudo apt-get install -yqq libsasl2-dev --no-install-recommends
           cargo test --no-fail-fast --all-targets --all-features --workspace
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
