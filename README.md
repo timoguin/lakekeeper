@@ -100,10 +100,10 @@ Details on how to configure the storage profiles can be found in the [Storage Gu
 
 ### Supported Event Stores
 
-| Backend | Status  | Comment |
-| ------- | :-----: | ------- |
-| Nats    | ![done] |         |
-| Kafka   | ![open] |         |
+| Backend |    Status    | Comment                                              |
+| ------- | :----------: | ---------------------------------------------------- |
+| Nats    |   ![done]    |                                                      |
+| Kafka   | ![semi-done] | Needs testing for certain configuration permutations |
 
 ### Supported Operations - Management API
 
@@ -249,9 +249,9 @@ This means that all features of [librdkafka](https://github.com/confluentinc/lib
 To publish events to Kafka, set the following environment variables:
 
 | Variable                        | Example                                                                   | Description                                                                                                                                                                             |
-| ------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| ------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `LAKEKEEPER__KAFKA_TOPIC`       | `lakekeeper`                                                              | The topic to which events are published                                                                                                                                                 |
-| `LAKEKEEPER__KAFKA_CONFIG`      | `{"bootstrap.servers"="host1:port,host2:port","security.protocol"="SSL"}` | [librdkafka Configuration](https://github.com/confluentinc/librdkafka/blob/master/CONFIGURATION.md) as "Dictionary". Note that you cannot use "JSON-Style-Syntax". Also see notes below |     |
+| `LAKEKEEPER__KAFKA_CONFIG`      | `{"bootstrap.servers"="host1:port,host2:port","security.protocol"="SSL"}` | [librdkafka Configuration](https://github.com/confluentinc/librdkafka/blob/master/CONFIGURATION.md) as "Dictionary". Note that you cannot use "JSON-Style-Syntax". Also see notes below |
 | `LAKEKEEPER__KAFKA_CONFIG_FILE` | `/path/to/config_file`                                                    | [librdkafka Configuration](https://github.com/confluentinc/librdkafka/blob/master/CONFIGURATION.md) to be loaded from a file. Also see notes below                                      |
 
 **Notes**
