@@ -620,6 +620,7 @@ where
 
     async fn list_tabulars(
         warehouse_id: WarehouseIdent,
+        namespace_id: Option<NamespaceIdentUuid>, // Filter by namespace
         list_flags: ListFlags,
         catalog_state: Self::State,
         pagination_query: PaginationQuery,
