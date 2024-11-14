@@ -229,7 +229,7 @@ async fn build_nats_client(nat_addr: &Url) -> Result<NatsBackend, Error> {
 fn build_kafka_producer(
     kafka_config: &KafkaConfig,
     topic: &String,
-) -> Result<KafkaBackend, anyhow::Error> {
+) -> anyhow::Result<KafkaBackend> {
     if !(kafka_config.conf.contains_key("bootstrap.servers")
         || kafka_config.conf.contains_key("metadata.broker.list"))
     {
