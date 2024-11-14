@@ -144,7 +144,7 @@ async fn serve_inner<A: Authorizer>(
             .push(Arc::new(nats_publisher) as Arc<dyn CloudEventBackend + Sync + Send>);
     }
     if let (Some(kafka_config), Some(kafka_topic)) = (&CONFIG.kafka_config, &CONFIG.kafka_topic) {
-        let kafka_publisher = build_kafka_producer(kafka_config, kafka_topic, &CONFIG.kafka_key)?;
+        let kafka_publisher = build_kafka_producer(kafka_config, kafka_topic)?;
         cloud_event_sinks
             .push(Arc::new(kafka_publisher) as Arc<dyn CloudEventBackend + Sync + Send>);
     }
@@ -229,12 +229,11 @@ async fn build_nats_client(nat_addr: &Url) -> Result<NatsBackend, Error> {
 fn build_kafka_producer(
     kafka_config: &KafkaConfig,
     topic: &String,
-    key: &Option<String>,
-) -> Result<KafkaBackend, Error> {
+) -> Result<KafkaBackend, anyhow::Error> {
     if !(kafka_config.conf.contains_key("bootstrap.servers")
         || kafka_config.conf.contains_key("metadata.broker.list"))
     {
-        return Err(anyhow!(
+        return Err(anyhow::anyhow!(
             "Kafka config map does not contain 'bootstrap.servers' or 'metadata.broker.list'. You need to provide either of those, in addition with any other parameters you need."
         ));
     }
@@ -267,7 +266,6 @@ fn build_kafka_producer(
     let kafka_backend = KafkaBackend {
         producer,
         topic: topic.clone(),
-        key: key.clone().unwrap_or_else(|| "".into()),
     };
     let kafka_brokers = kafka_config
         .conf

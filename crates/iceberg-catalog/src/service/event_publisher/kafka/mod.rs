@@ -49,7 +49,6 @@ impl KafkaConfig {
 pub struct KafkaBackend {
     pub producer: FutureProducer,
     pub topic: String,
-    pub key: String,
 }
 
 #[cfg(feature = "kafka")]
@@ -57,7 +56,6 @@ impl std::fmt::Debug for KafkaBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KafkaBackend")
             .field("topic", &self.topic)
-            .field("key", &self.key)
             .finish_non_exhaustive()
     }
 }
@@ -72,7 +70,7 @@ impl CloudEventBackend for KafkaBackend {
             .send(
                 FutureRecord::to(&self.topic)
                     .message_record(&message_record)
-                    .key(&self.key[..]),
+                    .key(""),
                 Duration::from_secs(1),
             )
             .await;

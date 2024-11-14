@@ -36,9 +36,14 @@ fn get_config() -> DynAppConfig {
     #[cfg(test)]
     let prefixes = &["LAKEKEEPER_TEST__"];
 
+    let file_keys = &["kafka_config"];
+
     let mut config = figment::Figment::from(defaults);
     for prefix in prefixes {
-        config = config.merge(figment::providers::Env::prefixed(prefix).split("__"));
+        let env = figment::providers::Env::prefixed(prefix).split("__");
+        config = config
+            .merge(figment_file_provider_adapter::FileAdapter::wrap(env.clone()).only(file_keys))
+            .merge(env);
     }
 
     let mut config = config
