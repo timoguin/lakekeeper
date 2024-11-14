@@ -135,7 +135,6 @@ pub struct DynAppConfig {
 
     // ------------- KAFKA CLOUDEVENTS -------------
     pub kafka_topic: Option<String>,
-    pub kafka_key: Option<String>,
     pub kafka_config: Option<KafkaConfig>,
 
     // ------------- AUTHENTICATION -------------
@@ -329,7 +328,6 @@ impl Default for DynAppConfig {
             nats_password: None,
             nats_token: None,
             kafka_config: None,
-            kafka_key: None,
             kafka_topic: None,
             openid_provider_uri: None,
             listen_port: 8080,
