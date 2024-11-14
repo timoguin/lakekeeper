@@ -51,6 +51,7 @@ chrono = { workspace = true, features = ["serde"] }
 cloudevents-sdk = { version = "0.7.0" }
 derive_more = { workspace = true }
 figment = { workspace = true }
+figment_file_provider_adapter = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
 google-cloud-auth = { workspace = true }
