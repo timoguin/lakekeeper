@@ -258,10 +258,6 @@ fn build_kafka_producer(
     if let Some(ssl_keystore_password) = kafka_config.ssl_keystore_password.clone() {
         producer_client_config.set("ssl.keystore.password", ssl_keystore_password);
     }
-    producer_client_config.set(
-        "enable.idempotence",
-        kafka_config.enable_idempotence.clone(),
-    );
     let producer = producer_client_config.create()?;
     let kafka_backend = KafkaBackend {
         producer,

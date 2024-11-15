@@ -270,8 +270,6 @@ A `LAKEKEEPER__KAFKA_CONFIG_FILE` could look like this:
 
 Checking configuration parameters is deferred to `rdkafka`
 
-Lakekeeper sets `enable.idempotence` to `"true"` by default. The "`librdkafka`-Default" is `"false"`.
-
 ### OpenID Connect
 
 If you want to limit ac

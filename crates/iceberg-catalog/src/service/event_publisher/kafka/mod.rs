@@ -30,19 +30,8 @@ pub struct KafkaConfig {
     #[serde(alias = "ssl.keystore.password")]
     #[redact]
     pub ssl_keystore_password: Option<String>,
-    #[serde(
-        alias = "enable.idempotence",
-        default = "KafkaConfig::enable_idempotence_default"
-    )]
-    pub enable_idempotence: String,
     #[serde(flatten)]
     pub conf: HashMap<String, String>,
-}
-
-impl KafkaConfig {
-    fn enable_idempotence_default() -> String {
-        "true".to_string()
-    }
 }
 
 #[cfg(feature = "kafka")]
