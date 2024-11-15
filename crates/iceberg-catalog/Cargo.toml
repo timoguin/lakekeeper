@@ -8,7 +8,7 @@ repository = { workspace = true }
 rust-version = { workspace = true }
 license = { workspace = true }
 description = """
-Implementation of the Iceberg REST Catalog server.
+Lakekeeper is a rust-native Apache Iceberg REST Catalog implementation
 """
 
 [features]
