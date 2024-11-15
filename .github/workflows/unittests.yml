@@ -78,7 +78,10 @@ jobs:
   check-management-openapi:
     runs-on: ubuntu-latest
     steps:
-      - run: sudo snap install --edge --classic just
+      - run: |
+          export DEBIAN_FRONTEND=noninteractive 
+          sudo snap install --edge --classic just
+          sudo apt-get update && sudo apt-get install -yqq libsasl2-dev --no-install-recommends- name: Regenerate management openapi
       - uses: actions/checkout@v4
       - name: Setup Rust toolchain and cache
         uses: actions-rust-lang/setup-rust-toolchain@v1
