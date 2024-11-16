@@ -18,16 +18,16 @@ use super::CloudEventBackend;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Redact)]
 pub struct KafkaConfig {
-    #[serde(alias = "sasl.password")]
+    #[serde(rename = "sasl.password")]
     #[redact]
     pub sasl_password: Option<String>,
-    #[serde(alias = "sasl.oauthbearer.client.secret")]
+    #[serde(rename = "sasl.oauthbearer.client.secret")]
     #[redact]
     pub sasl_oauthbearer_client_secret: Option<String>,
-    #[serde(alias = "ssl.key.password")]
+    #[serde(rename = "ssl.key.password")]
     #[redact]
     pub ssl_key_password: Option<String>,
-    #[serde(alias = "ssl.keystore.password")]
+    #[serde(rename = "ssl.keystore.password")]
     #[redact]
     pub ssl_keystore_password: Option<String>,
     #[serde(flatten)]
@@ -66,7 +66,7 @@ impl CloudEventBackend for KafkaBackend {
 
         match delivery_status {
             Ok((partition, offset)) => {
-                tracing::debug!("CloudEvents event send via kafka to topic: {} and partition: {} with offset: {}", &self.topic, partition, offset);
+                tracing::debug!("CloudEvents event sent via kafka to topic: {} and partition: {} with offset: {}", &self.topic, partition, offset);
                 Ok(())
             }
             Err((e, _)) => Err(anyhow::anyhow!(e)),
