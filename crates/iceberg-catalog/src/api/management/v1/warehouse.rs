@@ -752,6 +752,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                     warehouse_id: *warehouse_id,
                     created_at: deleted.created_at,
                     deleted_at: deleted.deleted_at,
+                    expiration_task_id: deleted.expiration_task_id,
                     expiration_date: deleted.expiration_date,
                 })
             })

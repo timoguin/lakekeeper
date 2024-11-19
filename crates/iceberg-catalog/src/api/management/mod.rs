@@ -889,6 +889,7 @@ pub mod v1 {
         pub deleted_at: chrono::DateTime<chrono::Utc>,
         /// Date when the tabular will not be recoverable anymore
         pub expiration_date: chrono::DateTime<chrono::Utc>,
+        pub expiration_task_id: uuid::Uuid,
     }
 
     impl From<TabularIdentUuid> for TabularType {
