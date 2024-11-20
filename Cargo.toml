@@ -22,8 +22,8 @@ rdkafka = { version = "0.36.2", default-features = false, features = [
     "ssl-vendored",
     "libz-static",
 ] }
-async-nats = "0.37.0"
 async-compression = { version = "^0.4", features = ["tokio", "gzip"] }
+async-nats = "0.38.0"
 azure_core = { version = "0.21.0", default-features = false, features = [
     "hmac_rust",
     "enable_reqwest_rustls",
