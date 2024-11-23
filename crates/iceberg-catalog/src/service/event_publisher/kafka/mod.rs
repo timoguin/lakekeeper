@@ -53,13 +53,17 @@ impl std::fmt::Debug for KafkaBackend {
 #[async_trait]
 impl CloudEventBackend for KafkaBackend {
     async fn publish(&self, event: Event) -> anyhow::Result<()> {
+        let key: String = match event.extension("tabular-id") {
+            Some(extension_value) => extension_value.to_string(),
+            None => String::new(),
+        };
         let message_record = MessageRecord::from_event(event)?;
         let delivery_status = self
             .producer
             .send(
                 FutureRecord::to(&self.topic)
                     .message_record(&message_record)
-                    .key(""),
+                    .key(&key[..]),
                 Duration::from_secs(1),
             )
             .await;
