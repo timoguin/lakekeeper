@@ -22,12 +22,12 @@ use super::StorageType;
 
 static S3_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::ClientBuilder::new()
-        .http2_keep_alive_timeout(Duration::from_millis(18500))
+        .pool_idle_timeout(Duration::from_millis(18500))
         .build()
         .expect("This should never fail since we are just setting timeout to 18500 which does not populate config.error")
 });
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Eq, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub struct S3Profile {
     /// Name of the S3 bucket
@@ -59,7 +59,7 @@ pub struct S3Profile {
     pub flavor: S3Flavor,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
 pub enum S3Flavor {
