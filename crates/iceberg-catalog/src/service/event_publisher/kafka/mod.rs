@@ -2,13 +2,11 @@ pub(crate) mod vendor;
 
 use std::collections::HashMap;
 
-#[cfg(feature = "kafka")]
 use crate::service::event_publisher::kafka::vendor::cloudevents::binding::rdkafka::{
     FutureRecordExt, MessageRecord,
 };
 use axum::async_trait;
 use cloudevents::Event;
-#[cfg(feature = "kafka")]
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -34,13 +32,11 @@ pub struct KafkaConfig {
     pub conf: HashMap<String, String>,
 }
 
-#[cfg(feature = "kafka")]
 pub struct KafkaBackend {
     pub producer: FutureProducer,
     pub topic: String,
 }
 
-#[cfg(feature = "kafka")]
 impl std::fmt::Debug for KafkaBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KafkaBackend")
@@ -49,7 +45,6 @@ impl std::fmt::Debug for KafkaBackend {
     }
 }
 
-#[cfg(feature = "kafka")]
 #[async_trait]
 impl CloudEventBackend for KafkaBackend {
     async fn publish(&self, event: Event) -> anyhow::Result<()> {
