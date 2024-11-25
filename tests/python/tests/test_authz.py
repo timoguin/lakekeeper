@@ -25,6 +25,7 @@ def create_user():
         "protocol": "openid-connect",
         "publicClient": False,
         "directAccessGrantsEnabled": True,
+        "serviceAccountsEnabled": True,
         "clientId": client_id,
     }
 
