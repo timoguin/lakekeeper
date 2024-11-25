@@ -905,10 +905,10 @@ async fn get_namespace_assignments_by_id<C: Catalog, S: SecretStore>(
 #[utoipa::path(
     get,
     tag = "permissions",
-    path = "/management/v1/permissions/table/{namespace_id}/assignments",
+    path = "/management/v1/permissions/table/{table_id}/assignments",
     params(
         GetTableAssignmentsQuery,
-        ("namespace_id" = uuid::Uuid, Path, description = "Namespace ID"),
+        ("table_id" = uuid::Uuid, Path, description = "Table ID"),
     ),
     responses(
             (status = 200, body = GetTableAssignmentsResponse),
@@ -937,10 +937,10 @@ async fn get_table_assignments_by_id<C: Catalog, S: SecretStore>(
 #[utoipa::path(
     get,
     tag = "permissions",
-    path = "/management/v1/permissions/table/{namespace_id}/assignments",
+    path = "/management/v1/permissions/view/{view_id}/assignments",
     params(
         GetViewAssignmentsQuery,
-        ("namespace_id" = uuid::Uuid, Path, description = "Namespace ID"),
+        ("view_id" = uuid::Uuid, Path, description = "View ID"),
     ),
     responses(
             (status = 200, body = GetViewAssignmentsResponse),
@@ -1398,7 +1398,7 @@ pub(super) fn new_v1_router<C: Catalog, S: SecretStore>(
             get(get_table_assignments_by_id).post(update_table_assignments_by_id),
         )
         .route(
-            "/permissions/view/:table_id/assignments",
+            "/permissions/view/:view_id/assignments",
             get(get_view_assignments_by_id).post(update_view_assignments_by_id),
         )
 }
@@ -1639,15 +1639,15 @@ mod tests {
     #[needs_env_var(TEST_OPENFGA = 1)]
     mod openfga {
         use super::super::*;
+        use crate::service::authn::UserId;
         use crate::service::authz::implementations::openfga::migration::tests::authorizer_for_empty_store;
-        use crate::service::UserId;
         use openfga_rs::TupleKey;
 
         #[tokio::test]
         async fn test_cannot_assign_role_to_itself() {
             let (_, authorizer) = authorizer_for_empty_store().await;
 
-            let user_id = UserId::new(&uuid::Uuid::now_v7().to_string()).unwrap();
+            let user_id = UserId::oidc(&uuid::Uuid::now_v7().to_string()).unwrap();
             let role_id = RoleId::new(uuid::Uuid::nil());
 
             authorizer
@@ -1684,12 +1684,12 @@ mod tests {
                     .unwrap();
             assert!(relations.is_empty());
 
-            let user_id = UserId::new(&uuid::Uuid::now_v7().to_string()).unwrap();
+            let user_id = UserId::oidc(&uuid::Uuid::now_v7().to_string()).unwrap();
             authorizer
                 .write(
                     Some(vec![TupleKey {
                         user: user_id.to_openfga(),
-                        relation: ServerRelation::GlobalAdmin.to_openfga().to_string(),
+                        relation: ServerRelation::Admin.to_openfga().to_string(),
                         object: OPENFGA_SERVER.to_string(),
                         condition: None,
                     }]),
@@ -1703,10 +1703,7 @@ mod tests {
                     .await
                     .unwrap();
             assert_eq!(relations.len(), 1);
-            assert_eq!(
-                relations,
-                vec![ServerAssignment::GlobalAdmin(user_id.into())]
-            );
+            assert_eq!(relations, vec![ServerAssignment::Admin(user_id.into())]);
         }
 
         #[test]
@@ -1741,7 +1738,7 @@ mod tests {
         #[tokio::test]
         async fn test_get_allowed_actions_as_user() {
             let (_, authorizer) = authorizer_for_empty_store().await;
-            let user_id = UserId::new(&uuid::Uuid::now_v7().to_string()).unwrap();
+            let user_id = UserId::oidc(&uuid::Uuid::now_v7().to_string()).unwrap();
             let actor = Actor::Principal(user_id.clone());
             let access: Vec<ServerAction> =
                 get_allowed_actions(authorizer.clone(), &actor, &OPENFGA_SERVER, &None)
@@ -1753,7 +1750,7 @@ mod tests {
                 .write(
                     Some(vec![TupleKey {
                         user: user_id.to_openfga(),
-                        relation: ServerRelation::GlobalAdmin.to_openfga().to_string(),
+                        relation: ServerRelation::Admin.to_openfga().to_string(),
                         object: OPENFGA_SERVER.to_string(),
                         condition: None,
                     }]),
@@ -1775,7 +1772,7 @@ mod tests {
         async fn test_get_allowed_actions_as_role() {
             let (_, authorizer) = authorizer_for_empty_store().await;
             let role_id = RoleId::new(uuid::Uuid::now_v7());
-            let user_id = UserId::new(&uuid::Uuid::now_v7().to_string()).unwrap();
+            let user_id = UserId::oidc(&uuid::Uuid::now_v7().to_string()).unwrap();
             let actor = Actor::Role {
                 principal: user_id.clone(),
                 assumed_role: role_id,
@@ -1790,7 +1787,7 @@ mod tests {
                 .write(
                     Some(vec![TupleKey {
                         user: role_id.into_assignees().to_openfga(),
-                        relation: ServerRelation::GlobalAdmin.to_openfga().to_string(),
+                        relation: ServerRelation::Admin.to_openfga().to_string(),
                         object: OPENFGA_SERVER.to_string(),
                         condition: None,
                     }]),
@@ -1811,7 +1808,7 @@ mod tests {
         #[tokio::test]
         async fn test_get_allowed_actions_for_other_principal() {
             let (_, authorizer) = authorizer_for_empty_store().await;
-            let user_id = UserId::new(&uuid::Uuid::now_v7().to_string()).unwrap();
+            let user_id = UserId::oidc(&uuid::Uuid::now_v7().to_string()).unwrap();
             let role_id = RoleId::new(uuid::Uuid::now_v7());
             let actor = Actor::Principal(user_id.clone());
 
@@ -1819,7 +1816,7 @@ mod tests {
                 .write(
                     Some(vec![TupleKey {
                         user: user_id.to_openfga(),
-                        relation: ServerRelation::GlobalAdmin.to_openfga().to_string(),
+                        relation: ServerRelation::Admin.to_openfga().to_string(),
                         object: OPENFGA_SERVER.to_string(),
                         condition: None,
                     }]),
@@ -1842,7 +1839,7 @@ mod tests {
                 .write(
                     Some(vec![TupleKey {
                         user: role_id.into_assignees().to_openfga(),
-                        relation: ServerRelation::GlobalAdmin.to_openfga().to_string(),
+                        relation: ServerRelation::Admin.to_openfga().to_string(),
                         object: OPENFGA_SERVER.to_string(),
                         condition: None,
                     }]),
@@ -1868,14 +1865,14 @@ mod tests {
         async fn test_checked_write() {
             let (_, authorizer) = authorizer_for_empty_store().await;
 
-            let user1_id = UserId::new(&uuid::Uuid::now_v7().to_string()).unwrap();
-            let user2_id = UserId::new(&uuid::Uuid::now_v7().to_string()).unwrap();
+            let user1_id = UserId::oidc(&uuid::Uuid::now_v7().to_string()).unwrap();
+            let user2_id = UserId::oidc(&uuid::Uuid::now_v7().to_string()).unwrap();
 
             authorizer
                 .write(
                     Some(vec![TupleKey {
                         user: user1_id.to_openfga(),
-                        relation: ServerRelation::GlobalAdmin.to_openfga().to_string(),
+                        relation: ServerRelation::Admin.to_openfga().to_string(),
                         object: OPENFGA_SERVER.to_string(),
                         condition: None,
                     }]),
@@ -1887,7 +1884,7 @@ mod tests {
             checked_write(
                 authorizer.clone(),
                 &Actor::Principal(user1_id.clone()),
-                vec![ServerAssignment::GlobalAdmin(user2_id.into())],
+                vec![ServerAssignment::Admin(user2_id.into())],
                 vec![],
                 &OPENFGA_SERVER,
             )
@@ -1905,7 +1902,7 @@ mod tests {
         async fn test_assign_to_role() {
             let (_, authorizer) = authorizer_for_empty_store().await;
 
-            let user_id_owner = UserId::new(&uuid::Uuid::now_v7().to_string()).unwrap();
+            let user_id_owner = UserId::kubernetes(&uuid::Uuid::now_v7().to_string()).unwrap();
             let role_id_1 = RoleId::new(uuid::Uuid::nil());
             let role_id_2 = RoleId::new(uuid::Uuid::now_v7());
 
@@ -1946,8 +1943,8 @@ mod tests {
         async fn test_assign_to_project() {
             let (_, authorizer) = authorizer_for_empty_store().await;
 
-            let user_id_owner = UserId::new(&uuid::Uuid::now_v7().to_string()).unwrap();
-            let user_id_assignee = UserId::new(&uuid::Uuid::nil().to_string()).unwrap();
+            let user_id_owner = UserId::oidc(&uuid::Uuid::now_v7().to_string()).unwrap();
+            let user_id_assignee = UserId::kubernetes(&uuid::Uuid::nil().to_string()).unwrap();
             let role_id = RoleId::new(uuid::Uuid::now_v7());
             let project_id = ProjectIdent::from(uuid::Uuid::nil());
 

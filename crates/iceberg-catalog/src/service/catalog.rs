@@ -1,6 +1,6 @@
 use super::authz::TableUuid;
 use super::{
-    storage::StorageProfile, NamespaceIdentUuid, ProjectIdent, RoleId, TableIdentUuid, UserId,
+    storage::StorageProfile, NamespaceIdentUuid, ProjectIdent, RoleId, TableIdentUuid,
     ViewIdentUuid, WarehouseIdent, WarehouseStatus,
 };
 pub use crate::api::iceberg::v1::{
@@ -23,6 +23,7 @@ pub use iceberg_ext::catalog::rest::{CommitTableResponse, CreateTableRequest};
 use iceberg_ext::configs::Location;
 
 use crate::catalog::tables::TableMetadataDiffs;
+use crate::service::authn::UserId;
 use iceberg::TableUpdate;
 use std::collections::{HashMap, HashSet};
 
