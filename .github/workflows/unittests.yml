@@ -148,6 +148,9 @@ jobs:
         env:
           RUST_CACHE_KEY_OS: rust-cache-ubuntu-latest
 
+      - name: Setup cargo nextest
+        run: cargo install cargo-nextest
+
       - name: Migrate database
         run: |
           export DEBIAN_FRONTEND=noninteractive 
@@ -178,10 +181,7 @@ jobs:
         run: docker run -d -p 35081:8081 openfga/openfga:v1.6 run
 
       - name: Test
-        run: |
-          export DEBIAN_FRONTEND=noninteractive 
-          sudo apt-get update && sudo apt-get install -yqq libsasl2-dev --no-install-recommends
-          cargo test --no-fail-fast --all-targets --all-features --workspace
+        run: cargo nextest run --profile ci --all-targets --all-features --workspace
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
           TEST_KV2: 1
@@ -217,7 +217,11 @@ jobs:
           TEST_GCS: ${{ secrets.TEST_GCS }}
           GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
           GCS_CREDENTIAL: ${{ secrets.GCS_CREDENTIAL }}
-
+      - name: Upload junit
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit
+          path: target/nextest/ci/junit.xml
       - name: Doc Test
         run: cargo test --no-fail-fast --doc --all-features --workspace
         env:
