@@ -100,10 +100,10 @@ Details on how to configure the storage profiles can be found in the [Storage Gu
 
 ### Supported Event Stores
 
-| Backend |    Status    | Comment                                              |
-| ------- | :----------: | ---------------------------------------------------- |
-| Nats    |   ![done]    |                                                      |
-| Kafka   | ![semi-done] | Needs testing for certain configuration permutations |
+| Backend | Status  | Comment |
+|---------|:-------:|---------|
+| Nats    | ![done] |         |
+| Kafka   | ![done] |         |
 
 ### Supported Operations - Management API
 
@@ -243,7 +243,7 @@ The following features of rust-rdkafka are enabled:
 - ssl-vendored
 - libz-static
 
-This means that all features of [librdkafka](https://github.com/confluentinc/librdkafka) are usable. All necessary dependencies are statically linked and cannot be disabled. If you want to use dynamic linking or disable a feature, you unfortunately have to fork Lakekeeper and change the features accordingly. Please refer to the documentation of rust-rdkafka for details on how to enable dynamic linking or disable certain features.
+This means that all features of [librdkafka](https://github.com/confluentinc/librdkafka) are usable. All necessary dependencies are statically linked and cannot be disabled. If you want to use dynamic linking or disable a feature, you'll have to fork Lakekeeper and change the features accordingly. Please refer to the documentation of rust-rdkafka for details on how to enable dynamic linking or disable certain features.
 
 To publish events to Kafka, set the following environment variables:
 
