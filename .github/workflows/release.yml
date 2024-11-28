@@ -117,7 +117,7 @@ jobs:
         if: matrix.cross == true
         uses: taiki-e/install-action@v2
         with:
-          tool: cross
+          tool: cross@0.2.5
 
       #      - name: Setup cmake
       #        # C Toolchain for windows for protoc compilation
@@ -138,6 +138,8 @@ jobs:
       - name: Build [Cross]
         if: matrix.cross == true
         run: cross build --all-features --release --locked --target ${{ matrix.target }}
+        env:
+          CROSS_CONTAINER_OPTS: "--env CC_krb5_cv_attr_constructor_destructor=yes"
 
       #      - name: Prepare artifacts [Windows]
       #        if: matrix.os == 'windows-latest'
