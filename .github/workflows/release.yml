@@ -126,9 +126,8 @@ jobs:
       #        with:
       #          cmake-version: '3.16'
       - name: Install dependencies
+        if: matrix.cross == false && matrix.os == 'ubuntu-latest'
         run: |
-          export DEBIAN_FRONTEND=noninteractive 
-          sudo snap install --edge --classic just
           sudo apt-get update && sudo apt-get install -yqq libsasl2-dev --no-install-recommends
 
       - name: Build [Cargo]
