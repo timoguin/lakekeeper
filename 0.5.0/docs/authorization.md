@@ -1,24 +1,27 @@
 # Authorization
-Authorization can only be enabled if Authentication is setup as well. Please check the [Authentication Docs](ToDo) for more information.
+
+Authorization can only be enabled if Authentication is set up. Please check the [Authentication Docs](./authentication.md) for more information.
+
+Lakekeeper's default permission model uses the CNCF project [OpenFGA](http://openfga.dev) to store and evaluate permissions. OpenFGA enables a powerful permission model with bi-directional inheritance, essential for managing modern lakehouses with hierarchical namespaces. Our model balances usability and control for administrators.
+
+Please check the [Authorization Configuration](./configuration.md#authorization) for details on enabling Authorization with Lakekeeper.
 
 ## Grants
-Lakekeeper's default permission model uses the CNCF project [OpenFGA](http://openfga.dev) to store and evaluate permissions. OpenFGA allows us to implement a powerful permission model with bi-directional inheritance that is required to efficiently manage modern lakehouses with hierarchical namespaces. With our permission model, we try to find the balance between usability and control for administrators.
-
 The default permission model is focused on collaborating on data. Permissions are additive. The underlying OpenFGA model is defined in [`schema.fga` on Github](https://github.com/lakekeeper/lakekeeper/blob/main/authz/openfga/v1/schema.fga). The following grants are available:
 
-Entity    | Grant
-----------|------------------------------------------------------------------------------------------
-server    | admin, operator
-project   | project_admin, security_admin, data_admin, role_creator, describe, select, create, modify
-warehouse | ownership, pass_grants, manage_grants, describe, select, create, modify
-namespace | ownership, pass_grants, manage_grants, describe, select, create, modify
-table     | ownership, pass_grants, manage_grants, describe, select, modify
-view      | ownership, pass_grants, manage_grants, describe, modify
-role      | assignee, ownership
+| Entity    | Grant                                                            |
+|-----------|------------------------------------------------------------------|
+| server    | admin, operator                                                  |
+| project   | project_admin, security_admin, data_admin, role_creator, describe, select, create, modify |
+| warehouse | ownership, pass_grants, manage_grants, describe, select, create, modify |
+| namespace | ownership, pass_grants, manage_grants, describe, select, create, modify |
+| table     | ownership, pass_grants, manage_grants, describe, select, modify  |
+| view      | ownership, pass_grants, manage_grants, describe, modify          |
+| role      | assignee, ownership                                              |
 
 
 ### Ownership
-Owners of objects have all rights on the specific object. When principals create new objects, they automatically become owners of these objects. This enables powerful self-service szenarios where users can act autonomously in a (sub-)namespace. By default, Owners of objects are also able to access grants on objects, which enables them to expand the access to their owned objects to new users. Enabling [Managed Access](Todo) for a Warehouse or Namespace removes the `grant` privilege from owners.
+Owners of objects have all rights on the specific object. When principals create new objects, they automatically become owners of these objects. This enables powerful self-service szenarios where users can act autonomously in a (sub-)namespace. By default, Owners of objects are also able to access grants on objects, which enables them to expand the access to their owned objects to new users. Enabling [Managed Access](#managed-access) for a Warehouse or Namespace removes the `grant` privilege from owners.
 
 ### Server: Admin
 A `server`'s `admin` role is the most powerful role (apart from `operator`) on the server. In order to guarantee auditability, this role can list and administrate all Projects, but does not have access to data in projects. While the `admin` can assign himself the `project_admin` role for a project, this assignment is tracked by `OpenFGA` for audits. `admin`s can also manage all projects (but no entities within it), server settings and users.

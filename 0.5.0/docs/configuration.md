@@ -8,12 +8,14 @@ For most deployments, we recommend to set at least the following variables: `LAK
 
 | Variable                                         | Example                                | Description |
 |--------------------------------------------------|----------------------------------------|-----|
-| <nobr>`LAKEKEEPER__BASE_URI`</nobr>              | <nobr>`https://example.com:8080`<nobr> | Base URL where the catalog is externally reachable. Default: `https://localhost:8080` |
+| <nobr>`LAKEKEEPER__BASE_URI`</nobr>              | <nobr>`https://example.com:8181`<nobr> | Base URL where the catalog is externally reachable. Default: `https://localhost:8181` |
 | <nobr>`LAKEKEEPER__ENABLE_DEFAULT_PROJECT`<nobr> | `true`                                 | If `true`, the NIL Project ID ("00000000-0000-0000-0000-000000000000") is used as a default if the user does not specify a project when connecting. This option is enabled by default, which we recommend for all single-project (single-tenant) setups. Default: `true`. |
 | `LAKEKEEPER__RESERVED_NAMESPACES`                | `system,examples,information_schema`   | Reserved Namespaces that cannot be created via the REST interface |
 | `LAKEKEEPER__METRICS_PORT`                       | `9000`                                 | Port where the Prometheus metrics endpoint is reachable. Default: `9000` |
-| `LAKEKEEPER__LISTEN_PORT`                        | `8080`                                 | Port the Lakekeeper listens on. Default: `8080` |
+| `LAKEKEEPER__LISTEN_PORT`                        | `8181`                                 | Port the Lakekeeper listens on. Default: `8181` |
 | `LAKEKEEPER__SECRET_BACKEND`                     | `postgres`                             | The secret backend to use. If `kv2` (Hashicorp KV Version 2) is chosen, you need to provide [additional parameters](#vault-kv-version-2) Default: `postgres`, one-of: [`postgres`, `kv2`] |
+| `LAKEKEEPER__ALLOW_ORIGIN`                       | `*`                                    | A comma separated list of allowed origins for CORS. |
+
 
 ### Persistence Store
 
@@ -95,9 +97,38 @@ Please check the [Authentication Guide](./authentication.md) for more details.
 | Variable                                       | Example                                      | Description |
 |------------------------------------------------|----------------------------------------------|-----|
 | <nobr>`LAKEKEEPER__OPENID_PROVIDER_URI`</nobr> | `https://keycloak.local/realms/{your-realm}` | OpenID Provider URL. |
-| `LAKEKEEPER__OPENID_AUDIENCE`                  | `the-client-id-of-my-app`                    | If set, the `aud` of the provided token must match the value provided. |
+| `LAKEKEEPER__OPENID_AUDIENCE`                  | `the-client-id-of-my-app`                    | If set, the `aud` of the provided token must match the value provided. Multiple allowed audiences can be provided as a comma separated list. |
+| `LAKEKEEPER__OPENID_ADDITIONAL_ISSUERS`        | `https://sts.windows.net/<Tenant>/`          | A comma separated list of additional issuers to trust. The issuer defined in the `issuer` field of the `.well-known/openid-configuration` is always trusted. `LAKEKEEPER__OPENID_ADDITIONAL_ISSUERS` has no effect if `LAKEKEEPER__OPENID_PROVIDER_URI` is not set. |
 | `LAKEKEEPER__ENABLE_KUBERNETES_AUTHENTICATION` | true                                         | If true, kubernetes service accounts can authenticate to Lakekeeper. This option is compatible with `LAKEKEEPER__OPENID_PROVIDER_URI` - multiple IdPs (OIDC and Kubernetes) can be enabled simultaneously. |
+
+### Authorization
+Authorization is only effective if [Authentication](#authentication) is enabled.
+
+| Variable                                      | Example                                                                    | Description |
+|-----------------------------------------------|----------------------------------------------------------------------------|-----|
+| `LAKEKEEPER__AUTHZ_BACKEND`                   | `allowall`                                                                 | The authorization backend to use. If `openfga` is chosen, you need to provide [additional parameters](#authorization). The `allowall` backend disables authorization - authenticated users can access all endpoints. Default: `allowall`, one-of: [`openfga`, `allowall`] |
+| <nobr>`LAKEKEEPER__OPENFGA__ENDPOINT`</nobr>  | `http://localhost:35081`                                                   | OpenFGA Endpoint (gRPC). |
+| `LAKEKEEPER__OPENFGA__STORE_NAME`             | `lakekeeper`                                                               | The OpenFGA Store to use. Default: `lakekeeper` |
+| `LAKEKEEPER__OPENFGA__API_KEY`                | `my-api-key`                                                               | The API Key used for [Pre-shared key authentication](https://openfga.dev/docs/getting-started/setup-openfga/configure-openfga#pre-shared-key-authentication) to OpenFGA. If `LAKEKEEPER__OPENFGA__CLIENT_ID` is set, the API Key is ignored. If neither API Key nor Client ID is specified, no authentication is used. |
+| <nobr>`LAKEKEEPER__OPENFGA__CLIENT_ID`</nobr> | `12345`                                                                    | The Client ID to use for Authenticating if OpenFGA is secured via [OIDC](https://openfga.dev/docs/getting-started/setup-openfga/configure-openfga#oidc). |
+| `LAKEKEEPER__OPENFGA__CLIENT_SECRET`          | `abcd`                                                                     | Client Secret for the Client ID. |
+| `LAKEKEEPER__OPENFGA__TOKEN_ENDPOINT`         | `https://keycloak.example.com/realms/master/protocol/openid-connect/token` | Token Endpoint to use when exchanging client credentials for an access token for OpenFGA. Required if Client ID is set |
+
+
+### UI
+
+When using the built-in UI which is hosted as part of the Lakekeeper binary, most values are pre-set with the corresponding values of Lakekeeper itself. Customization is typically required if Authentication is enabled. Please check the [Authentication guide](./authentication.md) for more information.
+
+| Variable                                           | Example                                      | Description |
+|----------------------------------------------------|----------------------------------------------|-----|
+| <nobr>`LAKEKEEPER__UI__OPENID_PROVIDER_URI`</nobr> | `https://keycloak.local/realms/{your-realm}` | OpenID provider URI used for login in the UI. Defaults to `LAKEKEEPER__OPENID_PROVIDER_URI`. Set this only if the IdP is reachable under a different URI from the users browser and lakekeeper. |
+| `LAKEKEEPER__UI__OPENID_CLIENT_ID`                 | `lakekeeper-ui`                              | Client ID to use for the Authorization Code Flow of the UI. Required if Authentication is enabled. |
+| `LAKEKEEPER__UI__OPENID_REDIRECT_PATH`             | `/callback`                                  | Path where the UI receives the callback including the tokens from the users browser. Defaults to: `/callback` |
+| <nobr>`LAKEKEEPER__UI__OPENID_SCOPE`</nobr>        | `openid email`                               | Scopes to request from the IdP. If supported by the IdP, we recommend setting at least `openid email` |
+| <nobr>`LAKEKEEPER__UI__OPENID_RESOURCE`</nobr>     | `lakekeeper-api`                             | Resources to request from the IdP. |
+| `LAKEKEEPER__UI__OPENID_POST_LOGOUT_REDIRECT_PATH` | `/logout`                                    | Path the UI calls when users are logged out from the IdP. |
+
 
 ### SSL Dependencies
 
-You may be running Lakekeeper in your own environment which uses self-signed certificates for e.g. minio. Lakekeeper is built with reqwest's `rustls-tls-native-roots` feature activated, this means `SSL_CERT_FILE` and `SSL_CERT_DIR` environment variables are respected. If both are not set, the system's default CA store is used. If you want to use a custom CA store, set `SSL_CERT_FILE` to the path of the CA file or `SSL_CERT_DIR` to the path of the CA directory. The certificate used by the server cannot be a CA. It needs to be an end entity certificate, else you may run into `CaUsedAsEndEntity` errors.
+You may be running Lakekeeper in your own environment which uses self-signed certificates for e.g. Minio. Lakekeeper is built with reqwest's `rustls-tls-native-roots` feature activated, this means `SSL_CERT_FILE` and `SSL_CERT_DIR` environment variables are respected. If both are not set, the system's default CA store is used. If you want to use a custom CA store, set `SSL_CERT_FILE` to the path of the CA file or `SSL_CERT_DIR` to the path of the CA directory. The certificate used by the server cannot be a CA. It needs to be an end entity certificate, else you may run into `CaUsedAsEndEntity` errors.
