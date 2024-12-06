@@ -1,4 +1,4 @@
-site_name: docs/latest
+site_name: docs/0.5.0
 
 plugins:
   - search
