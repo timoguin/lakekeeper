@@ -50,6 +50,7 @@ use iceberg_ext::configs::namespace::NamespaceProperties;
 use iceberg_ext::configs::Location;
 use itertools::Itertools;
 use serde::Serialize;
+use tracing::Instrument;
 use uuid::Uuid;
 
 const PROPERTY_METADATA_DELETE_AFTER_COMMIT_ENABLED: &str =
@@ -863,6 +864,7 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
         },
         state.v1_state.catalog.clone(),
     )
+    .instrument(tracing::info_span!("fetch_table_ids"))
     .await
     .map_err(|e| {
         ErrorModel::internal("Error fetching table ids", "TableIdsFetchError", None)
@@ -900,7 +902,9 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
         .into());
     }
 
-    let mut transaction = C::Transaction::begin_write(state.v1_state.catalog).await?;
+    let mut transaction = C::Transaction::begin_write(state.v1_state.catalog)
+        .instrument(tracing::info_span!("begin_write_transaction"))
+        .await?;
     let warehouse = C::require_warehouse(warehouse_id, transaction.transaction()).await?;
 
     // Store data for events before it is moved
@@ -1035,7 +1039,10 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
         .collect();
     futures::future::try_join_all(write_futures).await?;
 
-    transaction.commit().await?;
+    transaction
+        .commit()
+        .instrument(tracing::info_span!("commit_write_transaction"))
+        .await?;
 
     // Delete files in parallel - if one delete fails, we still want to delete the rest
     let _ = futures::future::join_all(

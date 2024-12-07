@@ -32,9 +32,8 @@ pub(crate) async fn wait_for_db(
     if check_migrations {
         let mut counter = 0;
         loop {
-            let opts = CONFIG
-                .to_pool_opts()
-                .acquire_timeout(std::time::Duration::from_secs(1));
+            let opts = CONFIG.to_pool_opts("wait-for-db");
+            // .acquire_timeout(std::time::Duration::from_secs(1));
 
             let read_pool = get_reader_pool(opts).await?;
             let migrations =

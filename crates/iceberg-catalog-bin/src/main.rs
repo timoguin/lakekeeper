@@ -132,7 +132,7 @@ async fn main() -> anyhow::Result<()> {
             println!("Migrating database...");
             let write_pool = iceberg_catalog::implementations::postgres::get_writer_pool(
                 CONFIG
-                    .to_pool_opts()
+                    .to_pool_opts("writemigrate")
                     .acquire_timeout(std::time::Duration::from_secs(1)),
             )
             .await?;

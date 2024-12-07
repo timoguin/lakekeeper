@@ -18,6 +18,7 @@ use crate::service::health::{Health, HealthExt, HealthStatus};
 use crate::CONFIG;
 use anyhow::anyhow;
 use async_trait::async_trait;
+use http_body_util::BodyExt;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{ConnectOptions, Executor, PgPool};
 use std::str::FromStr;
@@ -54,6 +55,7 @@ pub struct PostgresCatalog {}
 
 pub struct PostgresTransaction {
     transaction: sqlx::Transaction<'static, sqlx::Postgres>,
+    started_at: std::time::Instant,
 }
 
 #[async_trait::async_trait]
@@ -61,13 +63,17 @@ impl crate::service::Transaction<CatalogState> for PostgresTransaction {
     type Transaction<'a> = &'a mut sqlx::Transaction<'static, sqlx::Postgres>;
 
     async fn begin_write(db_state: CatalogState) -> Result<Self> {
+        tracing::info!("Starting transaction");
         let transaction = db_state
             .write_pool()
             .begin()
             .await
             .map_err(|e| e.into_error_model("Error starting transaction".to_string()))?;
-
-        Ok(Self { transaction })
+        tracing::info!("Transaction started");
+        Ok(Self {
+            transaction,
+            started_at: std::time::Instant::now(),
+        })
     }
 
     async fn begin_read(db_state: CatalogState) -> Result<Self> {
@@ -83,14 +89,27 @@ impl crate::service::Transaction<CatalogState> for PostgresTransaction {
             .map_err(|e| {
                 e.into_error_model("Error setting transaction to read-only".to_string())
             })?;
-        Ok(Self { transaction })
+        Ok(Self {
+            transaction,
+            started_at: std::time::Instant::now(),
+        })
     }
 
     async fn commit(self) -> Result<()> {
+        tracing::info!(
+            "Committing transaction at age: {}ms",
+            self.started_at.elapsed().as_millis()
+        );
+        let bef_commit = std::time::Instant::now();
         self.transaction
             .commit()
             .await
             .map_err(|e| e.into_error_model("Error committing transaction".to_string()))?;
+        tracing::info!(
+            "Transaction committed, commit took: {}ms total transaction time: {}",
+            bef_commit.elapsed().as_millis(),
+            self.started_at.elapsed().as_millis()
+        );
         Ok(())
     }
 
@@ -202,11 +221,60 @@ impl CatalogState {
         self.read_write.write_pool.clone()
     }
 }
-
+static CNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static READ_CNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 impl DynAppConfig {
-    pub fn to_pool_opts(&self) -> PgPoolOptions {
+    pub fn to_pool_opts(&self, info: &'static str) -> PgPoolOptions {
         sqlx::pool::PoolOptions::default()
             .test_before_acquire(self.pg_test_before_acquire)
+            .before_acquire(|c, meta| {
+                let info = info.to_string();
+                Box::pin(async move {
+                    let cnt = match info.as_str() {
+                        "read" => READ_CNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                        "write" => CNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                        _ => 0,
+                    };
+                    tracing::info!(
+                        "{info} Trying to acquire: age {} {}, n_acquired: {cnt}",
+                        meta.age.as_millis(),
+                        meta.idle_for.as_millis()
+                    );
+                    Ok(true)
+                })
+            })
+            .after_connect(|c, meta| {
+                let info = info.to_string();
+                Box::pin(async move {
+                    let cnt = match info.as_str() {
+                        "read" => READ_CNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                        "write" => CNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                        _ => 0,
+                    };
+                    tracing::info!(
+                        "{info} Connected: age {} {} acquired: {cnt}",
+                        meta.age.as_millis(),
+                        meta.idle_for.as_millis()
+                    );
+                    Ok(())
+                })
+            })
+            .after_release(|c, meta| {
+                let info = info.to_string();
+                Box::pin(async move {
+                    let cnt = match info.as_str() {
+                        "read" => READ_CNT.fetch_sub(1, std::sync::atomic::Ordering::Relaxed),
+                        "write" => CNT.fetch_sub(1, std::sync::atomic::Ordering::Relaxed),
+                        _ => 0,
+                    };
+                    tracing::info!(
+                        "{info} Released: age {} {} acquired: {cnt}",
+                        meta.age.as_millis(),
+                        meta.idle_for.as_millis()
+                    );
+                    Ok(true)
+                })
+            })
             .max_lifetime(
                 self.pg_connection_max_lifetime
                     .map(core::time::Duration::from_secs),

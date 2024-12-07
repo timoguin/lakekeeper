@@ -43,7 +43,7 @@ pub async fn health(check_db: bool, check_server: bool) -> anyhow::Result<()> {
 pub(crate) async fn db_health_check() -> anyhow::Result<()> {
     let reader = get_reader_pool(
         CONFIG
-            .to_pool_opts()
+            .to_pool_opts("readhealth")
             .acquire_timeout(std::time::Duration::from_secs(1))
             .max_connections(1),
     )
@@ -51,7 +51,7 @@ pub(crate) async fn db_health_check() -> anyhow::Result<()> {
     .with_context(|| "Read pool failed.")?;
     let writer = get_writer_pool(
         CONFIG
-            .to_pool_opts()
+            .to_pool_opts("writehealth")
             .acquire_timeout(std::time::Duration::from_secs(1))
             .max_connections(1),
     )
