@@ -7,12 +7,12 @@ import {check} from 'k6';
 import {sleep} from 'k6';
 
 const NUMBER_OF_TABLES = 1500;
-const NUMBER_OF_WORKERS = 1;
-
+const NUMBER_OF_WORKERS = 100;
+const prefix = "bcc2f03a-b48c-11ef-84c7-5b8c29e369ea"
 export const options = {
     // Key configurations for Stress in this section
     stages: [
-        {duration: '1s', target: NUMBER_OF_WORKERS}, // traffic ramp-up from 1 to a higher 200 users over 10 minutes.
+        {duration: '5s', target: NUMBER_OF_WORKERS}, // traffic ramp-up from 1 to a higher 200 users over 10 minutes.
         {duration: '2m', target: NUMBER_OF_WORKERS}, // stay at higher 200 users for 30 minutes
         {duration: '1m', target: 0}, // ramp-down to 0 users
     ],
@@ -46,7 +46,7 @@ export default function () {
     let slice = exec.vu.idInTest * per_worker
     let number_between_0_and_1500 = Math.min(getRandomInt(slice, Math.min(slice + per_worker, NUMBER_OF_TABLES - 1)), NUMBER_OF_TABLES - 1);
 
-    const c = http.get('http://localhost:8181/catalog/v1/a89475d6-b426-11ef-a817-9bb0eaa896e9/namespaces/demo_namespace/tables/my_table_' + number_between_0_and_1500);
+    const c = http.get(`http://localhost:8181/catalog/v1/${prefix}/namespaces/demo_namespace/tables/my_table_` + number_between_0_and_1500);
 
     let r = JSON.parse(c.body);
     let tab = r['metadata']
@@ -113,7 +113,7 @@ export default function () {
         ]
     })
     const headers = {"Content-Type": "application/json"};
-    let res = http.post('http://localhost:8181/catalog/v1/a89475d6-b426-11ef-a817-9bb0eaa896e9/namespaces/demo_namespace/tables/my_table_' + number_between_0_and_1500,
+    let res = http.post(`http://localhost:8181/catalog/v1/${prefix}/namespaces/demo_namespace/tables/my_table_` + number_between_0_and_1500,
         payload,
         {headers: headers});
 

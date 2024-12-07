@@ -22,8 +22,8 @@ services:
       - LAKEKEEPER__PG_ENCRYPTION_KEY=This-is-NOT-Secure!
       - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
       - LAKEKEEPER__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@db:5432/postgres
-      - LAKEKEEPER__PG_READ_POOL_CONNECTIONS=1
-      - LAKEKEEPER__PG_WRITE_POOL_CONNECTIONS=1
+      - LAKEKEEPER__PG_READ_POOL_CONNECTIONS=40
+      - LAKEKEEPER__PG_WRITE_POOL_CONNECTIONS=40
       - LAKEKEEPER__UI__LAKEKEEPER_URL=http://localhost:8181
 #      - LAKEKEEPER__QUEUE_CONFIG={max_retries=3, max_age="3600", poll_interval="3600"}
       - RUST_LOG=info,axum=info,sqlx=trace,iceberg-catalog=trace
