@@ -97,7 +97,7 @@ export default function (data) {
     let slice = exec.vu.idInTest * per_worker
     let number_between_0_and_1500 = Math.min(getRandomInt(slice, Math.min(slice + per_worker, NUMBER_OF_TABLES - 1)), NUMBER_OF_TABLES - 1);
     const catalog_url = data.catalog_url;
-    const c = http.get(`${catalog_url}/namespaces/demo_namespace/tables/my_table_` + number_between_0_and_1500);
+    const c = http.get(`${catalog_url}/namespaces/${NAMESPACE_NAME}/tables/my_table_${number_between_0_and_1500}`);
 
     let r = JSON.parse(c.body);
     let tab = r['metadata']
