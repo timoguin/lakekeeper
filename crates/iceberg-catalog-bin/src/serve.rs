@@ -33,12 +33,14 @@ pub(crate) async fn serve(bind_addr: std::net::SocketAddr) -> Result<(), anyhow:
     let read_pool = iceberg_catalog::implementations::postgres::get_reader_pool(
         CONFIG
             .to_pool_opts("read")
+            .acquire_timeout(std::time::Duration::from_secs(1))
             .max_connections(CONFIG.pg_read_pool_connections),
     )
     .await?;
     let write_pool = iceberg_catalog::implementations::postgres::get_writer_pool(
         CONFIG
             .to_pool_opts("write")
+            .acquire_timeout(std::time::Duration::from_secs(1))
             .max_connections(CONFIG.pg_write_pool_connections),
     )
     .await?;
