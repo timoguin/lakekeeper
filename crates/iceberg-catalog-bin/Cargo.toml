@@ -21,7 +21,8 @@ all = ["ui"]
 ui = ["dep:lakekeeper-console", "dep:mime_guess", "dep:moka"]
 
 [dependencies]
-reqwest = { workspace = true }anyhow = { workspace = true }
+reqwest = { workspace = true }
+anyhow = { workspace = true }
 async-nats = { workspace = true }
 rdkafka = { workspace = true }
 axum = { workspace = true }

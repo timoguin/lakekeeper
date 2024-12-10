@@ -13,11 +13,8 @@ use url::Url;
 
 use crate::service::task_queue::TaskQueueConfig;
 use crate::{ProjectIdent, WarehouseIdent};
-use anyhow::{anyhow, Context};
-use http::HeaderValue;
 use itertools::Itertools;
 use serde::{Deserialize, Deserializer, Serialize};
-use url::Url;
 use veil::Redact;
 
 use crate::service::event_publisher::kafka::KafkaConfig;
