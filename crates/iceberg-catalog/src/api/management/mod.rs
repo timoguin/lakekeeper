@@ -56,7 +56,7 @@ pub mod v1 {
     #[openapi(
         info(
             title = "Lakekeeper Management API",
-            description = "Lakekeeper is a rust-native Apache Iceberg REST Catalog implementation. The Management API provides endpoints to manage users, roles, projects, and warehouses.",
+            description = "Lakekeeper is a rust-native Apache Iceberg REST Catalog implementation. The Management API provides endpoints to manage the server, projects, warehouses, users, and roles. If Authorization is enabled, permissions can also be managed. An interactive Swagger-UI for the specific Lakekeeper Version and configuration running is available at `/swagger-ui/#/` of Lakekeeper (by default [http://localhost:8181/swagger-ui/#/](http://localhost:8181/swagger-ui/#/)).",
         ),
         tags(
             (name = "server", description = "Manage Server"),
@@ -212,15 +212,16 @@ pub mod v1 {
         path = "/management/v1/bootstrap",
         request_body = BootstrapRequest,
         responses(
-            (status = 200, description = "Server bootstrapped successfully"),
+            (status = 204, description = "Server bootstrapped successfully"),
         )
     )]
     async fn bootstrap<C: Catalog, A: Authorizer, S: SecretStore>(
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<BootstrapRequest>,
-    ) -> Result<()> {
-        ApiServer::<C, A, S>::bootstrap(api_context, metadata, request).await
+    ) -> Result<StatusCode> {
+        ApiServer::<C, A, S>::bootstrap(api_context, metadata, request).await?;
+        Ok(StatusCode::NO_CONTENT)
     }
 
     /// Creates the user in the catalog if it does not exist.
@@ -864,10 +865,10 @@ pub mod v1 {
         Extension(metadata): Extension<RequestMetadata>,
     ) -> Result<Json<ListDeletedTabularsResponse>> {
         ApiServer::<C, A, S>::list_soft_deleted_tabulars(
-            metadata,
             warehouse_id.into(),
-            api_context,
             query,
+            api_context,
+            metadata,
         )
         .await
         .map(Json)

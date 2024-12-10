@@ -23,14 +23,18 @@ impl Verifier for IdpVerifier {
     }
 
     fn typ(&self) -> &str {
-        self.issuer.as_str()
+        self.main_issuer.as_str()
     }
 }
 
 #[derive(Clone)]
 pub struct IdpVerifier {
     client: JwksClient<WebSource>,
-    issuer: String,
+    issuers: Vec<String>,
+    main_issuer: String,
+    /// Expected audience for the token.
+    /// If None, the audience will not be validated
+    audience: Option<Vec<String>>,
 }
 
 impl IdpVerifier {
@@ -42,7 +46,11 @@ impl IdpVerifier {
     /// This function can fail if the openid configuration cannot be fetched or parsed.
     /// This function can also fail if the `WebSource` cannot be built from the jwks uri in the
     /// fetched openid configuration
-    pub async fn new(mut url: Url) -> anyhow::Result<Self> {
+    pub async fn new(
+        mut url: Url,
+        audience: Option<Vec<String>>,
+        additional_issuers: Option<Vec<String>>,
+    ) -> anyhow::Result<Self> {
         if !url.path().ends_with('/') {
             url.set_path(&format!("{}/", url.path()));
         }
@@ -57,9 +65,16 @@ impl IdpVerifier {
         );
         let source = WebSource::builder().build(config.jwks_uri.clone())?;
         let client = JwksClient::builder().build(source);
+        let main_issuer = config.issuer.clone();
+        let mut issuers = additional_issuers.unwrap_or_default();
+        issuers.push(main_issuer.clone());
+        tracing::info!("Created IdpVerifier for issuers: {:?}", issuers);
+
         Ok(Self {
             client,
-            issuer: config.issuer.clone(),
+            issuers,
+            main_issuer,
+            audience,
         })
     }
 
@@ -147,10 +162,13 @@ impl IdpVerifier {
             Validation::new(header.alg)
         };
 
-        // TODO: aud validation in multi-tenant setups
-        validation.validate_aud = false;
-
-        validation.set_issuer(&[&self.issuer]);
+        if let Some(aud) = &self.audience {
+            validation.set_audience(aud);
+            validation.validate_aud = true;
+        } else {
+            validation.validate_aud = false;
+        }
+        validation.set_issuer(&self.issuers);
 
         Ok(validation)
     }

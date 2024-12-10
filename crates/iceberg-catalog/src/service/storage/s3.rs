@@ -15,17 +15,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::LazyLock;
-use std::time::Duration;
 use veil::Redact;
 
 use super::StorageType;
 
-static S3_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
-    reqwest::ClientBuilder::new()
-        .pool_idle_timeout(Duration::from_millis(18500))
-        .build()
-        .expect("This should never fail since we are just setting timeout to 18500 which does not populate config.error")
-});
+static S3_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 #[derive(Debug, Eq, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -65,7 +59,8 @@ pub struct S3Profile {
 pub enum S3Flavor {
     #[default]
     Aws,
-    Minio,
+    #[serde(alias = "minio")]
+    S3Compat,
 }
 
 #[derive(Redact, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -308,7 +303,7 @@ impl S3Profile {
                     session_token,
                     expiration: _,
                     ..
-                } = if let (S3Flavor::Minio, Some(cred)) = (self.flavor, cred) {
+                } = if let (S3Flavor::S3Compat, Some(cred)) = (self.flavor, cred) {
                     self.get_minio_sts_token(table_location, cred, storage_permissions)
                         .await?
                 } else if let (Some(cred), Some(arn)) = (cred, self.sts_role_arn.as_ref()) {
@@ -345,7 +340,7 @@ impl S3Profile {
         &self,
         table_location: &Location,
         cred: &S3Credential,
-        arn: &String,
+        arn: &str,
         storage_permissions: StoragePermissions,
     ) -> Result<aws_sdk_sts::types::Credentials, TableConfigError> {
         self.get_sts_token(table_location, cred, Some(arn), storage_permissions)
@@ -903,7 +898,7 @@ mod test {
                         region,
                         path_style_access: Some(true),
                         sts_role_arn: None,
-                        flavor: S3Flavor::Minio,
+                        flavor: S3Flavor::S3Compat,
                         sts_enabled: true,
                     };
                     let mut profile: StorageProfile = profile.into();

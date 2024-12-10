@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Lakekeeper Management API
-  description: Lakekeeper is a rust-native Apache Iceberg REST Catalog implementation. The Management API provides endpoints to manage users, roles, projects, and warehouses.
+  description: Lakekeeper is a rust-native Apache Iceberg REST Catalog implementation. The Management API provides endpoints to manage the server, projects, warehouses, users, and roles. If Authorization is enabled, permissions can also be managed. An interactive Swagger-UI for the specific Lakekeeper Version and configuration running is available at `/swagger-ui/#/` of Lakekeeper (by default [http://localhost:8181/swagger-ui/#/](http://localhost:8181/swagger-ui/#/)).
   license:
     name: Apache-2.0
   version: 0.4.3
@@ -35,7 +35,7 @@ paths:
               $ref: '#/components/schemas/BootstrapRequest'
         required: true
       responses:
-        '200':
+        '204':
           description: Server bootstrapped successfully
   /management/v1/default-project:
     get:
@@ -107,7 +107,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetNamespaceResponse'
+                $ref: '#/components/schemas/GetNamespaceAuthPropertiesResponse'
   /management/v1/permissions/namespace/{namespace_id}/access:
     get:
       tags:
@@ -689,7 +689,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetWarehouseResponse'
+                $ref: '#/components/schemas/GetWarehouseAuthPropertiesResponse'
   /management/v1/permissions/warehouse/{warehouse_id}/access:
     get:
       tags:
@@ -1807,12 +1807,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NamespaceAssignment'
-    GetNamespaceResponse:
+    GetNamespaceAuthPropertiesResponse:
       type: object
       required:
       - managed-access
+      - managed-access-inherited
       properties:
         managed-access:
+          type: boolean
+        managed-access-inherited:
           type: boolean
     GetProjectAccessResponse:
       type: object
@@ -1939,6 +1942,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WarehouseAssignment'
+    GetWarehouseAuthPropertiesResponse:
+      type: object
+      required:
+      - managed-access
+      properties:
+        managed-access:
+          type: boolean
     GetWarehouseResponse:
       type: object
       required:
@@ -2391,7 +2401,7 @@ components:
       type: string
       enum:
       - aws
-      - minio
+      - s3-compat
     S3Profile:
       type: object
       required:

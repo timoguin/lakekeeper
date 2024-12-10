@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - main
-      - "release-*"
+      - 'manual-release-*'
   pull_request:
-    branches:
-      - main
-      - "release-*"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,7 +17,7 @@ concurrency:
 
 jobs:
   sqlx-check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Cargo sqlx-check
@@ -30,10 +28,17 @@ jobs:
           cargo sqlx prepare --check --workspace -- --all-features
 
   check-format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - run: sudo snap install --edge --classic just
       - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain and cache
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+        env:
+          RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
 
       - name: Cargo format
         run: just check-format
@@ -42,7 +47,7 @@ jobs:
         run: git diff --exit-code
 
   clippy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - run: |
           export DEBIAN_FRONTEND=noninteractive 
@@ -56,7 +61,7 @@ jobs:
         with:
           components: clippy
         env:
-          RUST_CACHE_KEY_OS: rust-cache-ubuntu-latest
+          RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
           TEST_OPENFGA: 1
           TEST_AZURE: 1
           TEST_AWS: 1
@@ -67,7 +72,7 @@ jobs:
       - name: Cargo clippy
         run: just check-clippy
         env:
-          RUST_CACHE_KEY_OS: rust-cache-ubuntu-latest
+          RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
           TEST_OPENFGA: 1
           TEST_AZURE: 1
           TEST_AWS: 1
@@ -76,7 +81,7 @@ jobs:
           TEST_MINIO: 1
 
   check-generated-cotents-match:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - run: |
           export DEBIAN_FRONTEND=noninteractive 
@@ -88,16 +93,19 @@ jobs:
         with:
           components: clippy
         env:
-          RUST_CACHE_KEY_OS: rust-cache-ubuntu-latest
+          RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
       - name: Regenerate management openapi
         run: just update-management-openapi
       - name: Fail on diff
         run: git diff -I ".*version.*" -w --ignore-blank-lines --exit-code Cargo.lock openapi/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - name: Build TS Client
         run: npx @hey-api/openapi-ts -i openapi/management-open-api.yaml -o src/gen/management -c @hey-api/client-fetch
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       vault:
         image: hashicorp/vault:latest
@@ -146,7 +154,7 @@ jobs:
       - name: Setup Rust toolchain and cache
         uses: actions-rust-lang/setup-rust-toolchain@v1
         env:
-          RUST_CACHE_KEY_OS: rust-cache-ubuntu-latest
+          RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
 
       - name: Setup cargo nextest
         run: cargo install cargo-nextest
@@ -181,7 +189,7 @@ jobs:
         run: docker run -d -p 35081:8081 openfga/openfga:v1.6 run
 
       - name: Test
-        run: cargo nextest run --profile ci --all-targets --all-features --workspace
+        run: cargo test --all-targets --all-features --workspace
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
           TEST_KV2: 1
