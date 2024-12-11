@@ -9,7 +9,7 @@ passthrough = [
 [build]
 pre-build = [
     """
-    apt-get update -qq && apt-get install -yqq curl libzstd-dev libssl-dev libsasl2-dev --no-install-recommends && \
+    apt-get update -qq && apt-get install -yqq curl cmake zlib1g-dev libzstd-dev libssl-dev libsasl2-dev --no-install-recommends && \
     curl -sL https://deb.nodesource.com/setup_23.x | bash - && \
     apt-get install -y nodejs  && \
     node -v && npm -v
