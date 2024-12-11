@@ -16,7 +16,7 @@ jobs:
         name: ${{ inputs.test_name }}
         env:
           current_test: ${{ inputs.test_name }}
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         steps:
           - uses: actions/checkout@v4
 
@@ -70,5 +70,5 @@ jobs:
               name: db-dump-${{ inputs.test_name }}
               path: dump.sql.gz
           - name: Dump docker logs on failure
-            if: failure()
+            if: always()
             uses: jwalton/gh-docker-logs@v2
