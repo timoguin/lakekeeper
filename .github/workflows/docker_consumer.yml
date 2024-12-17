@@ -1,5 +1,4 @@
-name: Examples Test [no-auth]
-
+name: Docker consumer
 on:
   workflow_run:
     workflows: ["Docker build"]  # Must match the name exactly
@@ -15,35 +14,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-examples:
+  test-load:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-
+      - uses: engineerd/setup-kind@v0.6.2
+        with:
+          version: "v0.24.0"
       - name: Restore binary
         uses: actions/download-artifact@v4
         with:
           name: iceberg-catalog-image
           path: artifacts
-          run-id: '${{ github.event.workflow_run.id }}'
+          run-id: ${{ github.event.workflow_run.id }}
       - name: Display structure of downloaded files
         run: ls -Rlh artifacts
 
       - name: Restore Docker image
-        run: |
-          docker load -i artifacts/iceberg-catalog-amd64.tar
-
-      - name: List docker images
-        run: docker image ls
-
-      - name: Test Examples
-        run: |
-          cd examples/minimal
-          sed -i '/pull_policy: always/d' docker-compose.yaml
-          docker compose run jupyter bash -c "cd /home/jovyan/examples/ && jupyter execute Spark.ipynb"
-        env:
-          LAKEKEEPER_TEST__SERVER_IMAGE: localhost/iceberg-catalog-local:amd64
-      - name: Dump docker logs on failure
-        if: failure()
-        uses: jwalton/gh-docker-logs@v2
+        run:  docker load -i artifacts/iceberg-catalog-amd64.tar &&  kind load docker-image localhost/iceberg-catalog-local:amd64

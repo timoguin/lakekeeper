@@ -6,7 +6,9 @@ on:
       test_name:
         required: true
         type: string
-
+      docker_build_id:
+        required: true
+        type: string
 env:
   CARGO_TERM_COLOR: always
 
@@ -25,7 +27,7 @@ jobs:
             with:
               name: iceberg-catalog-image
               path: artifacts
-
+              run-id: '${{ inputs.docker_build_id }}'
           - name: Display structure of downloaded files
             run: ls -Rlh artifacts
 
