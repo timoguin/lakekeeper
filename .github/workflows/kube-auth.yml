@@ -5,7 +5,6 @@ on:
    workflows: ["Docker build"]  # Must match the name exactly
    types:
      - completed
-   branches:
 
 
 env:
