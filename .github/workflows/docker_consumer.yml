@@ -1,9 +1,10 @@
 name: Docker consumer
 on:
   workflow_run:
-    workflows: ["Docker build"]  # Must match the name exactly
+    workflows: [Docker build]  # Must match the name exactly
     types:
       - completed
+
 
 env:
   CARGO_TERM_COLOR: always
