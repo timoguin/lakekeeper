@@ -5,6 +5,8 @@ on:
     workflows: [Upload data]
     types:
       - completed
+    branches:
+      - *
 
 jobs:
   download:
