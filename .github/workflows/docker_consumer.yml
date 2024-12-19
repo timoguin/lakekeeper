@@ -1,10 +1,9 @@
 name: Docker consumer
 on:
   workflow_run:
-    workflows: [Docker build]  # Must match the name exactly
+    workflows: ["Docker build"]  # Must match the name exactly
     types:
       - completed
-
 
 env:
   CARGO_TERM_COLOR: always
@@ -22,14 +21,17 @@ jobs:
       - uses: engineerd/setup-kind@v0.6.2
         with:
           version: "v0.24.0"
+
+      # Consider using the github-script approach for more reliable artifact downloading
       - name: Restore binary
         uses: actions/download-artifact@v4
         with:
           name: iceberg-catalog-image
           path: artifacts
           run-id: ${{ github.event.workflow_run.id }}
+
       - name: Display structure of downloaded files
         run: ls -Rlh artifacts
 
       - name: Restore Docker image
-        run:  docker load -i artifacts/iceberg-catalog-amd64.tar &&  kind load docker-image localhost/iceberg-catalog-local:amd64
+        run: docker load -i artifacts/iceberg-catalog-amd64.tar && kind load docker-image localhost/iceberg-catalog-local:amd64
