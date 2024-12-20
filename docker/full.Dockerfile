@@ -1,5 +1,7 @@
 FROM rust:1.83-slim-bookworm AS chef
 
+ARG NO_CHEF=false
+
 ENV NODE_VERSION=23.3.0
 ENV NVM_DIR=/root/.nvm
 
@@ -19,19 +21,19 @@ ENV PATH="/root/.nvm/versions/node/v${NODE_VERSION}/bin/:${PATH}"
 RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v28.2/protoc-28.2-linux-x86_64.zip && \
     unzip protoc-28.2-linux-x86_64.zip -d /usr/local/ && \
     rm protoc-28.2-linux-x86_64.zip
-RUN cargo install cargo-chef 
+RUN $NO_CHEF || cargo install cargo-chef
 
 WORKDIR /app
 
 FROM chef AS planner
 COPY . .
-RUN cargo chef prepare  --recipe-path recipe.json
+RUN ($NO_CHEF && touch recipe.json) || cargo chef prepare  --recipe-path recipe.json
 
 FROM chef AS builder
 
 COPY --from=planner /app/recipe.json recipe.json
 # Build dependencies - this is the caching Docker layer!
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN $NO_CHEF || cargo chef cook --release --recipe-path recipe.json
 # Build application
 COPY . .
 
