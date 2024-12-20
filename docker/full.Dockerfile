@@ -18,9 +18,6 @@ RUN apt-get update -qq && \
 
 ENV PATH="/root/.nvm/versions/node/v${NODE_VERSION}/bin/:${PATH}"
 
-RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v28.2/protoc-28.2-linux-x86_64.zip && \
-    unzip protoc-28.2-linux-x86_64.zip -d /usr/local/ && \
-    rm protoc-28.2-linux-x86_64.zip
 RUN $NO_CHEF || cargo install cargo-chef
 
 WORKDIR /app
