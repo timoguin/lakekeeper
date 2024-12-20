@@ -13,8 +13,7 @@ RUN apt-get update -qq && \
     . "$NVM_DIR/nvm.sh" && nvm install ${NODE_VERSION}  && \
     . "$NVM_DIR/nvm.sh" && nvm use v${NODE_VERSION}  && \
     . "$NVM_DIR/nvm.sh" && nvm alias default v${NODE_VERSION}  && \
-    node -v && npm -v && \
-    cargo install -q --version=0.8.2 sqlx-cli --no-default-features --features postgres
+    node -v && npm -v
 
 ENV PATH="/root/.nvm/versions/node/v${NODE_VERSION}/bin/:${PATH}"
 
