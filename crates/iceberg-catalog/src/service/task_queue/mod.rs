@@ -52,6 +52,17 @@ impl TaskQueues {
     }
 
     #[tracing::instrument(skip(self))]
+    pub(crate) async fn reschedule_tabular_expiration(
+        &self,
+        filter: TaskFilter,
+        execute_at: chrono::DateTime<Utc>,
+    ) -> crate::api::Result<()> {
+        self.tabular_expiration
+            .reschedule_pending_tasks(filter, execute_at)
+            .await
+    }
+
+    #[tracing::instrument(skip(self))]
     pub(crate) async fn queue_tabular_purge(
         &self,
         task: TabularPurgeInput,
