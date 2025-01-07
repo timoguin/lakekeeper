@@ -1,4 +1,6 @@
 use super::commit_tables::apply_commit;
+use super::io::delete_file;
+use super::namespace::authorized_namespace_ident_to_id;
 use super::{
     io::write_metadata_file, maybe_get_secret, namespace::validate_namespace_ident,
     require_warehouse_id, CatalogServer,
@@ -48,7 +50,7 @@ use iceberg::spec::{
 use iceberg::{NamespaceIdent, TableUpdate};
 use iceberg_ext::catalog::rest::{LoadCredentialsResponse, StorageCredential};
 use iceberg_ext::configs::namespace::NamespaceProperties;
-use iceberg_ext::configs::Location;
+use iceberg_ext::configs::{Location, ParseFromStr};
 use itertools::Itertools;
 use serde::Serialize;
 use uuid::Uuid;
@@ -77,26 +79,16 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // ------------------- AUTHZ -------------------
         let authorizer = state.v1_state.authz;
-        authorizer
-            .require_warehouse_action(
-                &request_metadata,
-                warehouse_id,
-                &CatalogWarehouseAction::CanUse,
-            )
-            .await?;
-        let mut t: <C as Catalog>::Transaction =
-            Transaction::begin_read(state.v1_state.catalog).await?;
-        let namespace_id = C::namespace_to_id(warehouse_id, &namespace, t.transaction()).await; // We can't fail before AuthZ.
-
-        authorizer
-            .require_namespace_action(
-                &request_metadata,
-                warehouse_id,
-                namespace_id,
-                &CatalogNamespaceAction::CanListTables,
-            )
-            .await?;
-
+        let mut t = C::Transaction::begin_read(state.v1_state.catalog).await?;
+        let _namespace_id = authorized_namespace_ident_to_id::<C, _>(
+            authorizer.clone(),
+            &request_metadata,
+            &warehouse_id,
+            &namespace,
+            &CatalogNamespaceAction::CanListTables,
+            t.transaction(),
+        )
+        .await?;
         // ------------------- BUSINESS LOGIC -------------------
 
         let (identifiers, table_uuids, next_page_token) =
@@ -145,24 +137,17 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         }
 
         // ------------------- AUTHZ -------------------
-        let authorizer = state.v1_state.authz;
-        authorizer
-            .require_warehouse_action(
-                &request_metadata,
-                warehouse_id,
-                &CatalogWarehouseAction::CanUse,
-            )
-            .await?;
+        let authorizer = state.v1_state.authz.clone();
         let mut t = C::Transaction::begin_write(state.v1_state.catalog).await?;
-        let namespace_id = C::namespace_to_id(warehouse_id, &namespace, t.transaction()).await; // We can't fail before AuthZ.
-        let namespace_id = authorizer
-            .require_namespace_action(
-                &request_metadata,
-                warehouse_id,
-                namespace_id,
-                &CatalogNamespaceAction::CanCreateTable,
-            )
-            .await?;
+        let namespace_id = authorized_namespace_ident_to_id::<C, _>(
+            authorizer.clone(),
+            &request_metadata,
+            &warehouse_id,
+            &namespace,
+            &CatalogNamespaceAction::CanCreateTable,
+            t.transaction(),
+        )
+        .await?;
 
         // ------------------- BUSINESS LOGIC -------------------
         let id = Uuid::now_v7();
@@ -315,7 +300,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         emit_change_event(
             EventMetadata {
                 tabular_id: TabularIdentUuid::Table(*tabular_id),
-                warehouse_id: *warehouse_id,
+                warehouse_id,
                 name: table.name.clone(),
                 namespace: table.namespace.to_url_string(),
                 prefix: prefix.map(Prefix::into_string).unwrap_or_default(),
@@ -587,16 +572,11 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         .await; // We can't fail before AuthZ
 
         let table_id = authorizer
-            .require_table_action(
-                &request_metadata,
-                warehouse_id,
-                table_id,
-                &CatalogTableAction::CanDrop,
-            )
+            .require_table_action(&request_metadata, table_id, &CatalogTableAction::CanDrop)
             .await?;
 
         // ------------------- BUSINESS LOGIC -------------------
-        let purge = purge_requested.unwrap_or(false);
+        let purge = purge_requested.unwrap_or(true);
 
         let warehouse = C::require_warehouse(warehouse_id, t.transaction()).await?;
 
@@ -655,7 +635,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         emit_change_event(
             EventMetadata {
                 tabular_id: TabularIdentUuid::Table(*table_id),
-                warehouse_id: *warehouse_id,
+                warehouse_id,
                 name: table.name,
                 namespace: table.namespace.to_url_string(),
                 prefix: prefix
@@ -687,39 +667,22 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // ------------------- AUTHZ -------------------
         let authorizer = state.v1_state.authz;
-        authorizer
-            .require_warehouse_action(
-                &request_metadata,
-                warehouse_id,
-                &CatalogWarehouseAction::CanUse,
-            )
-            .await?;
-
-        let include_staged = false;
-        let include_deleted = false;
-        let include_active = true;
-
         let mut t = C::Transaction::begin_read(state.v1_state.catalog).await?;
-        let table_id = C::table_to_id(
+        let list_flags = ListFlags {
+            include_staged: false,
+            include_deleted: false,
+            include_active: true,
+        };
+        let _table_id = authorized_table_ident_to_id::<C, _>(
+            authorizer,
+            &request_metadata,
             warehouse_id,
             &table,
-            ListFlags {
-                include_active,
-                include_staged,
-                include_deleted,
-            },
+            list_flags,
+            &CatalogTableAction::CanGetMetadata,
             t.transaction(),
         )
-        .await; // We can't fail before AuthZ
-        authorizer
-            .require_table_action(
-                &request_metadata,
-                warehouse_id,
-                table_id,
-                &CatalogTableAction::CanGetMetadata,
-            )
-            .await
-            .map_err(set_not_found_status_code)?;
+        .await?;
         t.commit().await?;
 
         // ------------------- BUSINESS LOGIC -------------------
@@ -745,38 +708,23 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // ------------------- AUTHZ -------------------
         let authorizer = state.v1_state.authz;
-        authorizer
-            .require_warehouse_action(
-                &request_metadata,
-                warehouse_id,
-                &CatalogWarehouseAction::CanUse,
-            )
-            .await?;
-
-        let include_staged = false;
-        let include_deleted = false;
-        let include_active = true;
-
         let mut t = C::Transaction::begin_write(state.v1_state.catalog).await?;
-        let source_table_id = C::table_to_id(
+        let list_flags = ListFlags {
+            include_staged: false,
+            include_deleted: false,
+            include_active: true,
+        };
+        let source_table_id = authorized_table_ident_to_id::<C, _>(
+            authorizer.clone(),
+            &request_metadata,
             warehouse_id,
             &source,
-            ListFlags {
-                include_active,
-                include_staged,
-                include_deleted,
-            },
+            list_flags,
+            &CatalogTableAction::CanRename,
             t.transaction(),
         )
-        .await; // We can't fail before AuthZ;
-        let source_table_id = authorizer
-            .require_table_action(
-                &request_metadata,
-                warehouse_id,
-                source_table_id,
-                &CatalogTableAction::CanRename,
-            )
-            .await?;
+        .await?;
+
         let namespace_id =
             C::namespace_to_id(warehouse_id, &source.namespace, t.transaction()).await; // We can't fail before AuthZ
 
@@ -784,7 +732,6 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         authorizer
             .require_namespace_action(
                 &request_metadata,
-                warehouse_id,
                 namespace_id,
                 &CatalogNamespaceAction::CanCreateTable,
             )
@@ -816,7 +763,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         emit_change_event(
             EventMetadata {
                 tabular_id: TabularIdentUuid::Table(*source_table_id),
-                warehouse_id: *warehouse_id,
+                warehouse_id,
                 name: source.name,
                 namespace: source.namespace.to_url_string(),
                 prefix: prefix.map(Prefix::into_string).unwrap_or_default(),
@@ -870,7 +817,6 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore> CatalogServer<C, A, S> {
         let table_id = authorizer
             .require_table_action(
                 request_metadata,
-                warehouse_id,
                 table_id,
                 &CatalogTableAction::CanGetMetadata,
             )
@@ -880,13 +826,11 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore> CatalogServer<C, A, S> {
         let (read_access, write_access) = futures::try_join!(
             authorizer.is_allowed_table_action(
                 request_metadata,
-                warehouse_id,
                 table_id.ident,
                 &CatalogTableAction::CanReadData,
             ),
             authorizer.is_allowed_table_action(
                 request_metadata,
-                warehouse_id,
                 table_id.ident,
                 &CatalogTableAction::CanWriteData,
             ),
@@ -973,7 +917,6 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
         .map(|table_id| {
             authorizer.require_table_action(
                 &request_metadata,
-                warehouse_id,
                 Ok(*table_id),
                 &CatalogTableAction::CanCommit,
             )
@@ -1136,16 +1079,30 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
     transaction.commit().await?;
 
     // Delete files in parallel - if one delete fails, we still want to delete the rest
+    let expired_locations = expired_metadata_logs
+        .into_iter()
+        .filter_map(|expired_metadata_log| {
+            Location::parse_value(&expired_metadata_log.metadata_file)
+                .map_err(|e| {
+                    tracing::warn!(
+                        "Failed to parse expired metadata file location {}: {:?}",
+                        expired_metadata_log.metadata_file,
+                        e
+                    );
+                })
+                .ok()
+        })
+        .collect::<Vec<_>>();
     let _ = futures::future::join_all(
-        expired_metadata_logs
-            .into_iter()
-            .map(|expired_metadata_log| file_io.delete(expired_metadata_log.metadata_file))
+        expired_locations
+            .iter()
+            .map(|location| delete_file(&file_io, location))
             .collect::<Vec<_>>(),
     )
     .await
     .into_iter()
     .map(|r| {
-        r.map_err(|e| tracing::warn!("Failed to delete metadata file: {:?}", e))
+        r.map_err(|e| tracing::warn!("Failed to delete expired metadata file: {:?}", e))
             .ok()
     });
 
@@ -1157,7 +1114,7 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
         emit_change_event(
             EventMetadata {
                 tabular_id: TabularIdentUuid::Table(*table_id),
-                warehouse_id: *warehouse_id,
+                warehouse_id,
                 name: table_ident.name,
                 namespace: table_ident.namespace.to_url_string(),
                 prefix: prefix
@@ -1175,6 +1132,25 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
         .await;
     }
     Ok(commits)
+}
+
+pub(crate) async fn authorized_table_ident_to_id<C: Catalog, A: Authorizer>(
+    authorizer: A,
+    metadata: &RequestMetadata,
+    warehouse_id: WarehouseIdent,
+    table_ident: &TableIdent,
+    list_flags: ListFlags,
+    action: impl From<&CatalogTableAction> + std::fmt::Display + Send,
+    transaction: <C::Transaction as Transaction<C::State>>::Transaction<'_>,
+) -> Result<TableIdentUuid> {
+    authorizer
+        .require_warehouse_action(metadata, warehouse_id, &CatalogWarehouseAction::CanUse)
+        .await?;
+    let table_id = C::table_to_id(warehouse_id, table_ident, list_flags, transaction).await; // We can't fail before AuthZ
+    authorizer
+        .require_table_action(metadata, table_id, action)
+        .await
+        .map_err(set_not_found_status_code)
 }
 
 pub(crate) fn extract_count_from_metadata_location(location: &Location) -> Option<usize> {
@@ -1726,7 +1702,7 @@ mod test {
     use crate::implementations::postgres::{PostgresCatalog, SecretsState};
     use crate::service::authz::implementations::openfga::tests::ObjectHidingMock;
     use crate::service::authz::AllowAllAuthorizer;
-    use crate::service::State;
+    use crate::service::{State, UserId};
 
     use http::StatusCode;
     use iceberg::spec::{
@@ -2528,6 +2504,7 @@ mod test {
             None,
             AllowAllAuthorizer,
             TabularDeleteProfile::Hard {},
+            None,
         )
         .await;
         let ns = crate::catalog::test::create_ns(
@@ -2659,6 +2636,7 @@ mod test {
             None,
             authz,
             TabularDeleteProfile::Hard {},
+            Some(UserId::OIDC("test-user-id".to_string())),
         )
         .await;
         let ns = crate::catalog::test::create_ns(
@@ -2715,6 +2693,7 @@ mod test {
             None,
             authz,
             TabularDeleteProfile::Hard {},
+            Some(UserId::OIDC("test-user-id".to_string())),
         )
         .await;
         let ns = crate::catalog::test::create_ns(

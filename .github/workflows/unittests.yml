@@ -23,7 +23,7 @@ jobs:
       - name: Cargo sqlx-check
         run: |
           sudo apt-get install libpq-dev -y
-          cargo install -q --version=0.8.2 sqlx-cli --no-default-features --features postgres
+          cargo install -q --version=0.8.2 sqlx-cli --no-default-features --features postgres --force
           cargo sqlx prepare --check --workspace -- --all-features 
 
   check-format:
@@ -150,12 +150,12 @@ jobs:
           RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
 
       - name: Setup cargo nextest
-        run: cargo install cargo-nextest
+        run: cargo install cargo-nextest --force
 
       - name: Migrate database
         run: |
           sudo apt-get install libpq-dev -y
-          cargo install -q --version=0.8.2 sqlx-cli --no-default-features --features postgres
+          cargo install -q --version=0.8.2 sqlx-cli --no-default-features --features postgres --force
           cd crates/iceberg-catalog
           sqlx database create
           sqlx migrate run

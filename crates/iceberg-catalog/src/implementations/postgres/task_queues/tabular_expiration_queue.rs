@@ -122,7 +122,7 @@ impl TaskQueue for TabularExpirationQueue {
         .await?;
 
         let Some(task) = task else {
-            tracing::info!("No task found");
+            tracing::debug!("No task found in {}", self.queue_name());
             return Ok(None);
         };
 
