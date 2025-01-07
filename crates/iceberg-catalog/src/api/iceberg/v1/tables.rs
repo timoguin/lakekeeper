@@ -13,7 +13,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{async_trait, Extension, Json, Router};
 use http::{HeaderMap, StatusCode};
-use iceberg::TableIdent;
+use iceberg::{NamespaceIdent, TableIdent};
 use iceberg_ext::catalog::rest::LoadCredentialsResponse;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -348,7 +348,7 @@ impl TableParameters {
         Self {
             prefix,
             table: TableIdent {
-                namespace: namespace.into(),
+                namespace: NamespaceIdent::new(namespace.to_string()),
                 name: table.to_string(),
             },
         }

@@ -236,8 +236,6 @@ where
 #[cfg(test)]
 #[allow(dead_code)]
 pub(crate) mod test {
-    use crate::api::management::v1::bootstrap::Service as _;
-    use crate::service::authz::Authorizer;
     macro_rules! impl_pagination_tests {
         ($typ:ident, $setup_fn:ident, $server_typ:ident, $query_typ:ident, $entity_ident:ident, $map_block:expr) => {
             use paste::paste;
