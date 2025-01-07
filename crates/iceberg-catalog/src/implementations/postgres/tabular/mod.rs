@@ -331,7 +331,7 @@ pub(crate) async fn list_tabulars<'e, 'c, E>(
     // FIXME: remove with 0.6
     // TODO: make an enum
     only_unmigrated: bool,
-    tabular_ids: Option<&[TabularIdentUuid]>,
+    tabular_ids: Option<&[Uuid]>,
 ) -> Result<PaginatedMapping<TabularIdentUuid, (TabularIdentOwned, Option<DeletionDetails>)>>
 where
     E: 'e + sqlx::Executor<'c, Database = sqlx::Postgres>,
@@ -398,9 +398,7 @@ where
         token_id,
         page_size,
         namespace_id.map(|n| *n),
-        tabular_ids
-            .map(|ids| ids.iter().map(|id| **id).collect::<Vec<Uuid>>())
-            .as_deref(),
+        tabular_ids,
     )
     .fetch_all(catalog_state)
     .await

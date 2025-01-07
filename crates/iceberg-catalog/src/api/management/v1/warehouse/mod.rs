@@ -720,7 +720,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
 
         let catalog = context.v1_state.catalog;
         let mut trx = C::Transaction::begin_read(catalog.clone()).await?;
-        let task_ids = Catalog::fetch_deleted_tabulars_task_id(
+        let task_ids = C::fetch_deleted_tabulars_task_id(
             warehouse_ident,
             &targets,
             trx.transaction(),
