@@ -610,7 +610,31 @@ impl Catalog for super::PostgresCatalog {
             None,
             pagination_query,
             false,
+            None,
         )
         .await
+    }
+
+    async fn fetch_deleted_tabulars_task_id(
+        warehouse_ident: WarehouseIdent,
+        tabular_ids: &[TabularIdentUuid],
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+        pagination_query: PaginationQuery,
+    ) -> Result<Vec<TaskId>> {
+        list_tabulars(
+            warehouse_ident,
+            None,
+            None,
+            ListFlags {
+                include_active: false,
+                include_staged: false,
+                include_deleted: true,
+            },
+            transaction,
+            None,
+            pagination_query,
+            false,
+            Some(tabular_ids),
+        )
     }
 }

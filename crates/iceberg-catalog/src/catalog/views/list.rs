@@ -78,7 +78,7 @@ mod test {
     use crate::api::iceberg::types::{PageToken, Prefix};
     use crate::api::iceberg::v1::{DataAccess, ListTablesQuery, NamespaceParameters};
     use crate::api::management::v1::warehouse::TabularDeleteProfile;
-    use crate::catalog::test::{impl_pagination_tests, random_request_metadata};
+    use crate::catalog::test::impl_pagination_tests;
     use crate::catalog::CatalogServer;
     use crate::service::authz::implementations::openfga::tests::ObjectHidingMock;
 
@@ -87,6 +87,7 @@ mod test {
     use crate::implementations::postgres::{PostgresCatalog, SecretsState};
     use crate::service::authz::implementations::openfga::OpenFGAAuthorizer;
     use crate::service::{State, UserId};
+    use crate::tests::random_request_metadata;
     use itertools::Itertools;
     use sqlx::PgPool;
 
@@ -98,11 +99,11 @@ mod test {
         ApiContext<State<OpenFGAAuthorizer, PostgresCatalog, SecretsState>>,
         NamespaceParameters,
     ) {
-        let prof = crate::catalog::test::test_io_profile();
+        let prof = crate::tests::test_io_profile();
         let hiding_mock = ObjectHidingMock::new();
         let authz = hiding_mock.to_authorizer();
 
-        let (ctx, warehouse) = crate::catalog::test::setup(
+        let (ctx, warehouse) = crate::tests::setup(
             pool.clone(),
             prof,
             None,
@@ -111,7 +112,7 @@ mod test {
             Some(UserId::OIDC("test-user-id".to_string())),
         )
         .await;
-        let ns = crate::catalog::test::create_ns(
+        let ns = crate::tests::create_ns(
             ctx.clone(),
             warehouse.warehouse_id.to_string(),
             "ns1".to_string(),
@@ -158,12 +159,12 @@ mod test {
 
     #[sqlx::test]
     async fn test_view_pagination(pool: sqlx::PgPool) {
-        let prof = crate::catalog::test::test_io_profile();
+        let prof = crate::tests::test_io_profile();
 
         let hiding_mock = ObjectHidingMock::new();
         let authz = hiding_mock.to_authorizer();
 
-        let (ctx, warehouse) = crate::catalog::test::setup(
+        let (ctx, warehouse) = crate::tests::setup(
             pool.clone(),
             prof,
             None,
@@ -172,7 +173,7 @@ mod test {
             Some(UserId::OIDC("test-user-id".to_string())),
         )
         .await;
-        let ns = crate::catalog::test::create_ns(
+        let ns = crate::tests::create_ns(
             ctx.clone(),
             warehouse.warehouse_id.to_string(),
             "ns1".to_string(),
