@@ -5,7 +5,7 @@ info:
   license:
     name: Apache-2.0
     identifier: Apache-2.0
-  version: 0.5.2
+  version: 0.6.0
 servers:
 - url: '{scheme}://{host}/{basePath}'
   description: Lakekeeper Management API
@@ -2019,6 +2019,7 @@ components:
       type: object
       required:
       - id
+      - task_id
       - name
       - namespace
       - typ
@@ -2051,6 +2052,13 @@ components:
           items:
             type: string
           description: List of namespace parts the tabular belongs to
+        task_id:
+          type: string
+          format: uuid
+          description: |-
+            Unique identifier of the deletion task
+
+            Can be used to reschedule the deletion
         typ:
           $ref: '#/components/schemas/TabularType'
           description: Type of the tabular
