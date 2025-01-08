@@ -882,7 +882,7 @@ pub mod v1 {
     #[utoipa::path(
         post,
         tag = "warehouse",
-        path = "/management/v1/warehouse/{warehouse_id}/deleted_tabulars/reschedule",
+        path = "/management/v1/warehouse/{warehouse_id}/deleted-tabulars/reschedule",
         responses(
             (status = 204, description = "Tabular dropped successfully"),
             (status = "4XX", body = IcebergErrorResponse),
