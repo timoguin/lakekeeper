@@ -208,12 +208,11 @@ async fn setup_drop_test(
     poll_interval: std::time::Duration,
 ) -> DropSetup {
     let prof = crate::tests::test_io_profile();
-    let authz = AllowAllAuthorizer::default();
     let (ctx, warehouse) = crate::tests::setup(
         pool.clone(),
         prof,
         None,
-        authz,
+        AllowAllAuthorizer,
         TabularDeleteProfile::Soft { expiration_seconds },
         Some(UserId::OIDC("test-user-id".to_string())),
         Some(TaskQueueConfig {
@@ -236,7 +235,7 @@ async fn setup_drop_test(
     let tab = super::create_table(
         ctx.clone(),
         &warehouse.warehouse_id.to_string(),
-        &ns_name,
+        ns_name,
         &tab_name.clone(),
     )
     .await
@@ -264,7 +263,7 @@ async fn load_table<T: Authorizer>(
     tab_name: &str,
 ) -> crate::api::Result<LoadTableResult> {
     CatalogServer::load_table(
-        TableParameters::new(Some(Prefix(warehouse.to_string())), &ns_name, &tab_name),
+        TableParameters::new(Some(Prefix(warehouse.to_string())), ns_name, tab_name),
         DataAccess::none(),
         ctx.clone(),
         random_request_metadata(),
@@ -279,7 +278,7 @@ async fn purge_table<T: Authorizer>(
     tab_name: &str,
 ) {
     CatalogServer::drop_table(
-        TableParameters::new(Some(Prefix(warehouse.to_string())), &ns_name, &tab_name),
+        TableParameters::new(Some(Prefix(warehouse.to_string())), ns_name, tab_name),
         DropParams {
             purge_requested: Some(true),
         },

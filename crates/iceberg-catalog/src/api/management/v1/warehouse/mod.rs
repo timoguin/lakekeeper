@@ -666,7 +666,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
     ) -> Result<()> {
         // ------------------- AuthZ -------------------
         undrop::require_undrop_permissions(
-            request.targets.iter().map(|i| *i),
+            request.targets.iter().copied(),
             &context.v1_state.authz,
             &request_metadata,
         )
@@ -704,7 +704,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
     ) -> Result<()> {
         // ------------------- AuthZ -------------------
         undrop::require_undrop_permissions(
-            targets.iter().map(|t| *t),
+            targets.iter().copied(),
             &context.v1_state.authz,
             &request_metadata,
         )

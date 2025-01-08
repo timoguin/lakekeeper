@@ -201,7 +201,7 @@ pub(crate) fn spawn_drop_queues<T: Authorizer>(
     ctx: &ApiContext<State<T, PostgresCatalog, SecretsState>>,
 ) {
     let ctx = ctx.clone();
-    let _ = tokio::task::spawn(async move {
+    tokio::task::spawn(async move {
         ctx.clone()
             .v1_state
             .queues
@@ -211,6 +211,6 @@ pub(crate) fn spawn_drop_queues<T: Authorizer>(
                 ctx.v1_state.authz,
             )
             .await
-            .unwrap()
+            .unwrap();
     });
 }
