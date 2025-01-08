@@ -1046,7 +1046,7 @@ pub mod v1 {
                     post(undrop_tabulars),
                 )
                 .route(
-                    "/warehouse/:warehouse_id/deleted-tabulars/reschedule",
+                    "/warehouse/{warehouse_id}/deleted-tabulars/reschedule",
                     post(reschedule_soft_deletions),
                 )
                 .route(
