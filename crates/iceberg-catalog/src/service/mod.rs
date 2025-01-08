@@ -5,6 +5,7 @@ pub mod contract_verification;
 pub mod event_publisher;
 pub mod health;
 pub mod secrets;
+pub mod stats;
 pub mod storage;
 mod tabular_idents;
 pub mod task_queue;
