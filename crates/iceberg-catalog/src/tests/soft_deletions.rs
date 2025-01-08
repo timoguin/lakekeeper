@@ -37,7 +37,7 @@ mod test {
             table,
         } = setup_drop_test(
             pool,
-            chrono::Duration::milliseconds(125),
+            chrono::Duration::seconds(125),
             std::time::Duration::from_millis(250),
         )
         .await;
@@ -77,9 +77,15 @@ mod test {
         .await
         .unwrap();
         assert!(!r.tabulars.is_empty());
+        let now = chrono::Utc::now();
         assert_eq!(r.tabulars.first().unwrap().id, table.metadata.uuid());
-        assert!(r.tabulars.first().unwrap().deleted_at < chrono::Utc::now());
-        assert!(r.tabulars.first().unwrap().expiration_date > chrono::Utc::now());
+        assert!(r.tabulars.first().unwrap().deleted_at < now);
+        assert!(
+            r.tabulars.first().unwrap().expiration_date > now,
+            "{} {}",
+            r.tabulars.first().unwrap().expiration_date,
+            now
+        );
     }
 
     #[sqlx::test]
