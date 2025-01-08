@@ -844,7 +844,6 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                 ))?;
                 Ok(DeletedTabularResponse {
                     id: *k,
-                    task_id: deleted.expiration_task_id,
                     name: i.name,
                     namespace: i.namespace.inner(),
                     typ: k.into(),

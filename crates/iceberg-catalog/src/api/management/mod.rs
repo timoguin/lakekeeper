@@ -917,10 +917,6 @@ pub mod v1 {
     pub struct DeletedTabularResponse {
         /// Unique identifier of the tabular
         pub id: uuid::Uuid,
-        /// Unique identifier of the deletion task
-        ///
-        /// Can be used to reschedule the deletion
-        pub task_id: uuid::Uuid,
         /// Name of the tabular
         pub name: String,
         /// List of namespace parts the tabular belongs to
