@@ -97,6 +97,7 @@ pub mod v1 {
             rename_default_project,
             rename_project_by_id,
             rename_warehouse,
+            reschedule_soft_deletions,
             search_role,
             search_user,
             undrop_tabulars,
