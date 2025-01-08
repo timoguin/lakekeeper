@@ -993,6 +993,7 @@ mod test {
                 expiration_seconds: chrono::Duration::seconds(10),
             },
             Some(UserId::OIDC("test-user-id".to_string())),
+            None,
         )
         .await;
         let ns = crate::tests::create_ns(
@@ -1075,6 +1076,7 @@ mod test {
                 expiration_seconds: chrono::Duration::seconds(10),
             },
             Some(UserId::OIDC("test-user-id".to_string())),
+            None,
         )
         .await;
         let ns = crate::tests::create_ns(

@@ -9,6 +9,7 @@ use crate::api::management::v1::warehouse::{
 use crate::api::management::v1::ApiServer;
 use crate::api::ApiContext;
 use crate::catalog::CatalogServer;
+use crate::implementations::postgres::task_queues::{TabularExpirationQueue, TabularPurgeQueue};
 use crate::implementations::postgres::{CatalogState, PostgresCatalog, ReadWrite, SecretsState};
 use crate::request_metadata::RequestMetadata;
 use crate::service::authz::Authorizer;
@@ -17,7 +18,7 @@ use crate::service::event_publisher::CloudEventsPublisher;
 use crate::service::storage::{
     S3Credential, S3Flavor, S3Profile, StorageCredential, StorageProfile, TestProfile,
 };
-use crate::service::task_queue::TaskQueues;
+use crate::service::task_queue::{TaskQueueConfig, TaskQueues};
 use crate::service::{AuthDetails, State, UserId};
 use crate::CONFIG;
 use iceberg::NamespaceIdent;
@@ -28,12 +29,13 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
-mod undrop;
+mod soft_deletions;
 
 pub(crate) fn test_io_profile() -> StorageProfile {
     TestProfile::default().into()
 }
 
+#[allow(dead_code)]
 pub(crate) fn minio_profile() -> (StorageProfile, StorageCredential) {
     let key_prefix = Some(format!("test_prefix-{}", Uuid::now_v7()));
     let bucket = std::env::var("LAKEKEEPER_TEST__S3_BUCKET").unwrap();
@@ -112,12 +114,13 @@ pub(crate) async fn setup<T: Authorizer>(
     authorizer: T,
     delete_profile: TabularDeleteProfile,
     user_id: Option<UserId>,
+    q_config: Option<TaskQueueConfig>,
 ) -> (
     ApiContext<State<T, PostgresCatalog, SecretsState>>,
     CreateWarehouseResponse,
 ) {
-    let api_context = get_api_context(pool, authorizer);
-    let _state = api_context.v1_state.catalog.clone();
+    let api_context = get_api_context(pool, authorizer, q_config);
+
     let metadata = if let Some(user_id) = user_id {
         RequestMetadata::random_human(user_id)
     } else {
@@ -156,9 +159,10 @@ pub(crate) async fn setup<T: Authorizer>(
 pub(crate) fn get_api_context<T: Authorizer>(
     pool: PgPool,
     auth: T,
+    queue_config: Option<TaskQueueConfig>,
 ) -> ApiContext<State<T, PostgresCatalog, SecretsState>> {
     let (tx, _) = tokio::sync::mpsc::channel(1000);
-
+    let q_config = queue_config.unwrap_or_else(|| CONFIG.queue_config.clone());
     ApiContext {
         v1_state: State {
             authz: auth,
@@ -168,10 +172,18 @@ pub(crate) fn get_api_context<T: Authorizer>(
             contract_verifiers: ContractVerifiers::new(vec![]),
             queues: TaskQueues::new(
                 Arc::new(
-                    crate::implementations::postgres::task_queues::TabularExpirationQueue::from_config(ReadWrite::from_pools(pool.clone(), pool.clone()), CONFIG.queue_config.clone()).unwrap(),
+                    TabularExpirationQueue::from_config(
+                        ReadWrite::from_pools(pool.clone(), pool.clone()),
+                        q_config.clone(),
+                    )
+                    .unwrap(),
                 ),
                 Arc::new(
-                    crate::implementations::postgres::task_queues::TabularPurgeQueue::from_config(ReadWrite::from_pools(pool.clone(), pool), CONFIG.queue_config.clone()).unwrap()
+                    TabularPurgeQueue::from_config(
+                        ReadWrite::from_pools(pool.clone(), pool),
+                        q_config,
+                    )
+                    .unwrap(),
                 ),
             ),
         },
@@ -183,4 +195,22 @@ pub(crate) fn random_request_metadata() -> RequestMetadata {
         request_id: Uuid::new_v4(),
         auth_details: AuthDetails::Unauthenticated,
     }
+}
+
+pub(crate) fn spawn_drop_queues<T: Authorizer>(
+    ctx: &ApiContext<State<T, PostgresCatalog, SecretsState>>,
+) {
+    let ctx = ctx.clone();
+    let _ = tokio::task::spawn(async move {
+        ctx.clone()
+            .v1_state
+            .queues
+            .spawn_queues::<PostgresCatalog, SecretsState, T>(
+                ctx.v1_state.catalog,
+                ctx.v1_state.secrets,
+                ctx.v1_state.authz,
+            )
+            .await
+            .unwrap()
+    });
 }

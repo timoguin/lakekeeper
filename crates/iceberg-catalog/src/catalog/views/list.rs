@@ -110,6 +110,7 @@ mod test {
             authz,
             TabularDeleteProfile::Hard {},
             Some(UserId::OIDC("test-user-id".to_string())),
+            None,
         )
         .await;
         let ns = crate::tests::create_ns(
@@ -171,6 +172,7 @@ mod test {
             authz,
             TabularDeleteProfile::Hard {},
             Some(UserId::OIDC("test-user-id".to_string())),
+            None,
         )
         .await;
         let ns = crate::tests::create_ns(

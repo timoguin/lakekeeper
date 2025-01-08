@@ -477,6 +477,7 @@ mod tests {
                 authorizer.clone(),
                 TabularDeleteProfile::Hard {},
                 Some(operator_id.clone()),
+                None,
             )
             .await;
 

@@ -633,6 +633,7 @@ mod tests {
             authz,
             TabularDeleteProfile::Hard {},
             Some(UserId::OIDC("test-user-id".to_string())),
+            None,
         )
         .await;
 
@@ -691,6 +692,7 @@ mod tests {
             authz,
             TabularDeleteProfile::Hard {},
             Some(UserId::OIDC("test-user-id".to_string())),
+            None,
         )
         .await;
         for n in 0..10 {

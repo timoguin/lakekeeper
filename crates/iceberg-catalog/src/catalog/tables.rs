@@ -2505,6 +2505,7 @@ pub(crate) mod test {
             AllowAllAuthorizer,
             TabularDeleteProfile::Hard {},
             None,
+            None,
         )
         .await;
         let ns = crate::tests::create_ns(
@@ -2637,6 +2638,7 @@ pub(crate) mod test {
             authz,
             TabularDeleteProfile::Hard {},
             Some(UserId::OIDC("test-user-id".to_string())),
+            None,
         )
         .await;
         let ns = crate::tests::create_ns(
@@ -2694,6 +2696,7 @@ pub(crate) mod test {
             authz,
             TabularDeleteProfile::Hard {},
             Some(UserId::OIDC("test-user-id".to_string())),
+            None,
         )
         .await;
         let ns = crate::tests::create_ns(
