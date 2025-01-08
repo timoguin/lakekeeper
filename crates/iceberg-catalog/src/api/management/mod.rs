@@ -863,6 +863,7 @@ pub mod v1 {
     #[utoipa::path(
         post,
         tag = "warehouse",
+        // FIXME: deleted_tabulars should be kebab-case, this would be a breaking change
         path = "/management/v1/warehouse/{warehouse_id}/deleted_tabulars/undrop",
         responses(
             (status = 204, description = "Tabular undropped successfully"),
@@ -1043,6 +1044,7 @@ pub mod v1 {
                     get(list_deleted_tabulars),
                 )
                 .route(
+                    // FIXME: deleted_tabulars should be kebab-case, this would be a breaking change
                     "/warehouse/{warehouse_id}/deleted_tabulars/undrop",
                     post(undrop_tabulars),
                 )
