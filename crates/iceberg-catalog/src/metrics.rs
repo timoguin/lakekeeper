@@ -33,7 +33,7 @@ pub fn get_axum_layer_and_install_recorder(
     let handle = recorder.handle();
     metrics::set_global_recorder(recorder)?;
 
-    let (layer, _) = PrometheusMetricLayerBuilder::new()
+    let (layer, h) = PrometheusMetricLayerBuilder::new()
         .with_metrics_from_fn(|| handle)
         .build_pair();
 

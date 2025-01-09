@@ -21,6 +21,7 @@ pub mod tabular_purge_queue;
 pub struct TaskQueues {
     tabular_expiration: tabular_expiration_queue::ExpirationQueue,
     tabular_purge: tabular_purge_queue::TabularPurgeQueue,
+    pub stats_queue: todo!(),
 }
 
 impl TaskQueues {

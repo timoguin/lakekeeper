@@ -1,124 +1,86 @@
 #![allow(clippy::module_name_repetitions)]
-use itertools::{FoldWhile, Itertools};
-use rand::RngCore;
-use serde::{Deserialize, Serialize};
+use crate::request_metadata::RequestMetadata;
+use axum::extract::{Request, State};
+use axum::middleware::Next;
+use axum::response::Response;
+use axum::Extension;
+use axum_extra::headers::authorization::Bearer;
+use axum_extra::headers::Authorization;
+use axum_extra::TypedHeader;
+use iceberg_ext::catalog::rest::{ErrorModel, IcebergErrorResponse};
 use std::collections::HashMap;
-use std::fmt::Formatter;
+use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::task::JoinHandle;
 
-#[async_trait::async_trait]
-pub trait StatsExt: Send + Sync + 'static {
-    async fn stats(&self) -> Vec<Stats>;
-    async fn update_stats(&self);
-    async fn update_stats_task(
-        self: Arc<Self>,
-        refresh_interval: Duration,
-        jitter_millis: u64,
-    ) -> JoinHandle<()> {
-        tokio::task::spawn(async move {
-            loop {
-                self.update_stats().await;
-                let jitter = { rand::thread_rng().next_u64().min(jitter_millis) };
-                tokio::time::sleep(refresh_interval + Duration::from_millis(jitter)).await;
+#[derive(Debug, Clone)]
+struct TrackerTx(tokio::sync::mpsc::Sender<Message>);
+
+pub(crate) async fn stats_middleware_fn(
+    State(tracker): State<TrackerTx>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let response = next.run(request).await;
+    // TODO: are we only interested in non 5xx? or all?
+    if !response.status().is_server_error() {
+        if let Err(err) = tracker
+            .0
+            .send(Message::IncrementEndpoint {
+                endpoint: request.uri().path().to_string(),
+            })
+            .await
+        {
+            tracing::error!("Failed to send stats message: {:?}", err);
+        };
+    }
+    response
+}
+
+enum Message {
+    IncrementEndpoint { endpoint: String },
+}
+
+struct Tracker {
+    rcv: tokio::sync::mpsc::Receiver<Message>,
+    endpoint_stats: HashMap<String, AtomicI64>,
+    stat_sinks: Vec<Arc<dyn StatsSink>>,
+}
+
+impl Tracker {
+    async fn run(mut self) {
+        let mut last_update = tokio::time::Instant::now();
+        while let Some(msg) = self.rcv.recv().await {
+            match msg {
+                Message::IncrementEndpoint { endpoint } => {
+                    self.endpoint_stats
+                        .entry(endpoint)
+                        .or_insert_with(|| AtomicI64::new(0))
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
             }
-        })
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, strum::Display, Deserialize, Serialize)]
-pub enum Stat {
-    Scalar { name: String, value: usize },
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Stats {
-    name: String,
-    #[serde(with = "chrono::serde::ts_milliseconds", rename = "lastCheck")]
-    checked_at: chrono::DateTime<chrono::Utc>,
-    stats: Vec<Stat>,
-}
-
-impl Stats {
-    #[must_use]
-    pub fn now(name: &'static str, stats: Vec<Stat>) -> Self {
-        Self {
-            name: name.into(),
-            checked_at: chrono::Utc::now(),
-            stats,
+            if last_update.elapsed() > Duration::from_secs(300) {
+                self.consume_stats().await;
+                last_update = tokio::time::Instant::now();
+            }
         }
     }
 
-    #[must_use]
-    pub fn stats(&self) -> &[Stat] {
-        &self.stats
-    }
-}
-
-#[derive(Clone)]
-pub struct ServiceStatsProvider {
-    providers: Vec<(&'static str, Arc<dyn StatsExt + Sync + Send>)>,
-    check_jitter_millis: u64,
-    check_frequency_seconds: u64,
-}
-
-impl std::fmt::Debug for ServiceStatsProvider {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ServiceStatsProvider")
-            .field(
-                "providers",
-                &self
-                    .providers
-                    .iter()
-                    .map(|(name, _)| *name)
-                    .collect::<Vec<_>>(),
-            )
-            .field("check_jitter_millis", &self.check_jitter_millis)
-            .field("check_frequency_seconds", &self.check_frequency_seconds)
-            .finish()
-    }
-}
-
-impl ServiceStatsProvider {
-    #[must_use]
-    pub fn new(
-        providers: Vec<(&'static str, Arc<dyn StatsExt + Sync + Send>)>,
-        check_frequency_seconds: u64,
-        check_jitter_millis: u64,
-    ) -> Self {
-        Self {
-            providers,
-            check_jitter_millis,
-            check_frequency_seconds,
+    async fn consume_stats(&mut self) {
+        let mut stats = HashMap::new();
+        std::mem::swap(&mut stats, &mut self.endpoint_stats);
+        let stats = stats
+            .into_iter()
+            .map(|(k, v)| (k, v.load(std::sync::atomic::Ordering::Relaxed)))
+            .collect::<HashMap<String, i64>>();
+        for sink in &self.stat_sinks {
+            sink.consume_endpoint_stats(stats.clone()).await;
         }
     }
-
-    pub async fn spawn_stats_collectors(&self) {
-        for (service_name, provider) in &self.providers {
-            let provider = provider.clone();
-            provider
-                .update_stats_task(
-                    Duration::from_secs(self.check_frequency_seconds),
-                    self.check_jitter_millis,
-                )
-                .await;
-            tracing::info!("Spawned stats provider: {service_name}");
-        }
-    }
-
-    pub async fn collect_health(&self) -> HealthState {
-        let mut services = HashMap::new();
-        for (name, provider) in &self.providers {
-            let provider_health = provider.stats().await;
-            services.insert((*name).to_string(), provider_health);
-        }
-
-        HealthState { services }
-    }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct HealthState {
-    pub services: HashMap<String, Vec<Stats>>,
+// E.g. postgres consumer which populates some postgres tables
+#[async_trait::async_trait]
+pub trait StatsSink: Send + Sync + 'static {
+    async fn consume_endpoint_stats(&self, stats: HashMap<String, i64>);
 }
