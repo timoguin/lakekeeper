@@ -32,6 +32,7 @@ use crate::implementations::postgres::user::{
     create_or_update_user, delete_user, list_users, search_user,
 };
 use crate::service::authn::UserId;
+use crate::service::stats::entities::WarehouseStatistics;
 use crate::service::task_queue::TaskId;
 use crate::service::{
     storage::StorageProfile, Catalog, CreateNamespaceRequest, CreateNamespaceResponse,
@@ -612,5 +613,17 @@ impl Catalog for super::PostgresCatalog {
             false,
         )
         .await
+    }
+
+    async fn update_warehouse_statistics(
+        warehouse_id: WarehouseIdent,
+        list_flags: ListFlags,
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+    ) -> Result<WarehouseStatistics> {
+        Ok(WarehouseStatistics {
+            warehouse_ident: warehouse_id,
+            number_of_tables: 0,
+            number_of_views: 0,
+        })
     }
 }

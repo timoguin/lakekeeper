@@ -1,4 +1,5 @@
 #![allow(clippy::module_name_repetitions)]
+
 use crate::request_metadata::RequestMetadata;
 use axum::extract::{Request, State};
 use axum::middleware::Next;

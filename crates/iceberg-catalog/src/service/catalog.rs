@@ -24,6 +24,7 @@ use iceberg_ext::configs::Location;
 
 use crate::catalog::tables::TableMetadataDiffs;
 use crate::service::authn::UserId;
+use crate::service::stats::entities::WarehouseStatistics;
 use crate::service::task_queue::TaskId;
 use iceberg::TableUpdate;
 use std::collections::{HashMap, HashSet};
@@ -649,6 +650,12 @@ where
         list_flags: ListFlags,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
     ) -> Result<Option<TabularDetails>>;
+
+    async fn update_warehouse_statistics(
+        warehouse_id: WarehouseIdent,
+        list_flags: ListFlags,
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+    ) -> Result<WarehouseStatistics>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
