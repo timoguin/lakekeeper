@@ -24,6 +24,7 @@ use iceberg_ext::configs::Location;
 
 use crate::catalog::tables::TableMetadataDiffs;
 use crate::service::authn::UserId;
+use crate::service::stats::WarehouseStatistics;
 use crate::service::task_queue::TaskId;
 use iceberg::TableUpdate;
 use std::collections::{HashMap, HashSet};
@@ -636,6 +637,12 @@ where
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
         pagination_query: PaginationQuery,
     ) -> Result<PaginatedMapping<TabularIdentUuid, (TabularIdentOwned, Option<DeletionDetails>)>>;
+
+    async fn update_warehouse_statistics(
+        warehouse_id: WarehouseIdent,
+        list_flags: ListFlags,
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+    ) -> Result<WarehouseStatistics>;
 
     async fn load_storage_profile(
         warehouse_id: WarehouseIdent,

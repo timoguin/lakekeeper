@@ -613,4 +613,12 @@ impl Catalog for super::PostgresCatalog {
         )
         .await
     }
+
+    async fn update_warehouse_statistics(
+        warehouse_id: WarehouseIdent,
+        list_flags: ListFlags,
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+    ) -> Result<crate::service::stats::WarehouseStatistics> {
+        todo!()
+    }
 }

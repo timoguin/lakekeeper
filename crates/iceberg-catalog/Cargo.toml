@@ -23,6 +23,9 @@ vendored-protoc = ["openfga-rs/vendored-protoc"]
 
 [dependencies]
 anyhow = { workspace = true }
+apalis = { workspace = true, features = ["limit"] }
+apalis-cron = { workspace = true }
+apalis-sql = { workspace = true, features = ["postgres", "sqlite"] }
 async-nats = { workspace = true, optional = true }
 async-stream = { workspace = true }
 async-trait = { workspace = true }
