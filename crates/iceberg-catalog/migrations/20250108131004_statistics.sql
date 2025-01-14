@@ -6,29 +6,15 @@ create type queue as enum ('stats', 'compact');
 alter table task
     add column last_heartbeat_at timestamptz,
     add column schedule          text,
-    add column priority          int8,
     add column source            task_source not null default 'system';
 
 alter table task
     alter column source drop default;
 
 
-create table task_instance
-(
-
-);
-
 -- task pool id -> bring your own compute?
 -- priority weight
 
-
-create table cron_schedule
-(
-    task_id  uuid primary key references task (task_id),
-    schedule text  not null,-- cron schedule
-    typ      queue not null,-- the queue to send the task to
-    ran      int8  not null -- number of times cron was executed
-);
 
 create table stats_job
 (

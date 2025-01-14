@@ -22,14 +22,13 @@ pub(crate) async fn stats_middleware_fn(
     mut request: Request,
     next: Next,
 ) -> Response {
+    let endpoint = request.uri().path().to_string();
     let response = next.run(request).await;
     // TODO: are we only interested in non 5xx? or all?
     if !response.status().is_server_error() {
         if let Err(err) = tracker
             .0
-            .send(Message::IncrementEndpoint {
-                endpoint: request.uri().path().to_string(),
-            })
+            .send(Message::IncrementEndpoint { endpoint })
             .await
         {
             tracing::error!("Failed to send stats message: {:?}", err);

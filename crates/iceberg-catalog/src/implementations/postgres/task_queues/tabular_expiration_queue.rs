@@ -8,7 +8,7 @@ use crate::implementations::postgres::DeletionKind;
 use crate::service::task_queue::tabular_expiration_queue::{
     TabularExpirationInput, TabularExpirationTask,
 };
-use crate::service::task_queue::{TaskFilter, TaskQueue, TaskQueueConfig};
+use crate::service::task_queue::{Schedule, TaskFilter, TaskQueue, TaskQueueConfig};
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -61,7 +61,7 @@ impl TaskQueue for TabularExpirationQueue {
             None,
             idempotency_key,
             warehouse_ident,
-            Some(expire_at),
+            Some(Schedule::RunAt(expire_at)),
         )
         .await?
         else {

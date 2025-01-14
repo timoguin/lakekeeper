@@ -2,7 +2,7 @@ use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput
 use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
 use crate::service::{Catalog, SecretStore};
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
 use std::fmt::Debug;
@@ -17,11 +17,18 @@ use super::WarehouseIdent;
 pub mod tabular_expiration_queue;
 pub mod tabular_purge_queue;
 
+#[derive(Debug)]
+pub enum Schedule {
+    Immediate,
+    RunAt(DateTime<Utc>),
+    Cron(cron::Schedule),
+}
+
 #[derive(Debug, Clone)]
 pub struct TaskQueues {
     tabular_expiration: tabular_expiration_queue::ExpirationQueue,
     tabular_purge: tabular_purge_queue::TabularPurgeQueue,
-    pub stats_queue: todo!(),
+    // TODO: add stats queue
 }
 
 impl TaskQueues {

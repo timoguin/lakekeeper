@@ -620,6 +620,7 @@ impl Catalog for super::PostgresCatalog {
         list_flags: ListFlags,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
     ) -> Result<WarehouseStatistics> {
+        // TODO: implement the db part of this
         Ok(WarehouseStatistics {
             warehouse_ident: warehouse_id,
             number_of_tables: 0,

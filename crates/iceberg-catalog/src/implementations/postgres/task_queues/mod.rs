@@ -3,7 +3,7 @@ mod tabular_purge_queue;
 
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use crate::implementations::postgres::ReadWrite;
-use crate::service::task_queue::{Task, TaskFilter, TaskQueueConfig, TaskStatus};
+use crate::service::task_queue::{Schedule, Task, TaskFilter, TaskQueueConfig, TaskStatus};
 use crate::WarehouseIdent;
 pub use tabular_expiration_queue::TabularExpirationQueue;
 pub use tabular_purge_queue::TabularPurgeQueue;
@@ -61,8 +61,15 @@ async fn queue_task(
     parenet_task_id: Option<Uuid>,
     idempotency_key: Uuid,
     warehouse_ident: WarehouseIdent,
-    suspend_until: Option<DateTime<Utc>>,
+    schedule: Option<Schedule>,
 ) -> Result<Option<Uuid>, IcebergErrorResponse> {
+    let (suspend_until, schedule) = match schedule {
+        Some(Schedule::RunAt(dt)) => (Some(dt), None),
+        Some(Schedule::Cron(cron)) => (cron.upcoming(Utc).next(), Some(cron.to_string())),
+        Some(Schedule::Immediate) => (Some(Utc::now()), None),
+        _ => (None, None),
+    };
+
     let task_id = Uuid::now_v7();
     Ok(sqlx::query_scalar!(
         r#"INSERT INTO task(
@@ -72,8 +79,9 @@ async fn queue_task(
                 parent_task_id,
                 idempotency_key,
                 warehouse_id,
+                schedule,
                 suspend_until)
-        VALUES ($1, $2, 'pending', $3, $4, $5, $6)
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7)
         ON CONFLICT ON CONSTRAINT unique_idempotency_key
         DO UPDATE SET
             status = EXCLUDED.status,
@@ -85,6 +93,7 @@ async fn queue_task(
         parenet_task_id,
         idempotency_key,
         *warehouse_ident,
+        schedule,
         suspend_until
     )
     .fetch_optional(conn)
@@ -429,7 +438,9 @@ mod test {
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
             TEST_WAREHOUSE,
-            Some(Utc::now() + chrono::Duration::milliseconds(500)),
+            Some(Schedule::RunAt(
+                Utc::now() + chrono::Duration::milliseconds(500),
+            )),
         )
         .await
         .unwrap()
