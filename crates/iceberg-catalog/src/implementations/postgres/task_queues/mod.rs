@@ -3,25 +3,30 @@ mod tabular_purge_queue;
 
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use crate::implementations::postgres::ReadWrite;
-use crate::service::task_queue::{Schedule, Task, TaskFilter, TaskQueueConfig, TaskStatus};
+use crate::service::task_queue::{
+    Schedule, Scheduler, Task, TaskFilter, TaskInstance, TaskQueueConfig, TaskStatus,
+};
 use crate::WarehouseIdent;
+use anyhow::Error;
+use async_trait::async_trait;
+use std::str::FromStr;
 pub use tabular_expiration_queue::TabularExpirationQueue;
 pub use tabular_purge_queue::TabularPurgeQueue;
 
 use chrono::{DateTime, Utc};
-use iceberg_ext::catalog::rest::IcebergErrorResponse;
+use iceberg_ext::catalog::rest::{ErrorModel, IcebergErrorResponse};
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
-struct PgQueue {
+pub struct PgQueue {
     pub read_write: ReadWrite,
     pub config: TaskQueueConfig,
     pub max_age: sqlx::postgres::types::PgInterval,
 }
 
 impl PgQueue {
-    fn new(read_write: ReadWrite) -> Self {
+    pub fn new(read_write: ReadWrite) -> Self {
         let config = TaskQueueConfig::default();
         let microseconds = config
             .max_age
@@ -55,15 +60,69 @@ impl PgQueue {
     }
 }
 
+#[async_trait]
+impl Scheduler for PgQueue {
+    async fn schedule_task_instance(&self) -> Result<(), Error> {
+        let mut trx = self.read_write.write_pool.begin().await?;
+        // TODO: should we schedule more than one at a time?
+        let task = sqlx::query!(
+            r#"
+            SELECT t.task_id, schedule, t.idempotency_key
+            FROM task t
+            WHERE (t.status = 'active' AND ((next_tick < now() AT TIME ZONE 'UTC') OR (next_tick IS NULL)))
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1"#,
+        ).fetch_optional(&mut *trx).await?;
+        if let Some(row) = task {
+            let task_id = row.task_id;
+            let next = row
+                .schedule
+                .as_deref()
+                .map(|s| cron::Schedule::from_str(&s))
+                .transpose()?
+                .map(|s| s.upcoming(Utc).next())
+                .flatten();
+            let idempotency_key = if let Some(next) = next {
+                Uuid::new_v5(&row.idempotency_key, next.to_string().as_bytes())
+            } else {
+                row.idempotency_key
+            };
+
+            sqlx::query!(
+                r#"
+                WITH updated_tasks AS (UPDATE task
+                    SET next_tick = $2
+                    WHERE task_id = $1)
+                INSERT INTO task_instance (task_id, status, suspend_until, idempotency_key)
+                    VALUES
+                    ($1, 'pending', $2, $3)
+                ON CONFLICT ON CONSTRAINT task_instance_unique_idempotency_key
+                DO UPDATE SET
+                    status = EXCLUDED.status,
+                    suspend_until = EXCLUDED.suspend_until
+                WHERE task_instance.status = 'cancelled'
+                "#,
+                task_id,
+                next.unwrap_or(Utc::now()),
+                idempotency_key,
+            )
+            .execute(&mut *trx)
+            .await?;
+        }
+        trx.commit().await?;
+        Ok(())
+    }
+}
+
 async fn queue_task(
     conn: &mut PgConnection,
     queue_name: &str,
-    parenet_task_id: Option<Uuid>,
+    parent_task_id: Option<Uuid>,
     idempotency_key: Uuid,
     warehouse_ident: WarehouseIdent,
     schedule: Option<Schedule>,
 ) -> Result<Option<Uuid>, IcebergErrorResponse> {
-    let (suspend_until, schedule) = match schedule {
+    let (next_tick, schedule) = match schedule {
         Some(Schedule::RunAt(dt)) => (Some(dt), None),
         Some(Schedule::Cron(cron)) => (cron.upcoming(Utc).next(), Some(cron.to_string())),
         Some(Schedule::Immediate) => (Some(Utc::now()), None),
@@ -80,21 +139,18 @@ async fn queue_task(
                 idempotency_key,
                 warehouse_id,
                 schedule,
-                suspend_until)
-        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7)
-        ON CONFLICT ON CONSTRAINT unique_idempotency_key
-        DO UPDATE SET
-            status = EXCLUDED.status,
-            suspend_until = EXCLUDED.suspend_until
-        WHERE task.status = 'cancelled'
+                version,
+                next_tick)
+        VALUES ($1, $2, 'active', $3, $4, $5, $6, $7, $8)
         RETURNING task_id"#,
         task_id,
         queue_name,
-        parenet_task_id,
+        parent_task_id,
         idempotency_key,
         *warehouse_ident,
         schedule,
-        suspend_until
+        0, // TODO: add version,
+        next_tick
     )
     .fetch_optional(conn)
     .await
@@ -107,24 +163,26 @@ async fn record_failure(
     n_retries: i32,
     details: &str,
 ) -> Result<(), IcebergErrorResponse> {
-    let _ = sqlx::query!(
+    let record = sqlx::query!(
         r#"
         WITH cte as (
             SELECT attempt >= $2 as should_fail
-            FROM task
-            WHERE task_id = $1
+            FROM task_instance
+            WHERE task_instance_id = $1
         )
-        UPDATE task
+        UPDATE task_instance
         SET status = CASE WHEN (select should_fail from cte) THEN 'failed'::task_status ELSE 'pending'::task_status END,
             last_error_details = $3
         WHERE task_id = $1
+        returning (select should_fail from cte) as "should_fail!"
         "#,
         id,
         n_retries,
         details
     )
-        .execute(conn)
+        .fetch_one(conn)
         .await.map_err(|e| e.into_error_model("failed to record task failure"))?;
+
     Ok(())
 }
 
@@ -133,33 +191,33 @@ async fn pick_task(
     pool: &PgPool,
     queue_name: &'static str,
     max_age: &sqlx::postgres::types::PgInterval,
-) -> Result<Option<Task>, IcebergErrorResponse> {
+) -> Result<Option<TaskInstance>, IcebergErrorResponse> {
     let x = sqlx::query_as!(
-        Task,
+        TaskInstance,
         r#"
-    WITH updated_task AS (
-        SELECT task_id
-        FROM task
-        WHERE (status = 'pending' AND queue_name = $1 AND ((suspend_until < now() AT TIME ZONE 'UTC') OR (suspend_until IS NULL)))
-                OR (status = 'running' AND (now() - picked_up_at) > $3)
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1
-    )
-    UPDATE task
-    SET status = 'running', picked_up_at = $2, attempt = task.attempt + 1
-    FROM updated_task
-    WHERE task.task_id = updated_task.task_id
-    RETURNING task.task_id, task.status as "status: TaskStatus", task.picked_up_at, task.attempt, task.parent_task_id, task.queue_name
-    "#,
+        WITH updated_task AS (
+            SELECT ti.task_id, ti.task_instance_id, t.queue_name, t.parent_task_id
+            FROM task_instance ti JOIN task t ON ti.task_id = t.task_id
+            WHERE (ti.status = 'pending' AND t.queue_name = $1 AND ((ti.suspend_until < now() AT TIME ZONE 'UTC') OR (ti.suspend_until IS NULL)))
+                    OR (ti.status = 'running' AND (now() - ti.picked_up_at) > $2)
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+        )
+        UPDATE task_instance ti
+        SET status = 'running', picked_up_at = now(), attempt = ti.attempt + 1
+        FROM updated_task
+        WHERE ti.task_instance_id = updated_task.task_instance_id
+        RETURNING ti.task_id, ti.task_instance_id, ti.status as "status: TaskStatus", ti.picked_up_at, ti.attempt, (select parent_task_id from updated_task), (select queue_name from updated_task) as "queue_name!"
+        "#,
         queue_name,
-        Utc::now(),
         max_age,
     )
         .fetch_optional(pool)
         .await
         .map_err(|e| {
             tracing::error!(?e, "Failed to pick a task");
-            e.into_error_model(format!("Failed to pick a '{queue_name}' task")) })?;
+            e.into_error_model(format!("Failed to pick a '{queue_name}' task"))
+        })?;
 
     if let Some(task) = x.as_ref() {
         tracing::info!("Picked up task: {:?}", task);
@@ -231,15 +289,16 @@ async fn cancel_pending_tasks(
         .begin()
         .await
         .map_err(|e| e.into_error_model("Failed to get transaction to cancel Task"))?;
-
+    // TODO: we're only cancelling task_instances here, have to cancel tasks elsewhere too, probably different api?
     match filter {
         TaskFilter::WarehouseId(warehouse_id) => {
             sqlx::query!(
                 r#"
-                    UPDATE task SET status = 'cancelled'
-                    WHERE status = 'pending'
-                    AND warehouse_id = $1
-                    AND queue_name = $2
+                    UPDATE task_instance ti SET status = 'cancelled'
+                    FROM task
+                    WHERE ti.status = 'pending'
+                    AND task.warehouse_id = $1
+                    AND task.queue_name = $2
                 "#,
                 *warehouse_id,
                 queue_name
@@ -259,9 +318,9 @@ async fn cancel_pending_tasks(
         TaskFilter::TaskIds(task_ids) => {
             sqlx::query!(
                 r#"
-                    UPDATE task SET status = 'cancelled'
+                    UPDATE task_instance SET status = 'cancelled'
                     WHERE status = 'pending'
-                    AND task_id = ANY($1)
+                    AND task_instance_id = ANY($1)
                 "#,
                 &task_ids.iter().map(|s| **s).collect::<Vec<_>>(),
             )

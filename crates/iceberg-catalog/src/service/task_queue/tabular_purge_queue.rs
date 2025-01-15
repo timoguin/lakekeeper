@@ -2,7 +2,7 @@ use crate::api::management::v1::TabularType;
 use crate::api::Result;
 use crate::catalog::io::remove_all;
 use crate::catalog::maybe_get_secret;
-use crate::service::task_queue::{Task, TaskQueue};
+use crate::service::task_queue::{Task, TaskInstance, TaskQueue};
 use crate::service::{Catalog, SecretStore, Transaction};
 use crate::WarehouseIdent;
 use std::sync::Arc;
@@ -172,7 +172,7 @@ pub struct TabularPurgeTask {
     pub tabular_location: String,
     pub warehouse_ident: WarehouseIdent,
     pub tabular_type: TabularType,
-    pub task: Task,
+    pub task: TaskInstance,
 }
 
 #[derive(Debug, Clone)]

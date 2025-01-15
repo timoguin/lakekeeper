@@ -3,6 +3,45 @@
 //       obvious obvious reasons, the alternative is to store a schedule + next-execution date and
 //       poll it via for update skip locked which is just what the task queue does.
 
+use chrono::Utc;
+use sqlx::FromRow;
+use uuid::Uuid;
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "sqlx-postgres", derive(sqlx::Type))]
+#[cfg_attr(
+    feature = "sqlx-postgres",
+    sqlx(type_name = "task_status", rename_all = "kebab-case")
+)]
+pub enum TaskStatus {
+    Active,
+    Inactive,
+    Done,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "sqlx-postgres", derive(FromRow))]
+pub struct Task {
+    pub task_id: Uuid,
+    pub warehouse_id: Uuid,
+    pub queue_name: String,
+    pub status: TaskStatus,
+    pub parent_task_id: Option<Uuid>,
+    pub schedule: Option<cron::Schedule>,
+    pub version: i32,
+    pub attempt: i32,
+}
+
+pub trait ScheduleSource<T> {
+    fn next(&self) -> crate::api::Result<T>;
+}
+
+pub trait ScheduleSink<T> {
+    fn push(&self, task: T) -> crate::api::Result<Task>;
+}
+
+pub struct Scheduler {}
+
 // use crate::service::task_queue::TaskQueues;
 // use crate::service::TableIdentUuid;
 // use anyhow::Result;

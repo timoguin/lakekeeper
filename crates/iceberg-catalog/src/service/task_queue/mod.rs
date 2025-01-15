@@ -8,6 +8,7 @@ use sqlx::FromRow;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -29,6 +30,7 @@ pub struct TaskQueues {
     tabular_expiration: tabular_expiration_queue::ExpirationQueue,
     tabular_purge: tabular_purge_queue::TabularPurgeQueue,
     // TODO: add stats queue
+    scheduler: Arc<dyn Scheduler + Send + Sync>,
 }
 
 impl TaskQueues {
@@ -36,10 +38,12 @@ impl TaskQueues {
     pub fn new(
         expiration: tabular_expiration_queue::ExpirationQueue,
         purge: tabular_purge_queue::TabularPurgeQueue,
+        scheduler: Arc<dyn Scheduler + Send + Sync>,
     ) -> Self {
         Self {
             tabular_expiration: expiration,
             tabular_purge: purge,
+            scheduler,
         }
     }
 
@@ -129,6 +133,12 @@ impl Deref for TaskId {
     }
 }
 
+#[async_trait]
+pub trait Scheduler: Debug {
+    /// Scans existing tasks and schedules task instances as required
+    async fn schedule_task_instance(&self) -> Result<(), anyhow::Error>;
+}
+
 /// A filter to select tasks
 #[derive(Debug, Clone, PartialEq)]
 pub enum TaskFilter {
@@ -150,17 +160,17 @@ pub trait TaskQueue: Debug {
     async fn record_failure(&self, id: Uuid, error_details: &str) -> crate::api::Result<()>;
     async fn cancel_pending_tasks(&self, filter: TaskFilter) -> crate::api::Result<()>;
 
-    async fn retrying_record_success(&self, task: &Task) {
+    async fn retrying_record_success(&self, task: &TaskInstance) {
         self.retrying_record_success_or_failure(task, Status::Success)
             .await;
     }
 
-    async fn retrying_record_failure(&self, task: &Task, details: &str) {
+    async fn retrying_record_failure(&self, task: &TaskInstance, details: &str) {
         self.retrying_record_success_or_failure(task, Status::Failure(details))
             .await;
     }
 
-    async fn retrying_record_success_or_failure(&self, task: &Task, result: Status<'_>) {
+    async fn retrying_record_success_or_failure(&self, task: &TaskInstance, result: Status<'_>) {
         let mut retry = 0;
         while let Err(e) = match result {
             Status::Success => self.record_success(task.task_id).await,
@@ -179,9 +189,22 @@ pub trait TaskQueue: Debug {
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "sqlx-postgres", derive(FromRow))]
+pub struct TaskInstance {
+    pub task_id: Uuid,
+    pub task_instance_id: Uuid,
+    pub status: TaskStatus,
+    pub picked_up_at: Option<chrono::DateTime<Utc>>,
+    pub parent_task_id: Option<Uuid>,
+    pub attempt: i32,
+    pub queue_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "sqlx-postgres", derive(FromRow))]
 pub struct Task {
     pub task_id: Uuid,
     pub queue_name: String,
+    // TODO: use new taskstatus enum
     pub status: TaskStatus,
     pub picked_up_at: Option<chrono::DateTime<Utc>>,
     pub parent_task_id: Option<Uuid>,
@@ -275,6 +298,7 @@ mod test {
     use crate::api::iceberg::v1::PaginationQuery;
     use crate::api::management::v1::TabularType;
     use crate::implementations::postgres::tabular::table::tests::initialize_table;
+    use crate::implementations::postgres::task_queues::PgQueue;
     use crate::implementations::postgres::warehouse::test::initialize_warehouse;
     use crate::implementations::postgres::PostgresTransaction;
     use crate::implementations::postgres::{CatalogState, PostgresCatalog};
@@ -314,8 +338,11 @@ mod test {
 
         let catalog_state = CatalogState::from_pools(pool.clone(), pool.clone());
 
-        let queues =
-            crate::service::task_queue::TaskQueues::new(expiration_queue.clone(), purge_queue);
+        let queues = crate::service::task_queue::TaskQueues::new(
+            expiration_queue.clone(),
+            purge_queue,
+            Arc::new(PgQueue::new(rw.clone())),
+        );
         let secrets =
             crate::implementations::postgres::SecretsState::from_pools(pool.clone(), pool);
         let cloned = queues.clone();

@@ -1,6 +1,6 @@
 use crate::api::management::v1::{DeleteKind, TabularType};
 use crate::api::Result;
-use crate::service::task_queue::{Task, TaskQueue};
+use crate::service::task_queue::{Task, TaskInstance, TaskQueue};
 use crate::service::{Catalog, TableIdentUuid, Transaction, ViewIdentUuid};
 use crate::WarehouseIdent;
 use std::sync::Arc;
@@ -157,7 +157,7 @@ pub struct TabularExpirationTask {
     pub tabular_id: Uuid,
     pub warehouse_ident: WarehouseIdent,
     pub tabular_type: TabularType,
-    pub task: Task,
+    pub task: TaskInstance,
 }
 
 #[derive(Debug, Clone)]
