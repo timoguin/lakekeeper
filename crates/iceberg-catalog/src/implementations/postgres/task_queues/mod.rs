@@ -75,55 +75,40 @@ pub struct TaskSchedule {
     pub schedule: DateTime<Utc>,
 }
 
-async fn schedule_task(
-    read_write: &mut PgConnection,
-    single_task: Option<TaskSchedule>,
+async fn schedule(
+    conn: &mut PgConnection,
+    task_id: Uuid,
+    idempotency_key: Uuid,
+    schedule: Schedule,
 ) -> Result<(), IcebergErrorResponse> {
-    let mut trx = read_write
-        .begin()
-        .await
-        .map_err(|e| e.into_error_model("Failed to begin transaction"))?;
-    // TODO: should we schedule more than one at a time?
-    let task = sqlx::query!(
-            r#"
-            SELECT t.task_id, schedule, t.idempotency_key
-            FROM task t
-            WHERE (t.status = 'active' AND ((next_tick < now() AT TIME ZONE 'UTC') OR (next_tick IS NULL)))
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1"#,
-        ).fetch_optional(&mut *trx).await.map_err(|e| e.into_error_model("Failed to begin transaction"))?;
-    eprintln!("Found {task:?}");
-    if let Some(row) = task {
-        let task_id = row.task_id;
-        let next = row
-            .schedule
-            .as_deref()
-            .map(|s| cron::Schedule::from_str(&s))
-            .transpose()
-            .map_err(|e| {
-                ErrorModel::internal(
-                    "Failed to parse cron schedule from database.",
-                    "InternalDatabaseErrror",
-                    Some(Box::new(e)),
-                )
-            })?
-            .map(|s| s.upcoming(Utc).next())
-            .flatten();
-        let has_next = next.is_some();
-        let idempotency_key = if let Some(next) = next {
-            Uuid::new_v5(&row.idempotency_key, next.to_string().as_bytes())
-        } else {
-            row.idempotency_key
-        };
+    let (next_tick, run_at, idempotency_key_data) = match schedule {
+        Schedule::RunAt(dt) => (None, Some(dt), Some(dt.to_rfc3339())),
+        Schedule::Cron(cron) => {
+            let next = cron.upcoming(Utc).next();
+            (
+                Some(Utc::now()),
+                cron.upcoming(Utc).next(),
+                next.map(|dt| dt.to_rfc3339()),
+            )
+        }
+        Schedule::Immediate => (None, Some(Utc::now()), None),
+    };
 
-        // TODO: Updating task status like this transitions the task to done before its last
-        //       instance is done. That means we'll probably have to introduce a secondary status
-        //       to capture the success-state of the task as a function of its instances.
-        sqlx::query!(
+    let idempotency_key = if let Some(idempotency_key_data) = idempotency_key_data {
+        Uuid::new_v5(&idempotency_key, idempotency_key_data.as_bytes())
+    } else {
+        idempotency_key
+    };
+
+    let has_next = next_tick.is_some();
+    // TODO: Updating task status like this transitions the task to done before its last
+    //       instance is done. That means we'll probably have to introduce a secondary status
+    //       to capture the success-state of the task as a function of its instances.
+    sqlx::query!(
             r#"
                 WITH updated_tasks AS (UPDATE task
-                    SET next_tick = $3,
-                    status = CASE WHEN $5 THEN 'active'::task_status2 ELSE 'done'::task_status2 END
+                    SET next_tick = $5,
+                    status = CASE WHEN $6 THEN 'active'::task_status2 ELSE 'done'::task_status2 END
                     WHERE task_id = $1)
                 INSERT INTO task_instance (task_id, task_instance_id, status, suspend_until, idempotency_key)
                     VALUES
@@ -136,18 +121,59 @@ async fn schedule_task(
                 "#,
             task_id,
             Uuid::now_v7(),
-            next.unwrap_or(Utc::now()),
+            run_at,
             idempotency_key,
+            next_tick,
             has_next
         )
-        .execute(&mut *trx)
+        .execute(conn)
         .await
         .map_err(|e| e.into_error_model("Failed to schedule task instance"))?;
-        eprintln!("scheduled.")
+    eprintln!("scheduled.");
+
+    Ok(())
+}
+
+async fn schedule_task(
+    read_write: &mut PgConnection,
+    single_task: Option<Uuid>,
+) -> Result<(), IcebergErrorResponse> {
+    // TODO: should we schedule more than one at a time?
+    let task = sqlx::query!(
+            r#"
+            SELECT t.task_id, schedule, t.idempotency_key
+            FROM task t
+            WHERE (($1 = t.task_id or $1 is null) AND t.status = 'active' AND ((next_tick < now() AT TIME ZONE 'UTC')))
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1"#,
+            single_task
+        ).fetch_optional(&mut *read_write).await.map_err(|e| e.into_error_model("Failed to begin transaction"))?;
+
+    eprintln!("Found {task:?}");
+    if let Some(row) = task {
+        let task_id = row.task_id;
+        let sched = row
+            .schedule
+            .as_deref()
+            .map(|s| cron::Schedule::from_str(&s))
+            .transpose()
+            .map_err(|e| {
+                ErrorModel::internal(
+                    "Failed to parse cron schedule from database.",
+                    "InternalDatabaseError",
+                    Some(Box::new(e)),
+                )
+            })?
+            .map(Schedule::Cron);
+
+        schedule(
+            read_write,
+            task_id,
+            row.idempotency_key,
+            sched.unwrap_or(Schedule::Immediate),
+        )
+        .await?;
     }
-    trx.commit()
-        .await
-        .map_err(|e| e.into_error_model("Failed to commit transaction"))?;
     Ok(())
 }
 
@@ -157,14 +183,21 @@ async fn queue_task(
     parent_task_id: Option<Uuid>,
     idempotency_key: Uuid,
     warehouse_ident: WarehouseIdent,
-    schedule: Option<Schedule>,
+    schedul: Option<Schedule>,
 ) -> Result<Option<Uuid>, IcebergErrorResponse> {
-    let (next_tick, schedule) = match schedule {
-        Some(Schedule::RunAt(dt)) => (Some(dt), None),
-        Some(Schedule::Cron(cron)) => (cron.upcoming(Utc).next(), Some(cron.to_string())),
-        Some(Schedule::Immediate) => (Some(Utc::now()), None),
-        _ => (None, None),
-    };
+    // let (next_tick, schedule) = match schedule {
+    //     Some(Schedule::RunAt(dt)) => (Some(Utc::now()), None),
+    //     Some(Schedule::Cron(cron)) => (Some(Utc::now()), Some(cron.to_string())),
+    //     Some(Schedule::Immediate) => (Some(Utc::now()), None),
+    //     None => (Some(Utc::now()), None),
+    // };
+    let sched = schedul
+        .as_ref()
+        .map(|s| match s {
+            Schedule::Cron(sched) => Some(sched.to_string()),
+            _ => None,
+        })
+        .flatten();
 
     let task_id = Uuid::now_v7();
     let inserted = sqlx::query_scalar!(
@@ -176,9 +209,8 @@ async fn queue_task(
                 idempotency_key,
                 warehouse_id,
                 schedule,
-                version,
-                next_tick)
-        VALUES ($1, $2, 'active', $3, $4, $5, $6, $7, $8)
+                version)
+        VALUES ($1, $2, 'active', $3, $4, $5, $6, $7)
         ON CONFLICT ON CONSTRAINT unique_idempotency_key
         DO NOTHING
         RETURNING task_id"#,
@@ -187,15 +219,20 @@ async fn queue_task(
         parent_task_id,
         idempotency_key,
         *warehouse_ident,
-        schedule,
+        sched,
         0, // TODO: add version,
-        next_tick
     )
     .fetch_optional(&mut *conn)
     .await
     .map_err(|e| e.into_error_model("failed queueing task"))?;
     if let Some(inserted) = inserted {
-        schedule_task(conn, Some(task_id)).await?;
+        schedule(
+            conn,
+            inserted,
+            idempotency_key,
+            schedul.unwrap_or(Schedule::Immediate),
+        )
+        .await?;
     }
     Ok(inserted)
 }
@@ -441,29 +478,6 @@ mod test {
     }
 
     #[sqlx::test]
-    async fn test_unscheduled_tasks_are_not_polled(pool: PgPool) {
-        let mut conn = pool.acquire().await.unwrap();
-        let config = TaskQueueConfig::default();
-        let queue = setup(pool.clone(), config);
-        let id = queue_task(
-            &mut conn,
-            "test",
-            None,
-            Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_WAREHOUSE,
-            None,
-        )
-        .await
-        .unwrap()
-        .unwrap();
-
-        assert_eq!(
-            pick_task(&pool, "test", &queue.max_age).await.unwrap(),
-            None
-        );
-    }
-
-    #[sqlx::test]
     async fn test_failed_tasks_are_put_back(pool: PgPool) {
         let mut conn = pool.acquire().await.unwrap();
         let config = TaskQueueConfig::default();
@@ -578,10 +592,10 @@ mod test {
         .unwrap();
         schedule_task(&mut conn, None).await.unwrap();
 
-        assert!(pick_task(&pool, "test", &queue.max_age)
-            .await
-            .unwrap()
-            .is_none());
+        assert_eq!(
+            pick_task(&pool, "test", &queue.max_age).await.unwrap(),
+            None
+        );
 
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
         schedule_task(&mut conn, None).await.unwrap();
