@@ -1,3 +1,4 @@
+mod stats;
 mod tabular_expiration_queue;
 mod tabular_purge_queue;
 
@@ -61,9 +62,9 @@ impl PgQueue {
 }
 
 #[async_trait]
-impl Scheduler for PgQueue {
+impl Scheduler for ReadWrite {
     async fn schedule_task_instance(&self) -> Result<(), IcebergErrorResponse> {
-        let mut conn = self.read_write.write_pool.acquire().await.map_err(|e| {
+        let mut conn = self.write_pool.acquire().await.map_err(|e| {
             e.into_error_model("Failed to acquire connection to schedule task instance")
         })?;
         schedule_task(&mut conn, None).await
@@ -276,7 +277,7 @@ async fn pick_task(
         TaskInstance,
         r#"
         WITH updated_task AS (
-            SELECT ti.task_id, ti.task_instance_id, t.queue_name, t.parent_task_id
+            SELECT ti.task_id, ti.task_instance_id, t.queue_name, t.parent_task_id, t.warehouse_id
             FROM task_instance ti JOIN task t ON ti.task_id = t.task_id
             WHERE (ti.status = 'pending' AND t.queue_name = $1 AND ((ti.suspend_until < now() AT TIME ZONE 'UTC') OR (ti.suspend_until IS NULL)))
                     OR (ti.status = 'running' AND (now() - ti.picked_up_at) > $2)
@@ -287,7 +288,7 @@ async fn pick_task(
         SET status = 'running', picked_up_at = now(), attempt = ti.attempt + 1
         FROM updated_task
         WHERE ti.task_instance_id = updated_task.task_instance_id
-        RETURNING ti.task_id, ti.task_instance_id, ti.status as "status: TaskStatus", ti.picked_up_at, ti.attempt, (select parent_task_id from updated_task), (select queue_name from updated_task) as "queue_name!"
+        RETURNING ti.task_id, ti.task_instance_id, ti.status as "status: TaskStatus", ti.picked_up_at, ti.attempt, (select parent_task_id from updated_task), (select queue_name from updated_task) as "queue_name!", (select warehouse_id from updated_task) as "warehouse_ident!"
         "#,
         queue_name,
         max_age,
@@ -493,7 +494,6 @@ mod test {
         .await
         .unwrap()
         .unwrap();
-        schedule_task(&mut conn, None).await.unwrap();
 
         let task = pick_task(&pool, "test", &queue.max_age)
             .await
@@ -549,7 +549,6 @@ mod test {
         .await
         .unwrap()
         .unwrap();
-        schedule_task(&mut conn, None).await.unwrap();
 
         let task = pick_task(&pool, "test", &queue.max_age)
             .await
@@ -590,15 +589,12 @@ mod test {
         .await
         .unwrap()
         .unwrap();
-        schedule_task(&mut conn, None).await.unwrap();
 
         assert_eq!(
             pick_task(&pool, "test", &queue.max_age).await.unwrap(),
             None
         );
-
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
-        schedule_task(&mut conn, None).await.unwrap();
 
         let task = pick_task(&pool, "test", &queue.max_age)
             .await
@@ -678,7 +674,6 @@ mod test {
         .await
         .unwrap()
         .unwrap();
-        schedule_task(&mut conn, None).await.unwrap();
 
         let id2 = queue_task(
             &mut conn,
@@ -691,7 +686,6 @@ mod test {
         .await
         .unwrap()
         .unwrap();
-        schedule_task(&mut conn, None).await.unwrap();
 
         let task = pick_task(&pool, "test", &queue.max_age)
             .await
@@ -701,7 +695,6 @@ mod test {
             .await
             .unwrap()
             .unwrap();
-        schedule_task(&mut conn, None).await.unwrap();
 
         assert!(
             pick_task(&pool, "test", &queue.max_age)

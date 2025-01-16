@@ -388,8 +388,7 @@ pub(crate) mod test {
                     Arc::new(
                         crate::implementations::postgres::task_queues::TabularPurgeQueue::from_config(ReadWrite::from_pools(pool.clone(), pool.clone()), CONFIG.queue_config.clone()).unwrap()
                     ),
-                    Arc::new(PgQueue::new(ReadWrite::from_pools(pool.clone(), pool)))
-
+                    Arc::new(ReadWrite::from_pools(pool.clone(), pool))
                 ),
             },
         }

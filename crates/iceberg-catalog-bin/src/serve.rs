@@ -107,10 +107,7 @@ pub(crate) async fn serve(bind_addr: std::net::SocketAddr) -> Result<(), anyhow:
             ReadWrite::from_pools(read_pool.clone(), write_pool.clone()),
             CONFIG.queue_config.clone(),
         )?),
-        Arc::new(PgQueue::new(ReadWrite::from_pools(
-            read_pool.clone(),
-            write_pool.clone(),
-        ))),
+        Arc::new(ReadWrite::from_pools(read_pool.clone(), write_pool.clone())),
     );
 
     let listener = tokio::net::TcpListener::bind(bind_addr).await?;

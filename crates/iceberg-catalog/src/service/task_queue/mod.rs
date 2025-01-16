@@ -16,6 +16,7 @@ use uuid::Uuid;
 use super::authz::Authorizer;
 use super::WarehouseIdent;
 
+pub mod stats;
 pub mod tabular_expiration_queue;
 pub mod tabular_purge_queue;
 
@@ -214,6 +215,7 @@ pub struct TaskInstance {
     pub parent_task_id: Option<Uuid>,
     pub attempt: i32,
     pub queue_name: String,
+    pub warehouse_ident: WarehouseIdent,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -358,7 +360,7 @@ mod test {
         let queues = crate::service::task_queue::TaskQueues::new(
             expiration_queue.clone(),
             purge_queue,
-            Arc::new(PgQueue::new(rw.clone())),
+            Arc::new(rw.clone()),
         );
         let secrets =
             crate::implementations::postgres::SecretsState::from_pools(pool.clone(), pool);

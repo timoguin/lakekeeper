@@ -654,7 +654,7 @@ where
     async fn update_warehouse_statistics(
         warehouse_id: WarehouseIdent,
         list_flags: ListFlags,
-        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+        transaction: Self::State,
     ) -> Result<WarehouseStatistics>;
 }
 

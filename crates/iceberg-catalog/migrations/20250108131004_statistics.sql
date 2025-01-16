@@ -60,16 +60,6 @@ alter table task
 select trigger_updated_at('"task_instance"');
 call add_time_columns('task_instance');
 
-
--- task pool id -> bring your own compute?
--- priority weight
-
-
-create table stats_job
-(
-    task_id uuid primary key references task (task_id)
-);
-
 create table statistics
 (
     statistics_id uuid primary key,
