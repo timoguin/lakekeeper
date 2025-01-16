@@ -10,6 +10,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use super::authz::Authorizer;
@@ -82,6 +83,18 @@ impl TaskQueues {
         S: SecretStore,
         A: Authorizer,
     {
+        let sched = self.scheduler.clone();
+        let scheduler_task: JoinHandle<crate::api::Result<()>> = tokio::task::spawn(async move {
+            loop {
+                sched.schedule_task_instance().await.map_err(|err| {
+                    tracing::error!("Failed to schedule task instance: {err:?}");
+                    err
+                })?;
+                // TODO: configurable interval
+                tokio::time::sleep(Duration::from_millis(150)).await;
+            }
+        });
+
         let expiration_queue_handler =
             tokio::task::spawn(tabular_expiration_queue::tabular_expiration_task::<C, A>(
                 self.tabular_expiration.clone(),
@@ -105,6 +118,10 @@ impl TaskQueues {
                 tracing::error!("Tabular purge queue handler exited unexpectedly");
                 Err(anyhow::anyhow!("Tabular purge queue handler exited unexpectedly"))
             },
+            _ = scheduler_task => {
+                tracing::error!("Scheduler task exited unexpectedly");
+                Err(anyhow::anyhow!("Scheduler task exited unexpectedly"))
+            }
         )?;
         Ok(())
     }
@@ -136,7 +153,7 @@ impl Deref for TaskId {
 #[async_trait]
 pub trait Scheduler: Debug {
     /// Scans existing tasks and schedules task instances as required
-    async fn schedule_task_instance(&self) -> Result<(), anyhow::Error>;
+    async fn schedule_task_instance(&self) -> crate::api::Result<()>;
 }
 
 /// A filter to select tasks

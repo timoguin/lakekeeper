@@ -15,7 +15,7 @@ pub use tabular_purge_queue::TabularPurgeQueue;
 
 use chrono::{DateTime, Utc};
 use iceberg_ext::catalog::rest::{ErrorModel, IcebergErrorResponse};
-use sqlx::{PgConnection, PgPool};
+use sqlx::{Acquire, PgConnection, PgPool};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -62,56 +62,93 @@ impl PgQueue {
 
 #[async_trait]
 impl Scheduler for PgQueue {
-    async fn schedule_task_instance(&self) -> Result<(), Error> {
-        let mut trx = self.read_write.write_pool.begin().await?;
-        // TODO: should we schedule more than one at a time?
-        let task = sqlx::query!(
+    async fn schedule_task_instance(&self) -> Result<(), IcebergErrorResponse> {
+        let mut conn = self.read_write.write_pool.acquire().await.map_err(|e| {
+            e.into_error_model("Failed to acquire connection to schedule task instance")
+        })?;
+        schedule_task(&mut conn, None).await
+    }
+}
+
+pub struct TaskSchedule {
+    pub task_id: Uuid,
+    pub schedule: DateTime<Utc>,
+}
+
+async fn schedule_task(
+    read_write: &mut PgConnection,
+    single_task: Option<TaskSchedule>,
+) -> Result<(), IcebergErrorResponse> {
+    let mut trx = read_write
+        .begin()
+        .await
+        .map_err(|e| e.into_error_model("Failed to begin transaction"))?;
+    // TODO: should we schedule more than one at a time?
+    let task = sqlx::query!(
             r#"
             SELECT t.task_id, schedule, t.idempotency_key
             FROM task t
             WHERE (t.status = 'active' AND ((next_tick < now() AT TIME ZONE 'UTC') OR (next_tick IS NULL)))
             FOR UPDATE SKIP LOCKED
             LIMIT 1"#,
-        ).fetch_optional(&mut *trx).await?;
-        if let Some(row) = task {
-            let task_id = row.task_id;
-            let next = row
-                .schedule
-                .as_deref()
-                .map(|s| cron::Schedule::from_str(&s))
-                .transpose()?
-                .map(|s| s.upcoming(Utc).next())
-                .flatten();
-            let idempotency_key = if let Some(next) = next {
-                Uuid::new_v5(&row.idempotency_key, next.to_string().as_bytes())
-            } else {
-                row.idempotency_key
-            };
+        ).fetch_optional(&mut *trx).await.map_err(|e| e.into_error_model("Failed to begin transaction"))?;
+    eprintln!("Found {task:?}");
+    if let Some(row) = task {
+        let task_id = row.task_id;
+        let next = row
+            .schedule
+            .as_deref()
+            .map(|s| cron::Schedule::from_str(&s))
+            .transpose()
+            .map_err(|e| {
+                ErrorModel::internal(
+                    "Failed to parse cron schedule from database.",
+                    "InternalDatabaseErrror",
+                    Some(Box::new(e)),
+                )
+            })?
+            .map(|s| s.upcoming(Utc).next())
+            .flatten();
+        let has_next = next.is_some();
+        let idempotency_key = if let Some(next) = next {
+            Uuid::new_v5(&row.idempotency_key, next.to_string().as_bytes())
+        } else {
+            row.idempotency_key
+        };
 
-            sqlx::query!(
-                r#"
+        // TODO: Updating task status like this transitions the task to done before its last
+        //       instance is done. That means we'll probably have to introduce a secondary status
+        //       to capture the success-state of the task as a function of its instances.
+        sqlx::query!(
+            r#"
                 WITH updated_tasks AS (UPDATE task
-                    SET next_tick = $2
+                    SET next_tick = $3,
+                    status = CASE WHEN $5 THEN 'active'::task_status2 ELSE 'done'::task_status2 END
                     WHERE task_id = $1)
-                INSERT INTO task_instance (task_id, status, suspend_until, idempotency_key)
+                INSERT INTO task_instance (task_id, task_instance_id, status, suspend_until, idempotency_key)
                     VALUES
-                    ($1, 'pending', $2, $3)
+                    ($1, $2, 'pending', $3, $4)
                 ON CONFLICT ON CONSTRAINT task_instance_unique_idempotency_key
                 DO UPDATE SET
                     status = EXCLUDED.status,
                     suspend_until = EXCLUDED.suspend_until
                 WHERE task_instance.status = 'cancelled'
                 "#,
-                task_id,
-                next.unwrap_or(Utc::now()),
-                idempotency_key,
-            )
-            .execute(&mut *trx)
-            .await?;
-        }
-        trx.commit().await?;
-        Ok(())
+            task_id,
+            Uuid::now_v7(),
+            next.unwrap_or(Utc::now()),
+            idempotency_key,
+            has_next
+        )
+        .execute(&mut *trx)
+        .await
+        .map_err(|e| e.into_error_model("Failed to schedule task instance"))?;
+        eprintln!("scheduled.")
     }
+    trx.commit()
+        .await
+        .map_err(|e| e.into_error_model("Failed to commit transaction"))?;
+    Ok(())
 }
 
 async fn queue_task(
@@ -130,7 +167,7 @@ async fn queue_task(
     };
 
     let task_id = Uuid::now_v7();
-    Ok(sqlx::query_scalar!(
+    let inserted = sqlx::query_scalar!(
         r#"INSERT INTO task(
                 task_id,
                 queue_name,
@@ -142,6 +179,8 @@ async fn queue_task(
                 version,
                 next_tick)
         VALUES ($1, $2, 'active', $3, $4, $5, $6, $7, $8)
+        ON CONFLICT ON CONSTRAINT unique_idempotency_key
+        DO NOTHING
         RETURNING task_id"#,
         task_id,
         queue_name,
@@ -152,9 +191,13 @@ async fn queue_task(
         0, // TODO: add version,
         next_tick
     )
-    .fetch_optional(conn)
+    .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| e.into_error_model("failed queueing task"))?)
+    .map_err(|e| e.into_error_model("failed queueing task"))?;
+    if let Some(inserted) = inserted {
+        schedule_task(conn, Some(task_id)).await?;
+    }
+    Ok(inserted)
 }
 
 async fn record_failure(
@@ -163,7 +206,7 @@ async fn record_failure(
     n_retries: i32,
     details: &str,
 ) -> Result<(), IcebergErrorResponse> {
-    let record = sqlx::query!(
+    let r = sqlx::query!(
         r#"
         WITH cte as (
             SELECT attempt >= $2 as should_fail
@@ -173,8 +216,8 @@ async fn record_failure(
         UPDATE task_instance
         SET status = CASE WHEN (select should_fail from cte) THEN 'failed'::task_status ELSE 'pending'::task_status END,
             last_error_details = $3
-        WHERE task_id = $1
-        returning (select should_fail from cte) as "should_fail!"
+        WHERE task_instance_id = $1
+        RETURNING task_instance_id, (select should_fail from cte) as "should_fail!"
         "#,
         id,
         n_retries,
@@ -182,7 +225,7 @@ async fn record_failure(
     )
         .fetch_one(conn)
         .await.map_err(|e| e.into_error_model("failed to record task failure"))?;
-
+    eprintln!("{r:?}");
     Ok(())
 }
 
@@ -229,9 +272,9 @@ async fn pick_task(
 async fn record_success(id: Uuid, pool: &PgPool) -> Result<(), IcebergErrorResponse> {
     let _ = sqlx::query!(
         r#"
-        UPDATE task
+        UPDATE task_instance
         SET status = 'done'
-        WHERE task_id = $1
+        WHERE task_instance_id = $1
         "#,
         id
     )
@@ -398,7 +441,7 @@ mod test {
     }
 
     #[sqlx::test]
-    async fn test_failed_tasks_are_put_back(pool: PgPool) {
+    async fn test_unscheduled_tasks_are_not_polled(pool: PgPool) {
         let mut conn = pool.acquire().await.unwrap();
         let config = TaskQueueConfig::default();
         let queue = setup(pool.clone(), config);
@@ -414,6 +457,30 @@ mod test {
         .unwrap()
         .unwrap();
 
+        assert_eq!(
+            pick_task(&pool, "test", &queue.max_age).await.unwrap(),
+            None
+        );
+    }
+
+    #[sqlx::test]
+    async fn test_failed_tasks_are_put_back(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let config = TaskQueueConfig::default();
+        let queue = setup(pool.clone(), config);
+        let id = queue_task(
+            &mut conn,
+            "test",
+            None,
+            Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
+            TEST_WAREHOUSE,
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        schedule_task(&mut conn, None).await.unwrap();
+
         let task = pick_task(&pool, "test", &queue.max_age)
             .await
             .unwrap()
@@ -426,7 +493,9 @@ mod test {
         assert!(task.parent_task_id.is_none());
         assert_eq!(&task.queue_name, "test");
 
-        record_failure(&pool, id, 5, "test").await.unwrap();
+        record_failure(&pool, task.task_instance_id, 5, "test")
+            .await
+            .unwrap();
 
         let task = pick_task(&pool, "test", &queue.max_age)
             .await
@@ -439,12 +508,14 @@ mod test {
         assert!(task.parent_task_id.is_none());
         assert_eq!(&task.queue_name, "test");
 
-        record_failure(&pool, id, 2, "test").await.unwrap();
-
-        assert!(pick_task(&pool, "test", &queue.max_age)
+        record_failure(&pool, task.task_instance_id, 2, "test")
             .await
-            .unwrap()
-            .is_none());
+            .unwrap();
+
+        assert_eq!(
+            pick_task(&pool, "test", &queue.max_age).await.unwrap(),
+            None
+        );
     }
 
     #[sqlx::test]
@@ -464,6 +535,7 @@ mod test {
         .await
         .unwrap()
         .unwrap();
+        schedule_task(&mut conn, None).await.unwrap();
 
         let task = pick_task(&pool, "test", &queue.max_age)
             .await
@@ -504,6 +576,7 @@ mod test {
         .await
         .unwrap()
         .unwrap();
+        schedule_task(&mut conn, None).await.unwrap();
 
         assert!(pick_task(&pool, "test", &queue.max_age)
             .await
@@ -511,6 +584,7 @@ mod test {
             .is_none());
 
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        schedule_task(&mut conn, None).await.unwrap();
 
         let task = pick_task(&pool, "test", &queue.max_age)
             .await
@@ -590,6 +664,7 @@ mod test {
         .await
         .unwrap()
         .unwrap();
+        schedule_task(&mut conn, None).await.unwrap();
 
         let id2 = queue_task(
             &mut conn,
@@ -602,6 +677,7 @@ mod test {
         .await
         .unwrap()
         .unwrap();
+        schedule_task(&mut conn, None).await.unwrap();
 
         let task = pick_task(&pool, "test", &queue.max_age)
             .await
@@ -611,6 +687,8 @@ mod test {
             .await
             .unwrap()
             .unwrap();
+        schedule_task(&mut conn, None).await.unwrap();
+
         assert!(
             pick_task(&pool, "test", &queue.max_age)
                 .await

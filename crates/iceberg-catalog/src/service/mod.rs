@@ -4,7 +4,6 @@ mod catalog;
 pub mod contract_verification;
 pub mod event_publisher;
 pub mod health;
-mod scheduler;
 pub mod secrets;
 pub mod stats;
 pub mod storage;
