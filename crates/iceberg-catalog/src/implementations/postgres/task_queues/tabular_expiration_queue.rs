@@ -61,7 +61,7 @@ impl TaskQueue for TabularExpirationQueue {
             None,
             idempotency_key,
             warehouse_ident,
-            Some(Schedule::RunAt(expire_at)),
+            Some(Schedule::RunAt { date: expire_at }),
         )
         .await?
         else {

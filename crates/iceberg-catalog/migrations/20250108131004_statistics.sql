@@ -55,9 +55,10 @@ alter table task
     drop column old_status,
     drop column attempt,
     drop column picked_up_at,
-    drop column suspend_until;
+    drop column suspend_until,
+    alter column status set not null;
 
-select trigger_updated_at('"task_instance"');
+select trigger_updated_at('task_instance');
 call add_time_columns('task_instance');
 
 create table statistics
@@ -69,11 +70,14 @@ create table statistics
 select trigger_updated_at('"statistics"');
 call add_time_columns('statistics');
 
-create table counters
+create table scalars
 (
-    name         text    not null,
+    name         text   not null,
     statistic_id uuid REFERENCES statistics (statistics_id),
-    value        decimal not null,
+    -- TODO: decimal?
+    value        bigint not null,
     PRIMARY KEY (name, statistic_id)
 );
 
+select trigger_updated_at('scalars');
+call add_time_columns('scalars');

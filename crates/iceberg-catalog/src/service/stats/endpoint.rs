@@ -13,10 +13,13 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 use std::time::Duration;
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 struct TrackerTx(tokio::sync::mpsc::Sender<Message>);
 
+// TODO: We're aggregating endpoint statistics per warehouse, which means we'll have to somehow
+//       extract the warehouse id from the request. That's no fun
 pub(crate) async fn stats_middleware_fn(
     State(tracker): State<TrackerTx>,
     mut request: Request,
@@ -73,8 +76,9 @@ impl Tracker {
             .into_iter()
             .map(|(k, v)| (k, v.load(std::sync::atomic::Ordering::Relaxed)))
             .collect::<HashMap<String, i64>>();
+        let stats_id = Uuid::now_v7();
         for sink in &self.stat_sinks {
-            sink.consume_endpoint_stats(stats.clone()).await;
+            sink.consume_endpoint_stats(stats_id, stats.clone()).await;
         }
     }
 }
@@ -82,5 +86,5 @@ impl Tracker {
 // E.g. postgres consumer which populates some postgres tables
 #[async_trait::async_trait]
 pub trait StatsSink: Send + Sync + 'static {
-    async fn consume_endpoint_stats(&self, stats: HashMap<String, i64>);
+    async fn consume_endpoint_stats(&self, stats_id: Uuid, stats: HashMap<String, i64>);
 }

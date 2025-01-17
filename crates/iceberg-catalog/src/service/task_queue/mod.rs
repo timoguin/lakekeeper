@@ -20,18 +20,19 @@ pub mod stats;
 pub mod tabular_expiration_queue;
 pub mod tabular_purge_queue;
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Schedule {
-    Immediate,
-    RunAt(DateTime<Utc>),
-    Cron(cron::Schedule),
+    Immediate {},
+    RunAt { date: DateTime<Utc> },
+    Cron { schedule: cron::Schedule },
 }
 
 #[derive(Debug, Clone)]
 pub struct TaskQueues {
     tabular_expiration: tabular_expiration_queue::ExpirationQueue,
     tabular_purge: tabular_purge_queue::TabularPurgeQueue,
-    // TODO: add stats queue
+    stats_queue: stats::StatsQueue,
     scheduler: Arc<dyn Scheduler + Send + Sync>,
 }
 
@@ -40,11 +41,13 @@ impl TaskQueues {
     pub fn new(
         expiration: tabular_expiration_queue::ExpirationQueue,
         purge: tabular_purge_queue::TabularPurgeQueue,
+        stats_queue: stats::StatsQueue,
         scheduler: Arc<dyn Scheduler + Send + Sync>,
     ) -> Self {
         Self {
             tabular_expiration: expiration,
             tabular_purge: purge,
+            stats_queue,
             scheduler,
         }
     }
@@ -55,6 +58,11 @@ impl TaskQueues {
         task: TabularExpirationInput,
     ) -> crate::api::Result<()> {
         self.tabular_expiration.enqueue(task).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub(crate) async fn queue_stats_task(&self, task: stats::StatsInput) -> crate::api::Result<()> {
+        self.stats_queue.enqueue(task).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -110,6 +118,11 @@ impl TaskQueues {
             secret_store,
         ));
 
+        let stats_handler = tokio::task::spawn(stats::stats_task::<C>(
+            self.stats_queue.clone(),
+            catalog_state.clone(),
+        ));
+
         tokio::select!(
             _ = expiration_queue_handler => {
                 tracing::error!("Tabular expiration queue handler exited unexpectedly");
@@ -123,12 +136,16 @@ impl TaskQueues {
                 tracing::error!("Scheduler task exited unexpectedly");
                 Err(anyhow::anyhow!("Scheduler task exited unexpectedly"))
             }
+            _ = stats_handler => {
+                tracing::error!("Stats task exited unexpectedly");
+                Err(anyhow::anyhow!("Stats task exited unexpectedly"))
+            }
         )?;
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TaskId(Uuid);
 
 impl From<Uuid> for TaskId {
@@ -205,12 +222,12 @@ pub trait TaskQueue: Debug {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(feature = "sqlx-postgres", derive(FromRow))]
 pub struct TaskInstance {
     pub task_id: Uuid,
     pub task_instance_id: Uuid,
-    pub status: TaskStatus,
+    pub status: TaskInstanceStatus,
     pub picked_up_at: Option<chrono::DateTime<Utc>>,
     pub parent_task_id: Option<Uuid>,
     pub attempt: i32,
@@ -218,16 +235,30 @@ pub struct TaskInstance {
     pub warehouse_ident: WarehouseIdent,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "sqlx-postgres", derive(FromRow))]
 pub struct Task {
-    pub task_id: Uuid,
+    pub task_id: TaskId,
     pub queue_name: String,
     // TODO: use new taskstatus enum
+    pub warehouse_ident: WarehouseIdent,
+    pub schedule: Option<cron::Schedule>,
     pub status: TaskStatus,
-    pub picked_up_at: Option<chrono::DateTime<Utc>>,
     pub parent_task_id: Option<Uuid>,
-    pub attempt: i32,
+    pub updated_at: Option<chrono::DateTime<Utc>>,
+    pub created_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "sqlx-postgres", derive(sqlx::Type))]
+#[cfg_attr(
+    feature = "sqlx-postgres",
+    sqlx(type_name = "task_status2", rename_all = "kebab-case")
+)]
+pub enum TaskStatus {
+    Active,
+    Inactive,
+    Done,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -236,7 +267,7 @@ pub struct Task {
     feature = "sqlx-postgres",
     sqlx(type_name = "task_status", rename_all = "kebab-case")
 )]
-pub enum TaskStatus {
+pub enum TaskInstanceStatus {
     Pending,
     Finished,
     Running,
@@ -317,7 +348,6 @@ mod test {
     use crate::api::iceberg::v1::PaginationQuery;
     use crate::api::management::v1::TabularType;
     use crate::implementations::postgres::tabular::table::tests::initialize_table;
-    use crate::implementations::postgres::task_queues::PgQueue;
     use crate::implementations::postgres::warehouse::test::initialize_warehouse;
     use crate::implementations::postgres::PostgresTransaction;
     use crate::implementations::postgres::{CatalogState, PostgresCatalog};
@@ -350,16 +380,23 @@ mod test {
         let purge_queue = Arc::new(
             crate::implementations::postgres::task_queues::TabularPurgeQueue::from_config(
                 rw.clone(),
+                config.clone(),
+            )
+            .unwrap(),
+        );
+        let stats_queue = Arc::new(
+            crate::implementations::postgres::task_queues::StatsQueue::from_config(
+                rw.clone(),
                 config,
             )
             .unwrap(),
         );
-
         let catalog_state = CatalogState::from_pools(pool.clone(), pool.clone());
 
         let queues = crate::service::task_queue::TaskQueues::new(
             expiration_queue.clone(),
             purge_queue,
+            stats_queue,
             Arc::new(rw.clone()),
         );
         let secrets =

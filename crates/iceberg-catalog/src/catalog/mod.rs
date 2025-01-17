@@ -388,6 +388,9 @@ pub(crate) mod test {
                     Arc::new(
                         crate::implementations::postgres::task_queues::TabularPurgeQueue::from_config(ReadWrite::from_pools(pool.clone(), pool.clone()), CONFIG.queue_config.clone()).unwrap()
                     ),
+                    Arc::new(
+                        crate::implementations::postgres::task_queues::StatsQueue::from_config(ReadWrite::from_pools(pool.clone(), pool.clone()), CONFIG.queue_config.clone()).unwrap()
+                    ),
                     Arc::new(ReadWrite::from_pools(pool.clone(), pool))
                 ),
             },
@@ -413,6 +416,7 @@ pub(crate) mod test {
                     let (ctx, ns_params) = $setup_fn(pool, 0, &[]).await;
                     let all = $server_typ::[<list_ $typ s>](
                         ns_params.clone(),
+
                         serde_json::from_value::<$query_typ>(serde_json::json!(
                            {
                             "pageSize": 10,
@@ -626,6 +630,5 @@ pub(crate) mod test {
             }
         };
     }
-    use crate::implementations::postgres::task_queues::PgQueue;
     pub(crate) use impl_pagination_tests;
 }

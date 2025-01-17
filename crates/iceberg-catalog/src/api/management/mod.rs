@@ -2,6 +2,7 @@ pub mod v1 {
     pub mod bootstrap;
     pub mod project;
     pub mod role;
+    pub mod task;
     pub mod user;
     pub mod warehouse;
 
@@ -13,6 +14,7 @@ pub mod v1 {
     use crate::request_metadata::RequestMetadata;
     use std::marker::PhantomData;
 
+    use crate::api::management::v1::task::{ListTasksQuery, ListTasksResponse, Service};
     use crate::api::management::v1::user::{ListUsersQuery, ListUsersResponse};
     use crate::api::management::v1::warehouse::UndropTabularsRequest;
     use crate::api::IcebergErrorResponse;
@@ -885,6 +887,25 @@ pub mod v1 {
         pub next_page_token: Option<String>,
     }
 
+    #[utoipa::path(
+        get,
+        tag = "server",
+        path = "/management/v1/task",
+        params(ListTasksQuery),
+        responses(
+            (status = 200, description = "List Tasks"),
+            (status = "4XX", body = IcebergErrorResponse),
+        )
+    )]
+    async fn list_tasks<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+        Path(_warehouse_id): Path<uuid::Uuid>,
+        Query(query): Query<ListTasksQuery>,
+        AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
+        Extension(metadata): Extension<RequestMetadata>,
+    ) -> Result<ListTasksResponse> {
+        api_context.list_tasks(metadata, query).await
+    }
+
     #[derive(Debug, Serialize, utoipa::ToSchema)]
     pub struct DeletedTabularResponse {
         /// Unique identifier of the tabular
@@ -975,6 +996,9 @@ pub mod v1 {
                 .route("/warehouse", post(create_warehouse))
                 // List all projects
                 .route("/project-list", get(list_projects))
+                // List all tasks
+                // TODO: should this be top-level management, a whole new api or warehouse?
+                .route("/task", get(list_tasks))
                 .route(
                     "/warehouse",
                     // List all warehouses within a project

@@ -17,10 +17,12 @@ use super::{
     },
     CatalogState, PostgresTransaction,
 };
+use crate::api::management::v1::task::ListTasksResponse;
 use crate::api::management::v1::user::{
     ListUsersResponse, SearchUserResponse, UserLastUpdatedWith, UserType,
 };
 use crate::implementations::postgres::role::search_role;
+use crate::implementations::postgres::stats::update_stats;
 use crate::implementations::postgres::tabular::table::create_table;
 use crate::implementations::postgres::tabular::table::{
     commit_table_transaction, load_storage_profile,
@@ -28,6 +30,7 @@ use crate::implementations::postgres::tabular::table::{
 use crate::implementations::postgres::tabular::{
     clear_tabular_deleted_at, list_tabulars, mark_tabular_as_deleted,
 };
+use crate::implementations::postgres::task_queues::list_tasks;
 use crate::implementations::postgres::user::{
     create_or_update_user, delete_user, list_users, search_user,
 };
@@ -617,14 +620,24 @@ impl Catalog for super::PostgresCatalog {
 
     async fn update_warehouse_statistics(
         warehouse_id: WarehouseIdent,
-        _list_flags: ListFlags,
-        _transaction: Self::State,
+        list_flags: ListFlags,
+        transaction: Self::State,
     ) -> Result<WarehouseStatistics> {
-        // TODO: implement the db part of this
-        Ok(WarehouseStatistics {
-            warehouse_ident: warehouse_id,
-            number_of_tables: 0,
-            number_of_views: 0,
-        })
+        update_stats(&transaction.read_write.write_pool, warehouse_id, list_flags).await
+    }
+
+    async fn list_tasks(
+        pagination: PaginationQuery,
+        state: Self::State,
+    ) -> Result<ListTasksResponse> {
+        list_tasks(pagination, &state.read_write.read_pool).await
+    }
+
+    async fn list_task_instances(
+        task_id: Option<TaskId>,
+        pagination: PaginationQuery,
+        state: Self::State,
+    ) -> Result<ListTasksResponse> {
+        list_task_instances(task_id, pagination, &state.read_write.read_pool).await
     }
 }

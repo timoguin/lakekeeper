@@ -10,6 +10,8 @@ pub use crate::service::storage::{
 };
 use futures::FutureExt;
 use itertools::Itertools;
+use std::str::FromStr;
+use std::sync::LazyLock;
 
 use crate::api::iceberg::v1::{PageToken, PaginationQuery};
 use crate::service::{NamespaceIdentUuid, TableIdentUuid};
@@ -17,6 +19,7 @@ use crate::service::{NamespaceIdentUuid, TableIdentUuid};
 use super::default_page_size;
 use crate::api::management::v1::role::require_project_id;
 use crate::catalog::UnfilteredPage;
+use crate::service::task_queue::stats::StatsInput;
 use crate::service::task_queue::TaskFilter;
 pub use crate::service::WarehouseStatus;
 use crate::service::{
@@ -27,6 +30,10 @@ use crate::{ProjectIdent, WarehouseIdent, DEFAULT_PROJECT_ID};
 use iceberg_ext::catalog::rest::ErrorModel;
 use serde::Deserialize;
 use utoipa::ToSchema;
+
+static STATS_SCHEDULE: LazyLock<cron::Schedule> = LazyLock::new(|| {
+    cron::Schedule::from_str("*/5 * * * *").expect("Failed to parse cron schedule")
+});
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
@@ -298,6 +305,16 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             .await?;
 
         transaction.commit().await?;
+
+        context
+            .v1_state
+            .queues
+            .queue_stats_task(StatsInput {
+                warehouse_ident: warehouse_id,
+                schedule: STATS_SCHEDULE.clone(),
+                parent_id: None,
+            })
+            .await?;
 
         Ok(CreateWarehouseResponse { warehouse_id })
     }

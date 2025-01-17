@@ -1,23 +1,17 @@
-use crate::api::management::v1::TabularType;
-use crate::api::Result;
-use crate::catalog::io::remove_all;
-use crate::catalog::maybe_get_secret;
 use crate::service::task_queue::{TaskInstance, TaskQueue};
-use crate::service::{Catalog, ListFlags, SecretStore, Transaction};
+use crate::service::{Catalog, ListFlags};
 use crate::WarehouseIdent;
 use std::sync::Arc;
 
-use iceberg_ext::catalog::rest::ErrorModel;
-use iceberg_ext::configs::{Location, ParseFromStr};
 use std::time::Duration;
 use tracing::Instrument;
 use uuid::Uuid;
 
-pub type TabularPurgeQueue =
+pub type StatsQueue =
     Arc<dyn TaskQueue<Task = StatsTask, Input = StatsInput> + Send + Sync + 'static>;
 
 // TODO: concurrent workers
-pub async fn stats_task<C: Catalog>(fetcher: TabularPurgeQueue, catalog_state: C::State) {
+pub async fn stats_task<C: Catalog>(fetcher: StatsQueue, catalog_state: C::State) {
     loop {
         // add some jitter to avoid syncing with other queues
         // TODO: probably should have a random number here
@@ -97,5 +91,6 @@ pub struct StatsTask {
 #[derive(Debug, Clone)]
 pub struct StatsInput {
     pub warehouse_ident: WarehouseIdent,
+    pub schedule: cron::Schedule,
     pub parent_id: Option<Uuid>,
 }

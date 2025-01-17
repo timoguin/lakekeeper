@@ -5,18 +5,20 @@ mod tabular_purge_queue;
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use crate::implementations::postgres::ReadWrite;
 use crate::service::task_queue::{
-    Schedule, Scheduler, Task, TaskFilter, TaskInstance, TaskQueueConfig, TaskStatus,
+    Schedule, Scheduler, Task, TaskFilter, TaskInstance, TaskInstanceStatus, TaskQueueConfig,
+    TaskStatus,
 };
 use crate::WarehouseIdent;
-use anyhow::Error;
 use async_trait::async_trait;
 use std::str::FromStr;
+
+pub use stats::StatsQueue;
 pub use tabular_expiration_queue::TabularExpirationQueue;
 pub use tabular_purge_queue::TabularPurgeQueue;
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use iceberg_ext::catalog::rest::{ErrorModel, IcebergErrorResponse};
-use sqlx::{Acquire, PgConnection, PgPool};
+use sqlx::{Executor, PgConnection, PgPool};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -27,7 +29,7 @@ pub struct PgQueue {
 }
 
 impl PgQueue {
-    pub fn new(read_write: ReadWrite) -> Self {
+    fn new(read_write: ReadWrite) -> Self {
         let config = TaskQueueConfig::default();
         let microseconds = config
             .max_age
@@ -71,11 +73,6 @@ impl Scheduler for ReadWrite {
     }
 }
 
-pub struct TaskSchedule {
-    pub task_id: Uuid,
-    pub schedule: DateTime<Utc>,
-}
-
 async fn schedule(
     conn: &mut PgConnection,
     task_id: Uuid,
@@ -83,16 +80,16 @@ async fn schedule(
     schedule: Schedule,
 ) -> Result<(), IcebergErrorResponse> {
     let (next_tick, run_at, idempotency_key_data) = match schedule {
-        Schedule::RunAt(dt) => (None, Some(dt), Some(dt.to_rfc3339())),
-        Schedule::Cron(cron) => {
-            let next = cron.upcoming(Utc).next();
+        Schedule::RunAt { date } => (None, Some(date), Some(date.to_rfc3339())),
+        Schedule::Cron { schedule } => {
+            let next = schedule.upcoming(Utc).next();
             (
                 Some(Utc::now()),
-                cron.upcoming(Utc).next(),
+                schedule.upcoming(Utc).next(),
                 next.map(|dt| dt.to_rfc3339()),
             )
         }
-        Schedule::Immediate => (None, Some(Utc::now()), None),
+        Schedule::Immediate {} => (None, Some(Utc::now()), None),
     };
 
     let idempotency_key = if let Some(idempotency_key_data) = idempotency_key_data {
@@ -156,7 +153,7 @@ async fn schedule_task(
         let sched = row
             .schedule
             .as_deref()
-            .map(|s| cron::Schedule::from_str(&s))
+            .map(cron::Schedule::from_str)
             .transpose()
             .map_err(|e| {
                 ErrorModel::internal(
@@ -165,13 +162,13 @@ async fn schedule_task(
                     Some(Box::new(e)),
                 )
             })?
-            .map(Schedule::Cron);
+            .map(|schedule| Schedule::Cron { schedule });
 
         schedule(
             read_write,
             task_id,
             row.idempotency_key,
-            sched.unwrap_or(Schedule::Immediate),
+            sched.unwrap_or(Schedule::Immediate {}),
         )
         .await?;
     }
@@ -192,13 +189,10 @@ async fn queue_task(
     //     Some(Schedule::Immediate) => (Some(Utc::now()), None),
     //     None => (Some(Utc::now()), None),
     // };
-    let sched = schedul
-        .as_ref()
-        .map(|s| match s {
-            Schedule::Cron(sched) => Some(sched.to_string()),
-            _ => None,
-        })
-        .flatten();
+    let sched = schedul.as_ref().and_then(|s| match s {
+        Schedule::Cron { schedule } => Some(schedule.to_string()),
+        _ => None,
+    });
 
     let task_id = Uuid::now_v7();
     let inserted = sqlx::query_scalar!(
@@ -231,7 +225,7 @@ async fn queue_task(
             conn,
             inserted,
             idempotency_key,
-            schedul.unwrap_or(Schedule::Immediate),
+            schedul.unwrap_or(Schedule::Immediate {}),
         )
         .await?;
     }
@@ -288,7 +282,7 @@ async fn pick_task(
         SET status = 'running', picked_up_at = now(), attempt = ti.attempt + 1
         FROM updated_task
         WHERE ti.task_instance_id = updated_task.task_instance_id
-        RETURNING ti.task_id, ti.task_instance_id, ti.status as "status: TaskStatus", ti.picked_up_at, ti.attempt, (select parent_task_id from updated_task), (select queue_name from updated_task) as "queue_name!", (select warehouse_id from updated_task) as "warehouse_ident!"
+        RETURNING ti.task_id, ti.task_instance_id, ti.status as "status: TaskInstanceStatus", ti.picked_up_at, ti.attempt, (select parent_task_id from updated_task), (select queue_name from updated_task) as "queue_name!", (select warehouse_id from updated_task) as "warehouse_ident!"
         "#,
         queue_name,
         max_age,
@@ -355,6 +349,9 @@ macro_rules! impl_pg_task_queue {
         }
     };
 }
+use crate::api::iceberg::v1::{PaginationQuery, MAX_PAGE_SIZE};
+use crate::api::management::v1::task::ListTasksResponse;
+use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToken};
 use impl_pg_task_queue;
 
 /// Cancel pending tasks for a warehouse
@@ -420,6 +417,142 @@ async fn cancel_pending_tasks(
     })?;
 
     Ok(())
+}
+
+pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
+    PaginationQuery {
+        page_token,
+        page_size,
+    }: PaginationQuery,
+    conn: E,
+) -> crate::api::Result<ListTasksResponse> {
+    let page_size = page_size.map_or(MAX_PAGE_SIZE, |i| i.clamp(1, MAX_PAGE_SIZE));
+
+    let token = page_token
+        .as_option()
+        .map(PaginateToken::try_from)
+        .transpose()?;
+
+    let (token_ts, token_id): (_, Option<&Uuid>) = token
+        .as_ref()
+        .map(|PaginateToken::V1(V1PaginateToken { created_at, id })| (created_at, id))
+        .unzip();
+
+    let r = sqlx::query!(
+        r#"SELECT task_id,
+                   warehouse_id,
+                   queue_name,
+                   parent_task_id,
+                   created_at,
+                   updated_at,
+                   schedule,
+                   status as "status: TaskStatus"
+                    FROM task t
+                    WHERE ((t.created_at > $1 OR $1 IS NULL) OR (t.created_at = $1 AND t.task_id > $2))
+                    LIMIT $3"#,
+        token_ts,
+        token_id,
+        page_size,
+    )
+        .fetch_all(conn)
+        .await.map_err(|db| db.into_error_model("Failed to read tasks."))?;
+    Ok(ListTasksResponse {
+        tasks: r
+            .into_iter()
+            .map(|row| {
+                Ok(Task {
+                    task_id: row.task_id,
+                    warehouse_ident: row.warehouse_id.into(),
+                    queue_name: row.queue_name,
+                    parent_task_id: row.parent_task_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                    schedule: row.schedule.map(|s| s.parse()).transpose().map_err(|err| {
+                        ErrorModel::internal(
+                            "Failed to parse schedule from database.",
+                            "InternalDatabaseError",
+                            Some(Box::new(err)),
+                        )
+                    })?,
+                    status: row.status,
+                })
+            })
+            .collect::<crate::api::Result<Vec<_>>>()?,
+        continuation_token: None,
+    })
+}
+
+pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Postgres>>(
+    PaginationQuery {
+        page_token,
+        page_size,
+    }: PaginationQuery,
+    conn: E,
+) -> crate::api::Result<ListTasksResponse> {
+    let page_size = page_size.map_or(MAX_PAGE_SIZE, |i| i.clamp(1, MAX_PAGE_SIZE));
+
+    let token = page_token
+        .as_option()
+        .map(PaginateToken::try_from)
+        .transpose()?;
+
+    let (token_ts, token_id): (_, Option<&Uuid>) = token
+        .as_ref()
+        .map(|PaginateToken::V1(V1PaginateToken { created_at, id })| (created_at, id))
+        .unzip();
+
+    let r = sqlx::query!(
+        r#"SELECT task_id,
+                  task_instance_id,
+                  attempt,
+                    status as "status: TaskInstanceStatus",
+                    last_error_details,
+                    picked_up_at,
+                    suspend_until,
+                    completed_at,
+                    created_at,
+                    updated_at,
+                    last_heartbeat_at,
+                   warehouse_id,
+                   queue_name,
+                   parent_task_id,
+                   created_at,
+                   updated_at,
+                   schedule,
+                   status as "status: TaskStatus"
+                    FROM task t
+                    WHERE ((t.created_at > $1 OR $1 IS NULL) OR (t.created_at = $1 AND t.task_id > $2))
+                    LIMIT $3"#,
+        token_ts,
+        token_id,
+        page_size,
+    )
+        .fetch_all(conn)
+        .await.map_err(|db| db.into_error_model("Failed to read tasks."))?;
+    Ok(ListTasksResponse {
+        tasks: r
+            .into_iter()
+            .map(|row| {
+                Ok(Task {
+                    task_id: row.task_id,
+                    warehouse_ident: row.warehouse_id.into(),
+                    queue_name: row.queue_name,
+                    parent_task_id: row.parent_task_id,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                    schedule: row.schedule.map(|s| s.parse()).transpose().map_err(|err| {
+                        ErrorModel::internal(
+                            "Failed to parse schedule from database.",
+                            "InternalDatabaseError",
+                            Some(Box::new(err)),
+                        )
+                    })?,
+                    status: row.status,
+                })
+            })
+            .collect::<crate::api::Result<Vec<_>>>()?,
+        continuation_token: None,
+    })
 }
 
 #[cfg(test)]
@@ -501,7 +634,7 @@ mod test {
             .unwrap();
 
         assert_eq!(task.task_id, id);
-        assert!(matches!(task.status, TaskStatus::Running));
+        assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 1);
         assert!(task.picked_up_at.is_some());
         assert!(task.parent_task_id.is_none());
@@ -516,7 +649,7 @@ mod test {
             .unwrap()
             .unwrap();
         assert_eq!(task.task_id, id);
-        assert!(matches!(task.status, TaskStatus::Running));
+        assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 2);
         assert!(task.picked_up_at.is_some());
         assert!(task.parent_task_id.is_none());
@@ -556,7 +689,7 @@ mod test {
             .unwrap();
 
         assert_eq!(task.task_id, id);
-        assert!(matches!(task.status, TaskStatus::Running));
+        assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 1);
         assert!(task.picked_up_at.is_some());
         assert!(task.parent_task_id.is_none());
@@ -582,9 +715,9 @@ mod test {
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
             TEST_WAREHOUSE,
-            Some(Schedule::RunAt(
-                Utc::now() + chrono::Duration::milliseconds(500),
-            )),
+            Some(Schedule::RunAt {
+                date: Utc::now() + chrono::Duration::milliseconds(500),
+            }),
         )
         .await
         .unwrap()
@@ -602,7 +735,7 @@ mod test {
             .unwrap();
 
         assert_eq!(task.task_id, id);
-        assert!(matches!(task.status, TaskStatus::Running));
+        assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 1);
         assert!(task.picked_up_at.is_some());
         assert!(task.parent_task_id.is_none());
@@ -636,7 +769,7 @@ mod test {
             .unwrap();
 
         assert_eq!(task.task_id, id);
-        assert!(matches!(task.status, TaskStatus::Running));
+        assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 1);
         assert!(task.picked_up_at.is_some());
         assert!(task.parent_task_id.is_none());
@@ -650,7 +783,7 @@ mod test {
             .unwrap();
 
         assert_eq!(task.task_id, id);
-        assert!(matches!(task.status, TaskStatus::Running));
+        assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 2);
         assert!(task.picked_up_at.is_some());
         assert!(task.parent_task_id.is_none());
@@ -705,14 +838,14 @@ mod test {
         );
 
         assert_eq!(task.task_id, id);
-        assert!(matches!(task.status, TaskStatus::Running));
+        assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 1);
         assert!(task.picked_up_at.is_some());
         assert!(task.parent_task_id.is_none());
         assert_eq!(&task.queue_name, "test");
 
         assert_eq!(task2.task_id, id2);
-        assert!(matches!(task2.status, TaskStatus::Running));
+        assert!(matches!(task2.status, TaskInstanceStatus::Running));
         assert_eq!(task2.attempt, 1);
         assert!(task2.picked_up_at.is_some());
         assert!(task2.parent_task_id.is_none());

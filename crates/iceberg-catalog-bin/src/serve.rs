@@ -17,7 +17,7 @@ use iceberg_catalog::{SecretBackend, CONFIG};
 use reqwest::Url;
 
 use iceberg_catalog::implementations::postgres::task_queues::{
-    PgQueue, TabularExpirationQueue, TabularPurgeQueue,
+    StatsQueue, TabularExpirationQueue, TabularPurgeQueue,
 };
 use iceberg_catalog::service::authn::IdpVerifier;
 use iceberg_catalog::service::authn::K8sVerifier;
@@ -104,6 +104,10 @@ pub(crate) async fn serve(bind_addr: std::net::SocketAddr) -> Result<(), anyhow:
             CONFIG.queue_config.clone(),
         )?),
         Arc::new(TabularPurgeQueue::from_config(
+            ReadWrite::from_pools(read_pool.clone(), write_pool.clone()),
+            CONFIG.queue_config.clone(),
+        )?),
+        Arc::new(StatsQueue::from_config(
             ReadWrite::from_pools(read_pool.clone(), write_pool.clone()),
             CONFIG.queue_config.clone(),
         )?),
