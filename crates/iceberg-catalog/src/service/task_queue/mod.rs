@@ -3,11 +3,12 @@ use super::WarehouseIdent;
 use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
 use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
 use crate::service::{Catalog, SecretStore};
+use crate::CONFIG;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -26,6 +27,16 @@ pub enum Schedule {
     Immediate {},
     RunAt { date: DateTime<Utc> },
     Cron { schedule: cron::Schedule },
+}
+
+impl Display for Schedule {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Schedule::Immediate {} => write!(f, "immediate"),
+            Schedule::RunAt { date } => write!(f, "run_at: {}", date),
+            Schedule::Cron { schedule } => write!(f, "cron: {}", schedule),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -100,7 +111,7 @@ impl TaskQueues {
                     err
                 })?;
                 // TODO: configurable interval
-                tokio::time::sleep(Duration::from_millis(150)).await;
+                tokio::time::sleep(CONFIG.queue_config.poll_interval).await;
             }
         });
 

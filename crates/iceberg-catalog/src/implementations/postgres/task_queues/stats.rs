@@ -114,24 +114,27 @@ impl TaskQueue for StatsQueue {
 #[cfg(test)]
 mod test {
     use super::super::test::setup;
+    use crate::implementations::postgres::ReadWrite;
     use crate::service::task_queue::stats::StatsInput;
-    use crate::service::task_queue::{TaskQueue, TaskQueueConfig};
+    use crate::service::task_queue::{Scheduler, TaskQueue, TaskQueueConfig};
     use sqlx::PgPool;
     use std::str::FromStr;
 
     #[sqlx::test]
     async fn test_queue_stats_task(pool: PgPool) {
         let config = TaskQueueConfig::default();
-        let pg_queue = setup(pool, config);
+        let rw = ReadWrite::from_pools(pool.clone(), pool.clone());
+        let pg_queue = setup(pool.clone(), config);
         let queue = super::StatsQueue { pg_queue };
         let input = StatsInput {
             warehouse_ident: uuid::Uuid::new_v4().into(),
-            schedule: cron::Schedule::from_str("*/1 * * * *").unwrap(),
+            schedule: cron::Schedule::from_str("*/1 * * * * *").unwrap(),
             parent_id: None,
         };
         queue.enqueue(input.clone()).await.unwrap();
         queue.enqueue(input.clone()).await.unwrap();
-
+        rw.schedule_task_instance().await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         let task = queue
             .pick_new_task()
             .await
@@ -145,5 +148,14 @@ mod test {
             task.is_none(),
             "There should only be one task, idempotency didn't work."
         );
+        // after another second there should be a task again
+        rw.schedule_task_instance().await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let task = queue
+            .pick_new_task()
+            .await
+            .unwrap()
+            .expect("There should be a task");
+        assert_eq!(task.warehouse_ident, input.warehouse_ident);
     }
 }

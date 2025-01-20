@@ -94,3 +94,59 @@ pub struct StatsInput {
     pub schedule: cron::Schedule,
     pub parent_id: Option<Uuid>,
 }
+
+#[cfg(test)]
+mod test {
+
+    use crate::api::management::v1::task::{ListTaskInstancesQuery, ListTasksQuery, Service};
+    use crate::api::management::v1::warehouse::TabularDeleteProfile;
+    use crate::service::authz::AllowAllAuthorizer;
+    use crate::service::task_queue::TaskQueueConfig;
+    use crate::tests::random_request_metadata;
+    use sqlx::PgPool;
+
+    #[sqlx::test]
+    async fn test(pool: PgPool) {
+        let (ctx, _wh) = crate::tests::setup(
+            pool,
+            crate::tests::test_io_profile(),
+            None,
+            AllowAllAuthorizer,
+            TabularDeleteProfile::Hard {},
+            None,
+            Some(TaskQueueConfig {
+                poll_interval: std::time::Duration::from_millis(100),
+                max_retries: 3,
+                max_age: chrono::Duration::seconds(3600),
+            }),
+        )
+        .await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let t = ctx
+            .list_tasks(
+                random_request_metadata(),
+                ListTasksQuery {
+                    page_token: None,
+                    page_size: 100,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(t.tasks.len(), 1, "{t:?}");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let ti = ctx
+            .list_task_instances(
+                random_request_metadata(),
+                ListTaskInstancesQuery {
+                    task_id: None,
+                    page_token: None,
+                    page_size: 100,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(ti.tasks.len(), 1, "{t:?}, {ti:?}");
+    }
+}

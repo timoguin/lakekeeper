@@ -19,6 +19,7 @@ pub use tabular_purge_queue::TabularPurgeQueue;
 use chrono::Utc;
 use iceberg_ext::catalog::rest::{ErrorModel, IcebergErrorResponse};
 use sqlx::{Executor, PgConnection, PgPool};
+use tracing::instrument;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -73,6 +74,7 @@ impl Scheduler for ReadWrite {
     }
 }
 
+#[instrument(skip(conn))]
 async fn schedule(
     conn: &mut PgConnection,
     task_id: Uuid,
@@ -83,15 +85,11 @@ async fn schedule(
         Schedule::RunAt { date } => (None, Some(date), Some(date.to_rfc3339())),
         Schedule::Cron { schedule } => {
             let next = schedule.upcoming(Utc).next();
-            (
-                Some(Utc::now()),
-                schedule.upcoming(Utc).next(),
-                next.map(|dt| dt.to_rfc3339()),
-            )
+            (next, next, next.map(|dt| dt.to_rfc3339()))
         }
         Schedule::Immediate {} => (None, Some(Utc::now()), None),
     };
-
+    tracing::debug!("{:?}", idempotency_key_data);
     let idempotency_key = if let Some(idempotency_key_data) = idempotency_key_data {
         Uuid::new_v5(&idempotency_key, idempotency_key_data.as_bytes())
     } else {
@@ -102,6 +100,7 @@ async fn schedule(
     // TODO: Updating task status like this transitions the task to done before its last
     //       instance is done. That means we'll probably have to introduce a secondary status
     //       to capture the success-state of the task as a function of its instances.
+    tracing::debug!("Scheduling task instance for task_id: {task_id:?}, next_tick: {next_tick:?}, run_at: {run_at:?}, idempotency_key: {idempotency_key:?}, has_next: {has_next:?}");
     sqlx::query!(
             r#"
                 WITH updated_tasks AS (UPDATE task
@@ -140,7 +139,7 @@ async fn schedule_task(
             r#"
             SELECT t.task_id, schedule, t.idempotency_key
             FROM task t
-            WHERE (($1 = t.task_id or $1 is null) AND t.status = 'active' AND ((next_tick < now() AT TIME ZONE 'UTC')))
+            WHERE (($1 = t.task_id or $1 is null) AND t.status = 'active' AND ((next_tick < now() AT TIME ZONE 'UTC' AND next_tick is not null)))
             FOR UPDATE SKIP LOCKED
             LIMIT 1"#,
             single_task
@@ -182,12 +181,6 @@ async fn queue_task(
     warehouse_ident: WarehouseIdent,
     schedul: Option<Schedule>,
 ) -> Result<Option<Uuid>, IcebergErrorResponse> {
-    // let (next_tick, schedule) = match schedule {
-    //     Some(Schedule::RunAt(dt)) => (Some(Utc::now()), None),
-    //     Some(Schedule::Cron(cron)) => (Some(Utc::now()), Some(cron.to_string())),
-    //     Some(Schedule::Immediate) => (Some(Utc::now()), None),
-    //     None => (Some(Utc::now()), None),
-    // };
     let sched = schedul.as_ref().and_then(|s| match s {
         Schedule::Cron { schedule } => Some(schedule.to_string()),
         _ => None,
@@ -219,6 +212,7 @@ async fn queue_task(
     .fetch_optional(&mut *conn)
     .await
     .map_err(|e| e.into_error_model("failed queueing task"))?;
+    eprintln!("INS {inserted:?}");
     if let Some(inserted) = inserted {
         schedule(
             conn,
@@ -290,7 +284,7 @@ async fn pick_task(
             tracing::error!(?e, "Failed to pick a task");
             e.into_error_model(format!("Failed to pick a '{queue_name}' task"))
         })?;
-
+    eprintln!("t: {x:?}");
     if let Some(task) = x.as_ref() {
         tracing::info!("Picked up task: {:?}", task);
     }

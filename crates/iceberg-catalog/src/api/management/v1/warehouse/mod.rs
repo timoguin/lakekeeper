@@ -10,7 +10,6 @@ pub use crate::service::storage::{
     StorageCredential, StorageProfile,
 };
 use crate::service::{NamespaceIdentUuid, TableIdentUuid};
-use chrono::Utc;
 use futures::FutureExt;
 use itertools::Itertools;
 use std::str::FromStr;
@@ -32,7 +31,7 @@ use serde::Deserialize;
 use utoipa::ToSchema;
 
 static STATS_SCHEDULE: LazyLock<cron::Schedule> = LazyLock::new(|| {
-    cron::Schedule::from_str("* */5 * * * *").expect("Failed to parse cron schedule")
+    cron::Schedule::from_str("* */1 * * * *").expect("Failed to parse cron schedule")
 });
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
