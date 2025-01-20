@@ -127,7 +127,6 @@ async fn schedule(
         .execute(conn)
         .await
         .map_err(|e| e.into_error_model("Failed to schedule task instance"))?;
-    eprintln!("scheduled.");
 
     Ok(())
 }
@@ -147,7 +146,7 @@ async fn schedule_task(
             single_task
         ).fetch_optional(&mut *read_write).await.map_err(|e| e.into_error_model("Failed to begin transaction"))?;
 
-    eprintln!("Found {task:?}");
+    tracing::debug!("Found {task:?}");
     if let Some(row) = task {
         let task_id = row.task_id;
         let sched = row
