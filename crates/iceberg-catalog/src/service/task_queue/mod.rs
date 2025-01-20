@@ -1,13 +1,12 @@
 use super::authz::Authorizer;
 use super::WarehouseIdent;
 use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
-use crate::service::task_queue::tabular_purge_queue::{TabularPurgeInput, TabularPurgeTask};
-use crate::service::{Catalog, SecretStore, State};
+use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
+use crate::service::{Catalog, SecretStore};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::str::FromStr;

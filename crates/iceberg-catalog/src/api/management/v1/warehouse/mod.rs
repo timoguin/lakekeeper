@@ -1,5 +1,6 @@
 mod undrop;
 
+use crate::api::iceberg::v1::{PageToken, PaginationQuery};
 use crate::api::management::v1::{ApiServer, DeletedTabularResponse, ListDeletedTabularsResponse};
 use crate::api::{ApiContext, Result};
 use crate::request_metadata::RequestMetadata;
@@ -8,13 +9,12 @@ pub use crate::service::storage::{
     AdlsProfile, AzCredential, GcsCredential, GcsProfile, GcsServiceKey, S3Credential, S3Profile,
     StorageCredential, StorageProfile,
 };
+use crate::service::{NamespaceIdentUuid, TableIdentUuid};
+use chrono::Utc;
 use futures::FutureExt;
 use itertools::Itertools;
 use std::str::FromStr;
 use std::sync::LazyLock;
-
-use crate::api::iceberg::v1::{PageToken, PaginationQuery};
-use crate::service::{NamespaceIdentUuid, TableIdentUuid};
 
 use super::default_page_size;
 use crate::api::management::v1::role::require_project_id;
@@ -32,7 +32,7 @@ use serde::Deserialize;
 use utoipa::ToSchema;
 
 static STATS_SCHEDULE: LazyLock<cron::Schedule> = LazyLock::new(|| {
-    cron::Schedule::from_str("*/5 * * * *").expect("Failed to parse cron schedule")
+    cron::Schedule::from_str("* */5 * * * *").expect("Failed to parse cron schedule")
 });
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]

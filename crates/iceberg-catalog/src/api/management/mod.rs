@@ -901,7 +901,6 @@ pub mod v1 {
         )
     )]
     async fn list_tasks<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
-        Path(_warehouse_id): Path<uuid::Uuid>,
         Query(query): Query<ListTasksQuery>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
@@ -920,7 +919,6 @@ pub mod v1 {
         )
     )]
     async fn list_task_instances<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
-        Path(_warehouse_id): Path<uuid::Uuid>,
         Query(query): Query<ListTaskInstancesQuery>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
