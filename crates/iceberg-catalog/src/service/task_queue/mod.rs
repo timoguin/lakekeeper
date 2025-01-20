@@ -219,8 +219,8 @@ pub trait TaskQueue: Debug {
     async fn retrying_record_success_or_failure(&self, task: &TaskInstance, result: Status<'_>) {
         let mut retry = 0;
         while let Err(e) = match result {
-            Status::Success => self.record_success(task.task_id).await,
-            Status::Failure(details) => self.record_failure(task.task_id, details).await,
+            Status::Success => self.record_success(task.task_instance_id).await,
+            Status::Failure(details) => self.record_failure(task.task_instance_id, details).await,
         } {
             tracing::error!("Failed to record {}: {:?}", result, e);
             tokio::time::sleep(Duration::from_secs(1 + retry)).await;

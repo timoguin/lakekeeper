@@ -5,7 +5,7 @@ create type task_status2 as enum ('active', 'inactive', 'done');
 
 alter table task
     rename column status to old_status;
-
+-- TODO: add project-id
 alter table task
     add column schedule  text,
     add version          int not null default 0,

@@ -139,10 +139,11 @@ async fn schedule_task(
             r#"
             SELECT t.task_id, schedule, t.idempotency_key
             FROM task t
-            WHERE (($1 = t.task_id or $1 is null) AND t.status = 'active' AND ((next_tick < now() AT TIME ZONE 'UTC' AND next_tick is not null)))
+            WHERE (($1 = t.task_id or $1 is null) AND t.status = 'active' AND ((next_tick < $2 AT TIME ZONE 'UTC' AND next_tick is not null)))
             FOR UPDATE SKIP LOCKED
             LIMIT 1"#,
-            single_task
+            single_task,
+            Utc::now()
         ).fetch_optional(&mut *read_write).await.map_err(|e| e.into_error_model("Failed to begin transaction"))?;
 
     tracing::debug!("Found {task:?}");

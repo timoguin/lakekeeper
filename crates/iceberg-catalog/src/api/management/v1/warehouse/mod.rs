@@ -1,23 +1,17 @@
 mod undrop;
 
+use super::default_page_size;
 use crate::api::iceberg::v1::{PageToken, PaginationQuery};
+use crate::api::management::v1::role::require_project_id;
 use crate::api::management::v1::{ApiServer, DeletedTabularResponse, ListDeletedTabularsResponse};
 use crate::api::{ApiContext, Result};
+use crate::catalog::UnfilteredPage;
 use crate::request_metadata::RequestMetadata;
 use crate::service::authz::{CatalogProjectAction, CatalogWarehouseAction};
 pub use crate::service::storage::{
     AdlsProfile, AzCredential, GcsCredential, GcsProfile, GcsServiceKey, S3Credential, S3Profile,
     StorageCredential, StorageProfile,
 };
-use crate::service::{NamespaceIdentUuid, TableIdentUuid};
-use futures::FutureExt;
-use itertools::Itertools;
-use std::str::FromStr;
-use std::sync::LazyLock;
-
-use super::default_page_size;
-use crate::api::management::v1::role::require_project_id;
-use crate::catalog::UnfilteredPage;
 use crate::service::task_queue::stats::StatsInput;
 use crate::service::task_queue::TaskFilter;
 pub use crate::service::WarehouseStatus;
@@ -25,13 +19,19 @@ use crate::service::{
     authz::Authorizer, secrets::SecretStore, Catalog, ListFlags, State, TabularIdentUuid,
     Transaction,
 };
+use crate::service::{NamespaceIdentUuid, TableIdentUuid};
 use crate::{ProjectIdent, WarehouseIdent, DEFAULT_PROJECT_ID};
+use chrono::Utc;
+use futures::FutureExt;
 use iceberg_ext::catalog::rest::ErrorModel;
+use itertools::Itertools;
 use serde::Deserialize;
+use std::str::FromStr;
+use std::sync::LazyLock;
 use utoipa::ToSchema;
 
 static STATS_SCHEDULE: LazyLock<cron::Schedule> = LazyLock::new(|| {
-    cron::Schedule::from_str("* */1 * * * *").expect("Failed to parse cron schedule")
+    cron::Schedule::from_str("0 * * * * *").expect("Failed to parse cron schedule")
 });
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]

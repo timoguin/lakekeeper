@@ -890,9 +890,10 @@ pub mod v1 {
         pub next_page_token: Option<String>,
     }
 
+    // TODO: body with optional project id
     #[utoipa::path(
         get,
-        tag = "server",
+        tag = "task",
         path = "/management/v1/task",
         params(ListTasksQuery),
         responses(
@@ -910,7 +911,7 @@ pub mod v1 {
 
     #[utoipa::path(
         get,
-        tag = "server",
+        tag = "task",
         path = "/management/v1/task/instances",
         params(ListTaskInstancesQuery),
         responses(
