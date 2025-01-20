@@ -5,8 +5,8 @@ mod tabular_purge_queue;
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use crate::implementations::postgres::ReadWrite;
 use crate::service::task_queue::{
-    Schedule, Scheduler, Task, TaskFilter, TaskInstance, TaskInstanceStatus, TaskQueueConfig,
-    TaskStatus,
+    Schedule, Scheduler, Task, TaskFilter, TaskId, TaskInstance, TaskInstanceStatus,
+    TaskQueueConfig, TaskStatus,
 };
 use crate::WarehouseIdent;
 use async_trait::async_trait;
@@ -238,7 +238,7 @@ async fn record_failure(
     n_retries: i32,
     details: &str,
 ) -> Result<(), IcebergErrorResponse> {
-    let r = sqlx::query!(
+    sqlx::query!(
         r#"
         WITH cte as (
             SELECT attempt >= $2 as should_fail
@@ -249,15 +249,13 @@ async fn record_failure(
         SET status = CASE WHEN (select should_fail from cte) THEN 'failed'::task_status ELSE 'pending'::task_status END,
             last_error_details = $3
         WHERE task_instance_id = $1
-        RETURNING task_instance_id, (select should_fail from cte) as "should_fail!"
         "#,
         id,
         n_retries,
         details
     )
-        .fetch_one(conn)
+        .execute(conn)
         .await.map_err(|e| e.into_error_model("failed to record task failure"))?;
-    eprintln!("{r:?}");
     Ok(())
 }
 
@@ -350,7 +348,7 @@ macro_rules! impl_pg_task_queue {
     };
 }
 use crate::api::iceberg::v1::{PaginationQuery, MAX_PAGE_SIZE};
-use crate::api::management::v1::task::ListTasksResponse;
+use crate::api::management::v1::task::{ListTaskInstancesResponse, ListTasksResponse};
 use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToken};
 use impl_pg_task_queue;
 
@@ -461,7 +459,7 @@ pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
             .into_iter()
             .map(|row| {
                 Ok(Task {
-                    task_id: row.task_id,
+                    task_id: row.task_id.into(),
                     warehouse_ident: row.warehouse_id.into(),
                     queue_name: row.queue_name,
                     parent_task_id: row.parent_task_id,
@@ -483,12 +481,13 @@ pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
 }
 
 pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Postgres>>(
+    task_id: Option<TaskId>,
     PaginationQuery {
         page_token,
         page_size,
     }: PaginationQuery,
     conn: E,
-) -> crate::api::Result<ListTasksResponse> {
+) -> crate::api::Result<ListTaskInstancesResponse> {
     let page_size = page_size.map_or(MAX_PAGE_SIZE, |i| i.clamp(1, MAX_PAGE_SIZE));
 
     let token = page_token
@@ -502,52 +501,44 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
         .unzip();
 
     let r = sqlx::query!(
-        r#"SELECT task_id,
-                  task_instance_id,
+        r#"SELECT ti.task_id,
+                  ti.task_instance_id,
                   attempt,
-                    status as "status: TaskInstanceStatus",
-                    last_error_details,
-                    picked_up_at,
-                    suspend_until,
-                    completed_at,
-                    created_at,
-                    updated_at,
-                    last_heartbeat_at,
-                   warehouse_id,
-                   queue_name,
-                   parent_task_id,
-                   created_at,
-                   updated_at,
-                   schedule,
-                   status as "status: TaskStatus"
-                    FROM task t
-                    WHERE ((t.created_at > $1 OR $1 IS NULL) OR (t.created_at = $1 AND t.task_id > $2))
-                    LIMIT $3"#,
+                  ti.status as "status: TaskInstanceStatus",
+                  ti.last_error_details,
+                  ti.picked_up_at,
+                  ti.suspend_until,
+                  ti.completed_at,
+                  ti.created_at,
+                  ti.updated_at,
+                  ti.last_heartbeat_at,
+                  t.warehouse_id,
+                  t.queue_name,
+                  t.parent_task_id
+        FROM task_instance ti
+        JOIN task t ON ti.task_id = t.task_id
+        WHERE (t.task_id = $1 or $1 IS NULL) AND ((t.created_at > $2 OR $2 IS NULL) OR (t.created_at = $2 AND t.task_id > $3))
+        LIMIT $4"#,
+        task_id.map(Uuid::from),
         token_ts,
         token_id,
         page_size,
     )
         .fetch_all(conn)
         .await.map_err(|db| db.into_error_model("Failed to read tasks."))?;
-    Ok(ListTasksResponse {
+    Ok(ListTaskInstancesResponse {
         tasks: r
             .into_iter()
             .map(|row| {
-                Ok(Task {
+                Ok(TaskInstance {
                     task_id: row.task_id,
+                    task_instance_id: row.task_instance_id,
+                    attempt: row.attempt,
+                    status: row.status,
+                    picked_up_at: row.picked_up_at,
                     warehouse_ident: row.warehouse_id.into(),
                     queue_name: row.queue_name,
                     parent_task_id: row.parent_task_id,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                    schedule: row.schedule.map(|s| s.parse()).transpose().map_err(|err| {
-                        ErrorModel::internal(
-                            "Failed to parse schedule from database.",
-                            "InternalDatabaseError",
-                            Some(Box::new(err)),
-                        )
-                    })?,
-                    status: row.status,
                 })
             })
             .collect::<crate::api::Result<Vec<_>>>()?,

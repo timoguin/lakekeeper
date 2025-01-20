@@ -44,7 +44,7 @@ pub async fn stats_task<C: Catalog>(fetcher: StatsQueue, catalog_state: C::State
     }
 }
 
-async fn instrumented_collect_stats<C: Catalog>(
+pub(crate) async fn instrumented_collect_stats<C: Catalog>(
     fetcher: Arc<dyn TaskQueue<Task = StatsTask, Input = StatsInput> + Send + Sync>,
     catalog_state: C::State,
     purge_task: &StatsTask,

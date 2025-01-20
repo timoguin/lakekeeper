@@ -16,13 +16,13 @@ use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
-struct TrackerTx(tokio::sync::mpsc::Sender<Message>);
+pub(crate) struct TrackerTx(tokio::sync::mpsc::Sender<Message>);
 
 // TODO: We're aggregating endpoint statistics per warehouse, which means we'll have to somehow
 //       extract the warehouse id from the request. That's no fun
 pub(crate) async fn stats_middleware_fn(
     State(tracker): State<TrackerTx>,
-    mut request: Request,
+    request: Request,
     next: Next,
 ) -> Response {
     let endpoint = request.uri().path().to_string();

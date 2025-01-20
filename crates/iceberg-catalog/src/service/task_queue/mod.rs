@@ -1,20 +1,21 @@
+use super::authz::Authorizer;
+use super::WarehouseIdent;
 use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
-use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
-use crate::service::{Catalog, SecretStore};
+use crate::service::task_queue::tabular_purge_queue::{TabularPurgeInput, TabularPurgeTask};
+use crate::service::{Catalog, SecretStore, State};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
+use utoipa::ToSchema;
 use uuid::Uuid;
-
-use super::authz::Authorizer;
-use super::WarehouseIdent;
 
 pub mod stats;
 pub mod tabular_expiration_queue;
@@ -145,7 +146,7 @@ impl TaskQueues {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize, ToSchema)]
 pub struct TaskId(Uuid);
 
 impl From<Uuid> for TaskId {
@@ -261,7 +262,7 @@ pub enum TaskStatus {
     Done,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "sqlx-postgres", derive(sqlx::Type))]
 #[cfg_attr(
     feature = "sqlx-postgres",

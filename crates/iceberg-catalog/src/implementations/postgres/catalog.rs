@@ -17,7 +17,7 @@ use super::{
     },
     CatalogState, PostgresTransaction,
 };
-use crate::api::management::v1::task::ListTasksResponse;
+use crate::api::management::v1::task::{ListTaskInstancesResponse, ListTasksResponse};
 use crate::api::management::v1::user::{
     ListUsersResponse, SearchUserResponse, UserLastUpdatedWith, UserType,
 };
@@ -30,7 +30,7 @@ use crate::implementations::postgres::tabular::table::{
 use crate::implementations::postgres::tabular::{
     clear_tabular_deleted_at, list_tabulars, mark_tabular_as_deleted,
 };
-use crate::implementations::postgres::task_queues::list_tasks;
+use crate::implementations::postgres::task_queues::{list_task_instances, list_tasks};
 use crate::implementations::postgres::user::{
     create_or_update_user, delete_user, list_users, search_user,
 };
@@ -637,7 +637,7 @@ impl Catalog for super::PostgresCatalog {
         task_id: Option<TaskId>,
         pagination: PaginationQuery,
         state: Self::State,
-    ) -> Result<ListTasksResponse> {
+    ) -> Result<ListTaskInstancesResponse> {
         list_task_instances(task_id, pagination, &state.read_write.read_pool).await
     }
 }

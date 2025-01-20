@@ -14,7 +14,10 @@ pub mod v1 {
     use crate::request_metadata::RequestMetadata;
     use std::marker::PhantomData;
 
-    use crate::api::management::v1::task::{ListTasksQuery, ListTasksResponse, Service};
+    use crate::api::management::v1::task::{
+        ListTaskInstancesQuery, ListTaskInstancesResponse, ListTasksQuery, ListTasksResponse,
+        Service,
+    };
     use crate::api::management::v1::user::{ListUsersQuery, ListUsersResponse};
     use crate::api::management::v1::warehouse::UndropTabularsRequest;
     use crate::api::IcebergErrorResponse;
@@ -906,6 +909,25 @@ pub mod v1 {
         api_context.list_tasks(metadata, query).await
     }
 
+    #[utoipa::path(
+        get,
+        tag = "server",
+        path = "/management/v1/task/instances",
+        params(ListTaskInstancesQuery),
+        responses(
+            (status = 200, description = "List Tasks"),
+            (status = "4XX", body = IcebergErrorResponse),
+        )
+    )]
+    async fn list_task_instances<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+        Path(_warehouse_id): Path<uuid::Uuid>,
+        Query(query): Query<ListTaskInstancesQuery>,
+        AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
+        Extension(metadata): Extension<RequestMetadata>,
+    ) -> Result<ListTaskInstancesResponse> {
+        api_context.list_task_instances(metadata, query).await
+    }
+
     #[derive(Debug, Serialize, utoipa::ToSchema)]
     pub struct DeletedTabularResponse {
         /// Unique identifier of the tabular
@@ -999,6 +1021,7 @@ pub mod v1 {
                 // List all tasks
                 // TODO: should this be top-level management, a whole new api or warehouse?
                 .route("/task", get(list_tasks))
+                .route("/task/instances", get(list_task_instances))
                 .route(
                     "/warehouse",
                     // List all warehouses within a project
