@@ -1,7 +1,8 @@
 create type statistic_type as enum ('endpoint', 'entity_count');
 create type task_source as enum ('system', 'user');
 create type queue as enum ('stats', 'compact');
-create type task_status2 as enum ('active', 'inactive', 'done');
+-- TODO: rename to task_status
+create type task_status2 as enum ('active', 'inactive', 'cancelled', 'done');
 
 alter table task
     rename column status to old_status;

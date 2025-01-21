@@ -21,7 +21,6 @@ use crate::service::{
 };
 use crate::service::{NamespaceIdentUuid, TableIdentUuid};
 use crate::{ProjectIdent, WarehouseIdent, DEFAULT_PROJECT_ID};
-use chrono::Utc;
 use futures::FutureExt;
 use iceberg_ext::catalog::rest::ErrorModel;
 use itertools::Itertools;

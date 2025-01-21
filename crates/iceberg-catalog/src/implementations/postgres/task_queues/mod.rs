@@ -75,7 +75,7 @@ impl Scheduler for ReadWrite {
 }
 
 #[instrument(skip(conn))]
-async fn schedule(
+async fn schedule_task_instance(
     conn: &mut PgConnection,
     task_id: Uuid,
     idempotency_key: Uuid,
@@ -163,7 +163,7 @@ async fn schedule_task(
             })?
             .map(|schedule| Schedule::Cron { schedule });
 
-        schedule(
+        schedule_task_instance(
             read_write,
             task_id,
             row.idempotency_key,
@@ -215,7 +215,7 @@ async fn queue_task(
     .map_err(|e| e.into_error_model("failed queueing task"))?;
     eprintln!("INS {inserted:?}");
     if let Some(inserted) = inserted {
-        schedule(
+        schedule_task_instance(
             conn,
             inserted,
             idempotency_key,
@@ -353,27 +353,21 @@ async fn cancel_pending_tasks(
     filter: TaskFilter,
     queue_name: &'static str,
 ) -> crate::api::Result<()> {
-    let mut transaction = queue
-        .read_write
-        .write_pool
-        .begin()
-        .await
-        .map_err(|e| e.into_error_model("Failed to get transaction to cancel Task"))?;
     // TODO: we're only cancelling task_instances here, have to cancel tasks elsewhere too, probably different api?
     match filter {
         TaskFilter::WarehouseId(warehouse_id) => {
             sqlx::query!(
                 r#"
-                    UPDATE task_instance ti SET status = 'cancelled'
-                    FROM task
-                    WHERE ti.status = 'pending'
-                    AND task.warehouse_id = $1
-                    AND task.queue_name = $2
+                WITH updated_task AS (UPDATE task t SET status = 'cancelled' where status = 'active' and warehouse_id = $1 AND queue_name = $2),
+                     updated_task_instance AS (UPDATE task_instance ti SET status = 'cancelled' FROM task t WHERE ti.status = 'pending' AND t.warehouse_id = $1 AND queue_name = $2 AND t.task_id = ti.task_id returning ti.task_instance_id)
+                SELECT task_instance_id FROM updated_task_instance
                 "#,
                 *warehouse_id,
                 queue_name
             )
-            .fetch_all(&mut *transaction)
+            .fetch_all(&queue
+                .read_write
+                .write_pool)
             .await
             .map_err(|e| {
                 tracing::error!(
@@ -387,14 +381,15 @@ async fn cancel_pending_tasks(
         }
         TaskFilter::TaskIds(task_ids) => {
             sqlx::query!(
-                r#"
-                    UPDATE task_instance SET status = 'cancelled'
-                    WHERE status = 'pending'
-                    AND task_instance_id = ANY($1)
+                r#"WITH updated_task AS (UPDATE task t SET status = 'cancelled' where status = 'active' and task_id = ANY($1)),
+                     updated_task_instance AS (UPDATE task_instance ti SET status = 'cancelled' FROM task t WHERE ti.status = 'pending' AND ti.task_id = ANY($1) AND t.task_id = ti.task_id returning ti.task_instance_id)
+                    SELECT task_instance_id FROM updated_task_instance
                 "#,
                 &task_ids.iter().map(|s| **s).collect::<Vec<_>>(),
             )
-            .fetch_all(&mut *transaction)
+            .fetch_all(&queue
+                .read_write
+                .write_pool)
             .await
             .map_err(|e| {
                 tracing::error!(?e, "Failed to cancel Tasks for task_ids {task_ids:?}");
@@ -402,11 +397,6 @@ async fn cancel_pending_tasks(
             })?;
         }
     }
-
-    transaction.commit().await.map_err(|e| {
-        tracing::error!(?e, "Failed to commit transaction to cancel Tasks");
-        e.into_error_model("failed to commit transaction cancelling tasks.")
-    })?;
 
     Ok(())
 }
@@ -544,9 +534,11 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
 mod test {
     use super::*;
 
+    use crate::api::iceberg::types::PageToken;
     use crate::WarehouseIdent;
     use sqlx::PgPool;
     use uuid::Uuid;
+
     const TEST_WAREHOUSE: WarehouseIdent = WarehouseIdent(Uuid::nil());
 
     #[sqlx::test]
@@ -838,5 +830,66 @@ mod test {
 
         record_success(task.task_id, &pool).await.unwrap();
         record_success(id2, &pool).await.unwrap();
+    }
+
+    #[sqlx::test]
+    async fn task_cancellation_works(pool: PgPool) {
+        let mut conn = pool.acquire().await.unwrap();
+        let config = TaskQueueConfig::default();
+        let queue = setup(pool.clone(), config);
+
+        let id = queue_task(
+            &mut conn,
+            "test",
+            None,
+            Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
+            TEST_WAREHOUSE,
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        cancel_pending_tasks(&queue, TaskFilter::TaskIds(vec![id.into()]), "test")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            pick_task(&pool, "test", &queue.max_age).await.unwrap(),
+            None
+        );
+
+        let tasks = list_tasks(
+            PaginationQuery {
+                page_token: PageToken::NotSpecified,
+                page_size: None,
+            },
+            &pool,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(tasks.tasks.len(), 1);
+        assert_eq!(tasks.tasks[0].task_id, id.into());
+        // TODO: this happens because the task is marked as done once its last instance is scheduled
+        assert_eq!(tasks.tasks[0].status, TaskStatus::Done);
+
+        let task_instances = list_task_instances(
+            Some(id.into()),
+            PaginationQuery {
+                page_token: PageToken::NotSpecified,
+                page_size: None,
+            },
+            &pool,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(task_instances.tasks.len(), 1);
+        assert_eq!(task_instances.tasks[0].task_id, id.into());
+        assert_eq!(
+            task_instances.tasks[0].status,
+            TaskInstanceStatus::Cancelled
+        );
     }
 }

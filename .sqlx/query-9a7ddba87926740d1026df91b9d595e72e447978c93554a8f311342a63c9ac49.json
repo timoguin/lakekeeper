@@ -48,6 +48,7 @@
               "Enum": [
                 "active",
                 "inactive",
+                "cancelled",
                 "done"
               ]
             }

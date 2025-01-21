@@ -33,8 +33,8 @@ impl Display for Schedule {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Schedule::Immediate {} => write!(f, "immediate"),
-            Schedule::RunAt { date } => write!(f, "run_at: {}", date),
-            Schedule::Cron { schedule } => write!(f, "cron: {}", schedule),
+            Schedule::RunAt { date } => write!(f, "run_at: {}", date.to_rfc3339()),
+            Schedule::Cron { schedule } => write!(f, "cron: {}", schedule.to_string()),
         }
     }
 }
@@ -269,6 +269,7 @@ pub struct Task {
 pub enum TaskStatus {
     Active,
     Inactive,
+    Cancelled,
     Done,
 }
 
