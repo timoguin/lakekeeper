@@ -52,15 +52,15 @@ pub(crate) async fn update_stats<'e, E: sqlx::Executor<'e, Database = sqlx::Post
         .map_err(|e| e.into_error_model("failed to collect stats"))?)
 }
 
-pub struct PostgresStatsSink {
-    pool: sqlx::PgPool,
-}
-
-impl PostgresStatsSink {
-    pub fn new(pool: sqlx::PgPool) -> Self {
-        Self { pool }
-    }
-}
+// pub struct PostgresStatsSink {
+//     pool: sqlx::PgPool,
+// }
+//
+// impl PostgresStatsSink {
+//     pub fn new(pool: sqlx::PgPool) -> Self {
+//         Self { pool }
+//     }
+// }
 
 // #[async_trait::async_trait]
 // impl StatsSink for PostgresStatsSink {

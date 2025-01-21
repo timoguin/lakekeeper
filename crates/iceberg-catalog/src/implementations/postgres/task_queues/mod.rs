@@ -886,7 +886,7 @@ mod test {
         .unwrap();
 
         assert_eq!(task_instances.tasks.len(), 1);
-        assert_eq!(task_instances.tasks[0].task_id, id.into());
+        assert_eq!(task_instances.tasks[0].task_id, id);
         assert_eq!(
             task_instances.tasks[0].status,
             TaskInstanceStatus::Cancelled

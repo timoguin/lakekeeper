@@ -34,7 +34,7 @@ impl Display for Schedule {
         match self {
             Schedule::Immediate {} => write!(f, "immediate"),
             Schedule::RunAt { date } => write!(f, "run_at: {}", date.to_rfc3339()),
-            Schedule::Cron { schedule } => write!(f, "cron: {}", schedule.to_string()),
+            Schedule::Cron { schedule } => write!(f, "cron: {schedule}"),
         }
     }
 }
