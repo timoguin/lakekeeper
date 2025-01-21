@@ -33,23 +33,23 @@ pub(crate) async fn update_stats(
         r#"
         WITH update_tables AS (
             INSERT INTO scalars (name, statistic_id, value)
-            VALUES ('tables', $2, (SELECT count(*) AS value FROM "table" t
+            VALUES ('tables', $1, (SELECT count(*) AS value FROM "table" t
                 INNER JOIN tabular ti ON t.table_id = ti.tabular_id
                 INNER JOIN namespace n ON ti.namespace_id = n.namespace_id
                 INNER JOIN warehouse w ON n.warehouse_id = w.warehouse_id
-            WHERE w.warehouse_id = $1 AND w.status = 'active'))
+            WHERE w.warehouse_id = $2 AND w.status = 'active'))
             RETURNING value
         ),
         update_views AS (
             INSERT INTO scalars (name, statistic_id, value)
-            VALUES ('views', $2, (SELECT count(*) AS value FROM "view" v
+            VALUES ('views', $1, (SELECT count(*) AS value FROM "view" v
                 INNER JOIN tabular vi ON v.view_id = vi.tabular_id
                 INNER JOIN namespace n ON vi.namespace_id = n.namespace_id
                 INNER JOIN warehouse w ON n.warehouse_id = w.warehouse_id
-            WHERE w.warehouse_id = $1 AND w.status = 'active'))
+            WHERE w.warehouse_id = $2 AND w.status = 'active'))
             RETURNING value
         )
-        SELECT $1 as "statistics_id!", $2 as "warehouse_ident!", (select value from update_tables) as "number_of_tables!", (select value from update_views) as "number_of_views!"
+        SELECT $1 as "statistics_id!", $2 as "warehouse_ident!", (SELECT value FROM update_tables) as "number_of_tables!", (SELECT value FROM update_views) as "number_of_views!"
         "#,
         statistics_id,
         warehouse_ident.0
