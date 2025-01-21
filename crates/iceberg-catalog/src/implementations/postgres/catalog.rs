@@ -625,7 +625,7 @@ impl Catalog for super::PostgresCatalog {
         list_flags: ListFlags,
         transaction: Self::State,
     ) -> Result<WarehouseStatistics> {
-        update_stats(&transaction.read_write.write_pool, warehouse_id, list_flags).await
+        update_stats(transaction.write_pool(), warehouse_id, list_flags).await
     }
 
     async fn list_tasks(
