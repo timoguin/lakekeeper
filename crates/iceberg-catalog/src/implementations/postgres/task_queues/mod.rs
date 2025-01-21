@@ -422,6 +422,7 @@ pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
 
     let r = sqlx::query!(
         r#"SELECT task_id,
+                   project_id,
                    warehouse_id,
                    queue_name,
                    parent_task_id,
@@ -457,6 +458,7 @@ pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
                         )
                     })?,
                     status: row.status,
+                    project_id: row.project_id.into(),
                 })
             })
             .collect::<crate::api::Result<Vec<_>>>()?,

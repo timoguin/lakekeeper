@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT task_id,\n                   warehouse_id,\n                   queue_name,\n                   parent_task_id,\n                   created_at,\n                   updated_at,\n                   schedule,\n                   status as \"status: TaskStatus\"\n                    FROM task t\n                    WHERE ((t.created_at > $1 OR $1 IS NULL) OR (t.created_at = $1 AND t.task_id > $2))\n                    LIMIT $3",
+  "query": "SELECT task_id,\n                   project_id,\n                   warehouse_id,\n                   queue_name,\n                   parent_task_id,\n                   created_at,\n                   updated_at,\n                   schedule,\n                   status as \"status: TaskStatus\"\n                    FROM task t\n                    WHERE ((t.created_at > $1 OR $1 IS NULL) OR (t.created_at = $1 AND t.task_id > $2))\n                    LIMIT $3",
   "describe": {
     "columns": [
       {
@@ -10,36 +10,41 @@
       },
       {
         "ordinal": 1,
-        "name": "warehouse_id",
+        "name": "project_id",
         "type_info": "Uuid"
       },
       {
         "ordinal": 2,
+        "name": "warehouse_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
         "name": "queue_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "parent_task_id",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "schedule",
         "type_info": "Text"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "status: TaskStatus",
         "type_info": {
           "Custom": {
@@ -67,6 +72,7 @@
       false,
       false,
       false,
+      false,
       true,
       false,
       true,
@@ -74,5 +80,5 @@
       false
     ]
   },
-  "hash": "9a7ddba87926740d1026df91b9d595e72e447978c93554a8f311342a63c9ac49"
+  "hash": "50ebb381dd8eddfb95e4986ccb5340134604b63a7f5734f18c046f606c9d8fed"
 }

@@ -3,7 +3,7 @@ use super::WarehouseIdent;
 use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
 use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
 use crate::service::{Catalog, SecretStore};
-use crate::CONFIG;
+use crate::{ProjectIdent, CONFIG};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -250,6 +250,7 @@ pub struct TaskInstance {
 #[cfg_attr(feature = "sqlx-postgres", derive(FromRow))]
 pub struct Task {
     pub task_id: TaskId,
+    pub project_id: ProjectIdent,
     pub queue_name: String,
     // TODO: use new taskstatus enum
     pub warehouse_ident: WarehouseIdent,

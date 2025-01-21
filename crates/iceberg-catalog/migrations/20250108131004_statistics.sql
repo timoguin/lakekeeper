@@ -8,16 +8,20 @@ alter table task
     rename column status to old_status;
 -- TODO: add project-id
 alter table task
-    add column schedule  text,
-    add version          int not null default 0,
-    add column status    task_status2,
-    add column next_tick timestamptz;
+    add column schedule   text,
+    add version           int not null default 0,
+    add column status     task_status2,
+    add column next_tick  timestamptz,
+    add column project_id uuid;
 
 update task
-set status = 'done'
-where old_status = 'cancelled'
-   or old_status = 'done'
-   or old_status = 'failed';
+set status     = 'done',
+    project_id = w.project_id
+from warehouse w
+where task.warehouse_id = w.warehouse_id
+  and (old_status = 'cancelled'
+    or old_status = 'done'
+    or old_status = 'failed');
 
 create table task_instance
 (
@@ -57,7 +61,8 @@ alter table task
     drop column attempt,
     drop column picked_up_at,
     drop column suspend_until,
-    alter column status set not null;
+    alter column status set not null,
+    alter column project_id set not null;
 
 select trigger_updated_at('task_instance');
 call add_time_columns('task_instance');
