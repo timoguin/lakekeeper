@@ -12,7 +12,7 @@ alter table task
     add version           int not null default 0,
     add column status     task_status2,
     add column next_tick  timestamptz,
-    add column project_id uuid;
+    add column project_id uuid references project (project_id) ON DELETE CASCADE;
 
 update task
 set status     = 'done',
@@ -26,7 +26,7 @@ where task.warehouse_id = w.warehouse_id
 create table task_instance
 (
     task_instance_id   uuid primary key,
-    task_id            uuid        not null references task (task_id),
+    task_id            uuid        not null references task (task_id) ON DELETE CASCADE,
     attempt            int         not null default 0,
     idempotency_key    uuid        not null,
     status             task_status not null,
@@ -61,11 +61,22 @@ alter table task
     drop column attempt,
     drop column picked_up_at,
     drop column suspend_until,
+    drop column warehouse_id,
     alter column status set not null,
     alter column project_id set not null;
 
 select trigger_updated_at('task_instance');
 call add_time_columns('task_instance');
+
+
+create table statistics_task
+(
+    task_id      uuid primary key REFERENCES task (task_id) ON DELETE CASCADE,
+    warehouse_id uuid not null REFERENCES warehouse (warehouse_id) ON DELETE CASCADE
+);
+
+select trigger_updated_at('statistics_task');
+call add_time_columns('statistics_task');
 
 create table statistics
 (
@@ -73,7 +84,7 @@ create table statistics
     warehouse_id  uuid not null REFERENCES warehouse (warehouse_id)
 );
 
-select trigger_updated_at('"statistics"');
+select trigger_updated_at('statistics');
 call add_time_columns('statistics');
 
 create table scalars

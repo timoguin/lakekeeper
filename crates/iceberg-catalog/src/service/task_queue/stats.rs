@@ -1,6 +1,6 @@
 use crate::service::task_queue::{TaskInstance, TaskQueue};
 use crate::service::{Catalog, ListFlags};
-use crate::WarehouseIdent;
+use crate::{ProjectIdent, WarehouseIdent};
 use std::sync::Arc;
 
 use std::time::Duration;
@@ -93,12 +93,15 @@ pub struct StatsInput {
     pub warehouse_ident: WarehouseIdent,
     pub schedule: cron::Schedule,
     pub parent_id: Option<Uuid>,
+    pub project_ident: ProjectIdent,
 }
 
 #[cfg(test)]
 mod test {
 
-    use crate::api::management::v1::task::{ListTaskInstancesQuery, ListTasksQuery, Service};
+    use crate::api::management::v1::task::{
+        ListTaskInstancesQuery, ListTasksQuery, ListTasksRequest, TaskService,
+    };
     use crate::api::management::v1::warehouse::TabularDeleteProfile;
     use crate::service::authz::AllowAllAuthorizer;
     use crate::service::task_queue::TaskQueueConfig;
@@ -126,6 +129,9 @@ mod test {
         let t = ctx
             .list_tasks(
                 random_request_metadata(),
+                ListTasksRequest {
+                    project_ident: None,
+                },
                 ListTasksQuery {
                     page_token: None,
                     page_size: 100,

@@ -251,7 +251,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             storage_credential,
             delete_profile,
         } = request;
-        let project_id = project_id
+        let project_ident = project_id
             .or(*DEFAULT_PROJECT_ID)
             .ok_or(ErrorModel::bad_request(
                 "project_id must be specified",
@@ -264,8 +264,8 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         authorizer
             .require_project_action(
                 &request_metadata,
-                project_id,
-                &CatalogProjectAction::CanCreateWarehouse,
+                project_ident,
+                CatalogProjectAction::CanCreateWarehouse,
             )
             .await?;
 
@@ -291,7 +291,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
 
         let warehouse_id = C::create_warehouse(
             warehouse_name,
-            project_id,
+            project_ident,
             storage_profile,
             delete_profile,
             secret_id,
@@ -299,7 +299,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         )
         .await?;
         authorizer
-            .create_warehouse(&request_metadata, warehouse_id, project_id)
+            .create_warehouse(&request_metadata, warehouse_id, project_ident)
             .await?;
 
         transaction.commit().await?;
@@ -311,6 +311,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                 warehouse_ident: warehouse_id,
                 schedule: STATS_SCHEDULE.clone(),
                 parent_id: None,
+                project_ident,
             })
             .await?;
 
@@ -330,7 +331,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             .require_project_action(
                 &request_metadata,
                 project_id,
-                &CatalogProjectAction::CanListWarehouses,
+                CatalogProjectAction::CanListWarehouses,
             )
             .await?;
 

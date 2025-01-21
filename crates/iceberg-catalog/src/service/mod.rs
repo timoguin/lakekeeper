@@ -141,7 +141,7 @@ impl From<ProjectIdent> for uuid::Uuid {
 
 impl ProjectIdent {
     #[must_use]
-    pub fn new(id: uuid::Uuid) -> Self {
+    pub const fn new(id: uuid::Uuid) -> Self {
         Self(id)
     }
 }

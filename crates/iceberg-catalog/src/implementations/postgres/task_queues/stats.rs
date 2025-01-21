@@ -7,7 +7,7 @@ use crate::implementations::postgres::task_queues::{
     pick_task, queue_task, record_failure, record_success,
 };
 use crate::service::task_queue::stats::{StatsInput, StatsTask};
-use crate::service::task_queue::{Schedule, TaskQueue, TaskQueueConfig};
+use crate::service::task_queue::{Schedule, TaskId, TaskQueue, TaskQueueConfig};
 
 super::impl_pg_task_queue!(StatsQueue);
 
@@ -28,11 +28,12 @@ impl TaskQueue for StatsQueue {
     async fn enqueue(
         &self,
         StatsInput {
+            project_ident,
             warehouse_ident,
             schedule,
             parent_id,
         }: StatsInput,
-    ) -> crate::api::Result<()> {
+    ) -> crate::api::Result<Option<TaskId>> {
         let mut transaction = self
             .pg_queue
             .read_write
@@ -50,10 +51,28 @@ impl TaskQueue for StatsQueue {
             self.queue_name(),
             parent_id,
             idempotency_key,
-            warehouse_ident,
+            project_ident,
             Some(Schedule::Cron { schedule }),
         )
         .await?;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO statistics_task (task_id, warehouse_id)
+            VALUES ($1, $2)
+            ON CONFLICT (task_id) DO NOTHING
+            "#,
+            task_id,
+            warehouse_ident.0
+        )
+        .execute(&mut *transaction)
+        .await
+        .map_err(|e| e.into_error_model("Error inserting statistics task."))?;
+
+        transaction.commit().await.map_err(|e| {
+            tracing::error!(?e, "failed to commit");
+            e.into_error_model("failed to commit tabular purge task")
+        })?;
 
         match task_id {
             None => {
@@ -63,13 +82,7 @@ impl TaskQueue for StatsQueue {
                 tracing::debug!("Enqueued stats task with id: '{id}'",);
             }
         }
-
-        transaction.commit().await.map_err(|e| {
-            tracing::error!(?e, "failed to commit");
-            e.into_error_model("failed to commit tabular purge task")
-        })?;
-
-        Ok(())
+        Ok(task_id.map(Into::into))
     }
 
     #[tracing::instrument(skip(self))]
@@ -86,8 +99,16 @@ impl TaskQueue for StatsQueue {
             return Ok(None);
         };
 
+        let warehouse_ident = sqlx::query_scalar!(
+            r#"SELECT warehouse_id from statistics_task where task_id = $1"#,
+            task.task_id
+        )
+        .fetch_one(&self.pg_queue.read_write.write_pool)
+        .await
+        .map_err(|err| err.into_error_model("Error fetching statistics task details"))?;
+
         Ok(Some(StatsTask {
-            warehouse_ident: task.warehouse_ident,
+            warehouse_ident: warehouse_ident.into(),
             task,
         }))
     }
@@ -117,6 +138,7 @@ mod test {
     use crate::implementations::postgres::ReadWrite;
     use crate::service::task_queue::stats::StatsInput;
     use crate::service::task_queue::{Scheduler, TaskQueue, TaskQueueConfig};
+    use crate::ProjectIdent;
     use sqlx::PgPool;
     use std::str::FromStr;
 
@@ -130,6 +152,7 @@ mod test {
             warehouse_ident: uuid::Uuid::new_v4().into(),
             schedule: cron::Schedule::from_str("*/1 * * * * *").unwrap(),
             parent_id: None,
+            project_ident: ProjectIdent::default(),
         };
         queue.enqueue(input.clone()).await.unwrap();
         queue.enqueue(input.clone()).await.unwrap();

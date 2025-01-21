@@ -8,7 +8,7 @@ use crate::service::task_queue::{
     Schedule, Scheduler, Task, TaskFilter, TaskId, TaskInstance, TaskInstanceStatus,
     TaskQueueConfig, TaskStatus,
 };
-use crate::WarehouseIdent;
+use crate::ProjectIdent;
 use async_trait::async_trait;
 use std::str::FromStr;
 
@@ -179,7 +179,7 @@ async fn queue_task(
     queue_name: &str,
     parent_task_id: Option<Uuid>,
     idempotency_key: Uuid,
-    warehouse_ident: WarehouseIdent,
+    project_ident: ProjectIdent,
     schedul: Option<Schedule>,
 ) -> Result<Option<Uuid>, IcebergErrorResponse> {
     let sched = schedul.as_ref().and_then(|s| match s {
@@ -195,7 +195,7 @@ async fn queue_task(
                 status,
                 parent_task_id,
                 idempotency_key,
-                warehouse_id,
+                project_id,
                 schedule,
                 version)
         VALUES ($1, $2, 'active', $3, $4, $5, $6, $7)
@@ -206,7 +206,7 @@ async fn queue_task(
         queue_name,
         parent_task_id,
         idempotency_key,
-        *warehouse_ident,
+        *project_ident,
         sched,
         0, // TODO: add version,
     )
@@ -263,7 +263,7 @@ async fn pick_task(
         TaskInstance,
         r#"
         WITH updated_task AS (
-            SELECT ti.task_id, ti.task_instance_id, t.queue_name, t.parent_task_id, t.warehouse_id
+            SELECT ti.task_id, ti.task_instance_id, t.queue_name, t.parent_task_id, t.project_id
             FROM task_instance ti JOIN task t ON ti.task_id = t.task_id
             WHERE (ti.status = 'pending' AND t.queue_name = $1 AND ((ti.suspend_until < now() AT TIME ZONE 'UTC') OR (ti.suspend_until IS NULL)))
                     OR (ti.status = 'running' AND (now() - ti.picked_up_at) > $2)
@@ -274,7 +274,7 @@ async fn pick_task(
         SET status = 'running', picked_up_at = now(), attempt = ti.attempt + 1
         FROM updated_task
         WHERE ti.task_instance_id = updated_task.task_instance_id
-        RETURNING ti.task_id, ti.task_instance_id, ti.status as "status: TaskInstanceStatus", ti.picked_up_at, ti.attempt, (select parent_task_id from updated_task), (select queue_name from updated_task) as "queue_name!", (select warehouse_id from updated_task) as "warehouse_ident!"
+        RETURNING ti.task_id, ti.task_instance_id, ti.status as "status: TaskInstanceStatus", ti.picked_up_at, ti.attempt, (select parent_task_id from updated_task), (select queue_name from updated_task) as "queue_name!", (select project_id from updated_task) as "project_ident!"
         "#,
         queue_name,
         max_age,
@@ -342,7 +342,9 @@ macro_rules! impl_pg_task_queue {
     };
 }
 use crate::api::iceberg::v1::{PaginationQuery, MAX_PAGE_SIZE};
-use crate::api::management::v1::task::{ListTaskInstancesResponse, ListTasksResponse};
+use crate::api::management::v1::task::{
+    ListTaskInstancesResponse, ListTasksRequest, ListTasksResponse,
+};
 use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToken};
 use impl_pg_task_queue;
 
@@ -351,40 +353,26 @@ use impl_pg_task_queue;
 async fn cancel_pending_tasks(
     queue: &PgQueue,
     filter: TaskFilter,
-    queue_name: &'static str,
+    // TODO: remove?
+    _queue_name: &'static str,
 ) -> crate::api::Result<()> {
     // TODO: we're only cancelling task_instances here, have to cancel tasks elsewhere too, probably different api?
     match filter {
-        TaskFilter::WarehouseId(warehouse_id) => {
-            sqlx::query!(
-                r#"
-                WITH updated_task AS (UPDATE task t SET status = 'cancelled' where status = 'active' and warehouse_id = $1 AND queue_name = $2),
-                     updated_task_instance AS (UPDATE task_instance ti SET status = 'cancelled' FROM task t WHERE ti.status = 'pending' AND t.warehouse_id = $1 AND queue_name = $2 AND t.task_id = ti.task_id returning ti.task_instance_id)
-                SELECT task_instance_id FROM updated_task_instance
-                "#,
-                *warehouse_id,
-                queue_name
-            )
-            .fetch_all(&queue
-                .read_write
-                .write_pool)
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    ?e,
-                    "Failed to cancel {queue_name} Tasks for warehouse {warehouse_id}"
-                );
-                e.into_error_model(format!(
-                    "Failed to cancel {queue_name} Tasks for warehouse {warehouse_id}"
-                ))
-            })?;
-        }
         TaskFilter::TaskIds(task_ids) => {
-            sqlx::query!(
-                r#"WITH updated_task AS (UPDATE task t SET status = 'cancelled' where status = 'active' and task_id = ANY($1)),
-                     updated_task_instance AS (UPDATE task_instance ti SET status = 'cancelled' FROM task t WHERE ti.status = 'pending' AND ti.task_id = ANY($1) AND t.task_id = ti.task_id returning ti.task_instance_id)
-                    SELECT task_instance_id FROM updated_task_instance
-                "#,
+            sqlx::query!(r#"
+                         WITH updated_task AS (
+                             UPDATE task t
+                             SET status = 'cancelled'
+                             WHERE status = 'active' AND task_id = ANY($1)
+                         ),
+                         updated_task_instance AS (
+                             UPDATE task_instance ti
+                             SET status = 'cancelled'
+                             FROM task t
+                             WHERE ti.status = 'pending' AND ti.task_id = ANY($1) AND t.task_id = ti.task_id
+                             RETURNING ti.task_instance_id
+                         )
+                         SELECT task_instance_id FROM updated_task_instance"#,
                 &task_ids.iter().map(|s| **s).collect::<Vec<_>>(),
             )
             .fetch_all(&queue
@@ -406,6 +394,7 @@ pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
         page_token,
         page_size,
     }: PaginationQuery,
+    ListTasksRequest { project_ident }: ListTasksRequest,
     conn: E,
 ) -> crate::api::Result<ListTasksResponse> {
     let page_size = page_size.map_or(MAX_PAGE_SIZE, |i| i.clamp(1, MAX_PAGE_SIZE));
@@ -422,30 +411,31 @@ pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
 
     let r = sqlx::query!(
         r#"SELECT task_id,
-                   project_id,
-                   warehouse_id,
-                   queue_name,
-                   parent_task_id,
-                   created_at,
-                   updated_at,
-                   schedule,
-                   status as "status: TaskStatus"
-                    FROM task t
-                    WHERE ((t.created_at > $1 OR $1 IS NULL) OR (t.created_at = $1 AND t.task_id > $2))
-                    LIMIT $3"#,
+                  project_id,
+                  queue_name,
+                  parent_task_id,
+                  created_at,
+                  updated_at,
+                  schedule,
+                  status as "status: TaskStatus"
+           FROM task t
+           WHERE (t.project_id = $1 OR $1 IS NULL)
+                 AND ((t.created_at > $2 OR $2 IS NULL) OR (t.created_at = $2 AND t.task_id > $3))
+           LIMIT $4"#,
+        project_ident.map(Uuid::from),
         token_ts,
         token_id,
         page_size,
     )
-        .fetch_all(conn)
-        .await.map_err(|db| db.into_error_model("Failed to read tasks."))?;
+    .fetch_all(conn)
+    .await
+    .map_err(|db| db.into_error_model("Failed to read tasks."))?;
     Ok(ListTasksResponse {
         tasks: r
             .into_iter()
             .map(|row| {
                 Ok(Task {
                     task_id: row.task_id.into(),
-                    warehouse_ident: row.warehouse_id.into(),
                     queue_name: row.queue_name,
                     parent_task_id: row.parent_task_id,
                     created_at: row.created_at,
@@ -498,7 +488,7 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
                   ti.created_at,
                   ti.updated_at,
                   ti.last_heartbeat_at,
-                  t.warehouse_id,
+                  t.project_id,
                   t.queue_name,
                   t.parent_task_id
         FROM task_instance ti
@@ -522,7 +512,7 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
                     attempt: row.attempt,
                     status: row.status,
                     picked_up_at: row.picked_up_at,
-                    warehouse_ident: row.warehouse_id.into(),
+                    project_ident: row.project_id.into(),
                     queue_name: row.queue_name,
                     parent_task_id: row.parent_task_id,
                 })
@@ -542,6 +532,7 @@ mod test {
     use uuid::Uuid;
 
     const TEST_WAREHOUSE: WarehouseIdent = WarehouseIdent(Uuid::nil());
+    const TEST_PROJECT: ProjectIdent = ProjectIdent::new(Uuid::nil());
 
     #[sqlx::test]
     async fn test_queue_task(pool: PgPool) {
@@ -549,35 +540,23 @@ mod test {
 
         let idempotency_key = Uuid::new_v5(&TEST_WAREHOUSE, b"test");
 
-        let id = queue_task(
-            &mut conn,
-            "test",
-            None,
-            idempotency_key,
-            TEST_WAREHOUSE,
-            None,
-        )
-        .await
-        .unwrap();
+        let id = queue_task(&mut conn, "test", None, idempotency_key, TEST_PROJECT, None)
+            .await
+            .unwrap();
 
-        assert!(queue_task(
-            &mut conn,
-            "test",
-            None,
-            idempotency_key,
-            TEST_WAREHOUSE,
-            None,
-        )
-        .await
-        .unwrap()
-        .is_none());
+        assert!(
+            queue_task(&mut conn, "test", None, idempotency_key, TEST_PROJECT, None,)
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         let id3 = queue_task(
             &mut conn,
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test2"),
-            TEST_WAREHOUSE,
+            TEST_PROJECT,
             None,
         )
         .await
@@ -600,7 +579,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_WAREHOUSE,
+            TEST_PROJECT,
             None,
         )
         .await
@@ -655,7 +634,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_WAREHOUSE,
+            TEST_PROJECT,
             None,
         )
         .await
@@ -693,7 +672,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_WAREHOUSE,
+            TEST_PROJECT,
             Some(Schedule::RunAt {
                 date: Utc::now() + chrono::Duration::milliseconds(500),
             }),
@@ -735,7 +714,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_WAREHOUSE,
+            TEST_PROJECT,
             None,
         )
         .await
@@ -780,7 +759,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_WAREHOUSE,
+            TEST_PROJECT,
             None,
         )
         .await
@@ -792,7 +771,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test2"),
-            TEST_WAREHOUSE,
+            TEST_PROJECT,
             None,
         )
         .await
@@ -845,7 +824,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_WAREHOUSE,
+            TEST_PROJECT,
             None,
         )
         .await
@@ -865,6 +844,9 @@ mod test {
             PaginationQuery {
                 page_token: PageToken::NotSpecified,
                 page_size: None,
+            },
+            ListTasksRequest {
+                project_ident: None,
             },
             &pool,
         )

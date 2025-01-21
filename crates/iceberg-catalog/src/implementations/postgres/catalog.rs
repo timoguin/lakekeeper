@@ -17,7 +17,9 @@ use super::{
     },
     CatalogState, PostgresTransaction,
 };
-use crate::api::management::v1::task::{ListTaskInstancesResponse, ListTasksResponse};
+use crate::api::management::v1::task::{
+    ListTaskInstancesResponse, ListTasksRequest, ListTasksResponse,
+};
 use crate::api::management::v1::user::{
     ListUsersResponse, SearchUserResponse, UserLastUpdatedWith, UserType,
 };
@@ -628,9 +630,10 @@ impl Catalog for super::PostgresCatalog {
 
     async fn list_tasks(
         pagination: PaginationQuery,
+        body: ListTasksRequest,
         state: Self::State,
     ) -> Result<ListTasksResponse> {
-        list_tasks(pagination, &state.read_write.read_pool).await
+        list_tasks(pagination, body, &state.read_write.read_pool).await
     }
 
     async fn list_task_instances(

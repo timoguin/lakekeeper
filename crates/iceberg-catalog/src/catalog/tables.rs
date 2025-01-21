@@ -603,6 +603,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                             tabular_id: *table_id,
                             tabular_location: location,
                             warehouse_ident: warehouse_id,
+                            project_ident: warehouse.project_id,
                             tabular_type: TabularType::Table,
                             parent_id: None,
                         })
@@ -623,6 +624,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                     .queue_tabular_expiration(TabularExpirationInput {
                         tabular_id: table_id.into(),
                         warehouse_ident: warehouse_id,
+                        project_ident: warehouse.project_id,
                         tabular_type: TabularType::Table,
                         purge,
                         expire_at: chrono::Utc::now() + expiration_seconds,

@@ -15,8 +15,8 @@ pub mod v1 {
     use std::marker::PhantomData;
 
     use crate::api::management::v1::task::{
-        ListTaskInstancesQuery, ListTaskInstancesResponse, ListTasksQuery, ListTasksResponse,
-        Service,
+        ListTaskInstancesQuery, ListTaskInstancesResponse, ListTasksQuery, ListTasksRequest,
+        ListTasksResponse, TaskService,
     };
     use crate::api::management::v1::user::{ListUsersQuery, ListUsersResponse};
     use crate::api::management::v1::warehouse::UndropTabularsRequest;
@@ -905,8 +905,9 @@ pub mod v1 {
         Query(query): Query<ListTasksQuery>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
+        Json(body): Json<ListTasksRequest>,
     ) -> Result<ListTasksResponse> {
-        api_context.list_tasks(metadata, query).await
+        api_context.list_tasks(metadata, body, query).await
     }
 
     #[utoipa::path(

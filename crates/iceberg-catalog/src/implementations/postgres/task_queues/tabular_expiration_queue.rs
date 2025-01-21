@@ -8,7 +8,7 @@ use crate::implementations::postgres::DeletionKind;
 use crate::service::task_queue::tabular_expiration_queue::{
     TabularExpirationInput, TabularExpirationTask,
 };
-use crate::service::task_queue::{Schedule, TaskFilter, TaskQueue, TaskQueueConfig};
+use crate::service::task_queue::{Schedule, TaskFilter, TaskId, TaskQueue, TaskQueueConfig};
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -34,12 +34,13 @@ impl TaskQueue for TabularExpirationQueue {
         &self,
         TabularExpirationInput {
             tabular_id,
+            project_ident,
             warehouse_ident,
             tabular_type,
             purge,
             expire_at,
         }: TabularExpirationInput,
-    ) -> crate::api::Result<()> {
+    ) -> crate::api::Result<Option<TaskId>> {
         let mut transaction = self
             .pg_queue
             .read_write
@@ -60,7 +61,7 @@ impl TaskQueue for TabularExpirationQueue {
             self.queue_name(),
             None,
             idempotency_key,
-            warehouse_ident,
+            project_ident,
             Some(Schedule::RunAt { date: expire_at }),
         )
         .await?
@@ -70,7 +71,7 @@ impl TaskQueue for TabularExpirationQueue {
                 tracing::error!(?e, "failed to commit");
                 e.into_error_model("failed to commit transaction enqueuing task")
             })?;
-            return Ok(());
+            return Ok(None);
         };
 
         let it = sqlx::query!(
@@ -108,7 +109,7 @@ impl TaskQueue for TabularExpirationQueue {
             e.into_error_model("failed to commit transaction inserting tabular expiration task")
         })?;
 
-        Ok(())
+        Ok(Some(task_id.into()))
     }
 
     #[tracing::instrument(skip(self))]
@@ -175,7 +176,7 @@ mod test {
     use super::super::test::setup;
     use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
     use crate::service::task_queue::{TaskFilter, TaskQueue, TaskQueueConfig};
-    use crate::WarehouseIdent;
+    use crate::{ProjectIdent, WarehouseIdent};
     use sqlx::PgPool;
 
     #[sqlx::test]
@@ -185,6 +186,7 @@ mod test {
         let queue = super::TabularExpirationQueue { pg_queue };
         let input = TabularExpirationInput {
             tabular_id: uuid::Uuid::new_v4(),
+            project_ident: ProjectIdent::default(),
             warehouse_ident: uuid::Uuid::new_v4().into(),
             tabular_type: crate::api::management::v1::TabularType::Table,
             purge: false,
@@ -222,15 +224,16 @@ mod test {
         let warehouse_ident: WarehouseIdent = uuid::Uuid::now_v7().into();
         let input = TabularExpirationInput {
             tabular_id: uuid::Uuid::new_v4(),
+            project_ident: ProjectIdent::default(),
             warehouse_ident,
             tabular_type: crate::api::management::v1::TabularType::Table,
             purge: false,
             expire_at: chrono::Utc::now(),
         };
-        queue.enqueue(input.clone()).await.unwrap();
+        let task_id = queue.enqueue(input.clone()).await.unwrap().unwrap();
 
         queue
-            .cancel_pending_tasks(TaskFilter::WarehouseId(warehouse_ident))
+            .cancel_pending_tasks(TaskFilter::TaskIds(vec![task_id]))
             .await
             .unwrap();
 

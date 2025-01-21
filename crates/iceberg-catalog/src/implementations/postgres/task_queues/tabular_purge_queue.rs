@@ -8,7 +8,7 @@ use crate::implementations::postgres::task_queues::{
     pick_task, queue_task, record_failure, record_success,
 };
 use crate::service::task_queue::tabular_purge_queue::{TabularPurgeInput, TabularPurgeTask};
-use crate::service::task_queue::{TaskQueue, TaskQueueConfig};
+use crate::service::task_queue::{TaskId, TaskQueue, TaskQueueConfig};
 
 use super::{cancel_pending_tasks, TaskFilter};
 
@@ -86,10 +86,11 @@ impl TaskQueue for TabularPurgeQueue {
             tabular_location,
             tabular_id,
             warehouse_ident,
+            project_ident,
             tabular_type,
             parent_id,
         }: TabularPurgeInput,
-    ) -> crate::api::Result<()> {
+    ) -> crate::api::Result<Option<TaskId>> {
         let mut transaction = self
             .pg_queue
             .read_write
@@ -110,7 +111,7 @@ impl TaskQueue for TabularPurgeQueue {
             self.queue_name(),
             parent_id,
             idempotency_key,
-            warehouse_ident,
+            project_ident,
             None,
         )
         .await?
@@ -120,7 +121,7 @@ impl TaskQueue for TabularPurgeQueue {
                 tracing::error!(?e, "failed to commit");
                 e.into_error_model("failed commiting transaction")
             })?;
-            return Ok(());
+            return Ok(None);
         };
 
         let it = sqlx::query!(
@@ -156,7 +157,7 @@ impl TaskQueue for TabularPurgeQueue {
             e.into_error_model("failed to commit tabular purge task")
         })?;
 
-        Ok(())
+        Ok(Some(task_id.into()))
     }
 
     async fn cancel_pending_tasks(&self, filter: TaskFilter) -> crate::api::Result<()> {
@@ -169,6 +170,7 @@ mod test {
     use super::super::test::setup;
     use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
     use crate::service::task_queue::{TaskQueue, TaskQueueConfig};
+    use crate::ProjectIdent;
     use sqlx::PgPool;
 
     #[sqlx::test]
@@ -179,6 +181,7 @@ mod test {
         let input = TabularPurgeInput {
             tabular_id: uuid::Uuid::new_v4(),
             warehouse_ident: uuid::Uuid::new_v4().into(),
+            project_ident: ProjectIdent::default(),
             tabular_type: crate::api::management::v1::TabularType::Table,
             parent_id: None,
             tabular_location: String::new(),

@@ -1,5 +1,4 @@
 use super::authz::Authorizer;
-use super::WarehouseIdent;
 use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
 use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
 use crate::service::{Catalog, SecretStore};
@@ -67,12 +66,15 @@ impl TaskQueues {
     pub(crate) async fn queue_tabular_expiration(
         &self,
         task: TabularExpirationInput,
-    ) -> crate::api::Result<()> {
+    ) -> crate::api::Result<Option<TaskId>> {
         self.tabular_expiration.enqueue(task).await
     }
 
     #[tracing::instrument(skip(self))]
-    pub(crate) async fn queue_stats_task(&self, task: stats::StatsInput) -> crate::api::Result<()> {
+    pub(crate) async fn queue_stats_task(
+        &self,
+        task: stats::StatsInput,
+    ) -> crate::api::Result<Option<TaskId>> {
         self.stats_queue.enqueue(task).await
     }
 
@@ -88,7 +90,7 @@ impl TaskQueues {
     pub(crate) async fn queue_tabular_purge(
         &self,
         task: TabularPurgeInput,
-    ) -> crate::api::Result<()> {
+    ) -> crate::api::Result<Option<TaskId>> {
         self.tabular_purge.enqueue(task).await
     }
 
@@ -188,7 +190,6 @@ pub trait Scheduler: Debug {
 /// A filter to select tasks
 #[derive(Debug, Clone, PartialEq)]
 pub enum TaskFilter {
-    WarehouseId(WarehouseIdent),
     TaskIds(Vec<TaskId>),
 }
 
@@ -200,7 +201,11 @@ pub trait TaskQueue: Debug {
     fn config(&self) -> &TaskQueueConfig;
     fn queue_name(&self) -> &'static str;
 
-    async fn enqueue(&self, task: Self::Input) -> crate::api::Result<()>;
+    /// Enqueue a new task
+    ///
+    /// Returns the task id if the task was enqueued, None if the task already existed. Idempotency
+    /// condition is determined by the concrete task implementation.
+    async fn enqueue(&self, task: Self::Input) -> crate::api::Result<Option<TaskId>>;
     async fn pick_new_task(&self) -> crate::api::Result<Option<Self::Task>>;
     async fn record_success(&self, id: Uuid) -> crate::api::Result<()>;
     async fn record_failure(&self, id: Uuid, error_details: &str) -> crate::api::Result<()>;
@@ -243,7 +248,7 @@ pub struct TaskInstance {
     pub parent_task_id: Option<Uuid>,
     pub attempt: i32,
     pub queue_name: String,
-    pub warehouse_ident: WarehouseIdent,
+    pub project_ident: ProjectIdent,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -252,8 +257,6 @@ pub struct Task {
     pub task_id: TaskId,
     pub project_id: ProjectIdent,
     pub queue_name: String,
-    // TODO: use new taskstatus enum
-    pub warehouse_ident: WarehouseIdent,
     pub schedule: Option<cron::Schedule>,
     pub status: TaskStatus,
     pub parent_task_id: Option<Uuid>,
@@ -369,6 +372,7 @@ mod test {
     use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
     use crate::service::task_queue::{TaskQueue, TaskQueueConfig};
     use crate::service::{Catalog, ListFlags, Transaction};
+    use crate::ProjectIdent;
     use sqlx::PgPool;
     use std::sync::Arc;
 
@@ -474,6 +478,7 @@ mod test {
         expiration_queue
             .enqueue(TabularExpirationInput {
                 tabular_id: tab.table_id.0,
+                project_ident: ProjectIdent::default(),
                 warehouse_ident: warehouse,
                 tabular_type: TabularType::Table,
                 purge: true,

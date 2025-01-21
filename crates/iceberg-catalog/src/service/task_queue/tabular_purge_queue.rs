@@ -4,7 +4,7 @@ use crate::catalog::io::remove_all;
 use crate::catalog::maybe_get_secret;
 use crate::service::task_queue::{TaskInstance, TaskQueue};
 use crate::service::{Catalog, SecretStore, Transaction};
-use crate::WarehouseIdent;
+use crate::{ProjectIdent, WarehouseIdent};
 use std::sync::Arc;
 
 use iceberg_ext::catalog::rest::ErrorModel;
@@ -179,6 +179,7 @@ pub struct TabularPurgeTask {
 pub struct TabularPurgeInput {
     pub tabular_id: Uuid,
     pub warehouse_ident: WarehouseIdent,
+    pub project_ident: ProjectIdent,
     pub tabular_type: TabularType,
     pub parent_id: Option<Uuid>,
     pub tabular_location: String,
