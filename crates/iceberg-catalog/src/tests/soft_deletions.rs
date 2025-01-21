@@ -25,6 +25,7 @@ mod test {
     };
     use crate::tests::{random_request_metadata, spawn_drop_queues};
     use sqlx::PgPool;
+    use std::time::Duration;
     use uuid::Uuid;
 
     #[sqlx::test]
@@ -128,8 +129,8 @@ mod test {
             table,
         } = setup_drop_test(
             pool,
-            chrono::Duration::seconds(360),
-            std::time::Duration::from_secs(10),
+            chrono::Duration::milliseconds(500),
+            std::time::Duration::from_millis(100),
         )
         .await;
 
@@ -150,7 +151,7 @@ mod test {
         )
         .await
         .unwrap();
-
+        tokio::time::sleep(Duration::from_millis(750)).await;
         let t2 = load_table(&ctx, warehouse.warehouse_id, &namespace_name, &table_name)
             .await
             .unwrap();
