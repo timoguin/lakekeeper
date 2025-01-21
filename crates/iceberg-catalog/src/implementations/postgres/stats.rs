@@ -17,32 +17,26 @@ pub(crate) async fn update_stats<'e, E: sqlx::Executor<'e, Database = sqlx::Post
     Ok(sqlx::query_as!(
         WarehouseStatistics,
         r#"
-        WITH table_cnt AS (
-            SELECT count(*) AS value FROM "table" t
+        WITH update_tables AS (
+            INSERT INTO scalars (name, statistic_id, value)
+            VALUES ('tables', $1, (SELECT count(*) AS value FROM "table" t
                 INNER JOIN tabular ti ON t.table_id = ti.tabular_id
                 INNER JOIN namespace n ON ti.namespace_id = n.namespace_id
                 INNER JOIN warehouse w ON n.warehouse_id = w.warehouse_id
-            WHERE w.warehouse_id = $1 AND w.status = 'active'
-        ),
-        update_tables AS (
-            INSERT INTO scalars (name, statistic_id, value)
-            VALUES ('tables', $1, (SELECT value FROM table_cnt))
+            WHERE w.warehouse_id = $1 AND w.status = 'active'))
             RETURNING value
-        ),
-        view_cnt AS (
-            SELECT count(*) AS value FROM "view" v
-                INNER JOIN tabular vi ON v.view_id = vi.tabular_id
-                INNER JOIN namespace n ON vi.namespace_id = n.namespace_id
-                INNER JOIN warehouse w ON n.warehouse_id = w.warehouse_id
-            WHERE w.warehouse_id = $1 AND w.status = 'active'
         ),
         update_views AS (
             INSERT INTO scalars (name, statistic_id, value)
-            VALUES ('views', $1, (SELECT value FROM view_cnt))
+            VALUES ('views', $1, (SELECT count(*) AS value FROM "view" v
+                INNER JOIN tabular vi ON v.view_id = vi.tabular_id
+                INNER JOIN namespace n ON vi.namespace_id = n.namespace_id
+                INNER JOIN warehouse w ON n.warehouse_id = w.warehouse_id
+            WHERE w.warehouse_id = $1 AND w.status = 'active'))
             RETURNING value
         )
         INSERT INTO statistics (statistics_id, warehouse_id) VALUES ($1, $2)
-        RETURNING $1 as "warehouse_ident!", (select value from table_cnt) as "number_of_tables!", (select value from view_cnt) as "number_of_views!"
+        RETURNING $1 as "warehouse_ident!", (select value from update_tables) as "number_of_tables!", (select value from update_views) as "number_of_views!"
         "#,
         statistics_id,
         warehouse_ident.0
