@@ -30,7 +30,7 @@ use std::sync::LazyLock;
 use utoipa::ToSchema;
 
 static STATS_SCHEDULE: LazyLock<cron::Schedule> = LazyLock::new(|| {
-    cron::Schedule::from_str("0 * * * * *").expect("Failed to parse cron schedule")
+    cron::Schedule::from_str("0 0/5 * * * *").expect("Failed to parse cron schedule")
 });
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -241,6 +241,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore> Service<C, A, S> for Api
 pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
     async fn create_warehouse(
         request: CreateWarehouseRequest,
+        stats_schedule: Option<cron::Schedule>,
         context: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
     ) -> Result<CreateWarehouseResponse> {
@@ -309,7 +310,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             .queues
             .queue_stats_task(StatsInput {
                 warehouse_ident: warehouse_id,
-                schedule: STATS_SCHEDULE.clone(),
+                schedule: stats_schedule.unwrap_or(STATS_SCHEDULE.clone()),
                 parent_id: None,
                 project_ident,
             })
@@ -912,7 +913,7 @@ mod test {
 
     use crate::api::iceberg::v1::views::Service;
     use crate::api::management::v1::warehouse::{
-        ListDeletedTabularsQuery, Service as _, TabularDeleteProfile,
+        ListDeletedTabularsQuery, Service as _, TabularDeleteProfile, STATS_SCHEDULE,
     };
     use crate::api::management::v1::ApiServer;
     use crate::api::ApiContext;
@@ -1227,6 +1228,17 @@ mod test {
 
         for (idx, i) in (7..10).enumerate() {
             assert_eq!(next_page_items[idx], format!("view-{i}"));
+        }
+    }
+
+    #[test]
+    fn assert_stats_schedule_increments_in_5_minute_steps() {
+        let mut schedule = STATS_SCHEDULE.upcoming(chrono::Utc);
+        let mut last = schedule.next().unwrap();
+        for _ in 0..10 {
+            let next = schedule.next().unwrap();
+            assert_eq!(last.timestamp() + 300, next.timestamp());
+            last = next;
         }
     }
 }

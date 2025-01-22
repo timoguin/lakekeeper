@@ -252,7 +252,6 @@ pub struct TaskInstance {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "sqlx-postgres", derive(FromRow))]
 pub struct Task {
     pub task_id: TaskId,
     pub project_id: ProjectIdent,
@@ -260,6 +259,7 @@ pub struct Task {
     pub schedule: Option<cron::Schedule>,
     pub status: TaskStatus,
     pub parent_task_id: Option<Uuid>,
+    pub details: serde_json::Value,
     pub updated_at: Option<chrono::DateTime<Utc>>,
     pub created_at: chrono::DateTime<Utc>,
 }

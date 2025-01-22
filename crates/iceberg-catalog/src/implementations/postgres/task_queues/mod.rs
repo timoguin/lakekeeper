@@ -410,18 +410,26 @@ pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
         .unzip();
 
     let r = sqlx::query!(
-        r#"SELECT task_id,
-                  project_id,
-                  queue_name,
-                  parent_task_id,
-                  created_at,
-                  updated_at,
-                  schedule,
-                  status as "status: TaskStatus"
-           FROM task t
-           WHERE (t.project_id = $1 OR $1 IS NULL)
-                 AND ((t.created_at > $2 OR $2 IS NULL) OR (t.created_at = $2 AND t.task_id > $3))
-           LIMIT $4"#,
+        r#"SELECT t.task_id,
+       t.project_id,
+       t.queue_name,
+       t.parent_task_id,
+       t.created_at,
+       t.updated_at,
+       t.schedule,
+       t.status as "status: TaskStatus",
+       COALESCE(
+           jsonb_build_object('tabular_expirations', row_to_json(te.*)),
+           jsonb_build_object('tabular_purges', row_to_json(tp.*)),
+           jsonb_build_object('statistics_task', row_to_json(s.*))
+       ) as details
+FROM task t
+LEFT JOIN tabular_expirations te ON t.task_id = te.task_id
+LEFT JOIN tabular_purges tp ON t.task_id = tp.task_id
+LEFT JOIN statistics_task s ON t.task_id = s.task_id
+WHERE (t.project_id = $1 OR $1 IS NULL)
+      AND ((t.created_at > $2 OR $2 IS NULL) OR (t.created_at = $2 AND t.task_id > $3))
+LIMIT $4;"#,
         project_ident.map(Uuid::from),
         token_ts,
         token_id,

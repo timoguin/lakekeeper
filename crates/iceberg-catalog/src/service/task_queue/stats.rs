@@ -122,6 +122,7 @@ mod test {
                 max_retries: 3,
                 max_age: chrono::Duration::seconds(3600),
             }),
+            None,
         )
         .await;
 

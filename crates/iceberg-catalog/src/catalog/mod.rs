@@ -359,6 +359,7 @@ pub(crate) mod test {
                 storage_credential,
                 delete_profile,
             },
+            None,
             api_context.clone(),
             metadata,
         )

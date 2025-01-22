@@ -491,7 +491,7 @@ pub mod v1 {
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<CreateWarehouseRequest>,
     ) -> Result<CreateWarehouseResponse> {
-        ApiServer::<C, A, S>::create_warehouse(request, api_context, metadata).await
+        ApiServer::<C, A, S>::create_warehouse(request, None, api_context, metadata).await
     }
 
     /// List all projects the requesting user has access to

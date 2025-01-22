@@ -186,6 +186,7 @@ async fn setup_drop_test(
             max_age: chrono::Duration::seconds(60),
             poll_interval,
         }),
+        None,
     )
     .await;
 

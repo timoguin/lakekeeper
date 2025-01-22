@@ -131,7 +131,7 @@ fn parse_view_location(location: &str) -> Result<Location> {
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use crate::api::ApiContext;
 
     use crate::implementations::postgres::warehouse::test::initialize_warehouse;

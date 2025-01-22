@@ -1,8 +1,10 @@
 mod soft_deletions;
+mod stats;
 
 use crate::api::iceberg::types::Prefix;
 use crate::api::iceberg::v1::namespace::Service as _;
 use crate::api::iceberg::v1::tables::TablesService;
+use crate::api::iceberg::v1::views::Service;
 use crate::api::iceberg::v1::{DataAccess, NamespaceParameters};
 use crate::api::management::v1::bootstrap::{BootstrapRequest, Service as _};
 use crate::api::management::v1::warehouse::{
@@ -25,7 +27,7 @@ use crate::service::{AuthDetails, State, UserId};
 use crate::CONFIG;
 use iceberg::NamespaceIdent;
 use iceberg_ext::catalog::rest::{
-    CreateNamespaceRequest, CreateNamespaceResponse, LoadTableResult,
+    CreateNamespaceRequest, CreateNamespaceResponse, LoadTableResult, LoadViewResult,
 };
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -107,6 +109,26 @@ pub(crate) async fn create_table<T: Authorizer>(
     .await
 }
 
+pub(crate) async fn create_view<T: Authorizer>(
+    api_context: ApiContext<State<T, PostgresCatalog, SecretsState>>,
+    prefix: &str,
+    ns_name: &str,
+    name: &str,
+    location: Option<&str>,
+) -> crate::api::Result<LoadViewResult> {
+    CatalogServer::create_view(
+        NamespaceParameters {
+            prefix: Some(Prefix(prefix.to_string())),
+            namespace: NamespaceIdent::new(ns_name.to_string()),
+        },
+        crate::catalog::views::create::test::create_view_request(Some(name), location),
+        api_context,
+        DataAccess::none(),
+        random_request_metadata(),
+    )
+    .await
+}
+
 pub(crate) async fn setup<T: Authorizer>(
     pool: PgPool,
     storage_profile: StorageProfile,
@@ -115,6 +137,7 @@ pub(crate) async fn setup<T: Authorizer>(
     delete_profile: TabularDeleteProfile,
     user_id: Option<UserId>,
     q_config: Option<TaskQueueConfig>,
+    stats_schedule: Option<cron::Schedule>,
 ) -> (
     ApiContext<State<T, PostgresCatalog, SecretsState>>,
     CreateWarehouseResponse,
@@ -139,6 +162,7 @@ pub(crate) async fn setup<T: Authorizer>(
     )
     .await
     .unwrap();
+
     let warehouse = ApiServer::create_warehouse(
         CreateWarehouseRequest {
             warehouse_name: format!("test-warehouse-{}", Uuid::now_v7()),
@@ -147,6 +171,7 @@ pub(crate) async fn setup<T: Authorizer>(
             storage_credential,
             delete_profile,
         },
+        stats_schedule,
         api_context.clone(),
         metadata,
     )
