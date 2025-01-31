@@ -1,10 +1,40 @@
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use sqlx::PgPool;
 // use crate::service::stats::endpoint::StatsSink;
-use crate::service::stats::entities::WarehouseStatistics;
+use crate::api::management::v1::warehouse::{WarehouseStatistics, WarehouseStatsResponse};
 use crate::service::ListFlags;
 use crate::WarehouseIdent;
-use uuid::Uuid;
+
+pub(crate) async fn get_warehouse_stats(
+    conn: PgPool,
+    warehouse_ident: WarehouseIdent,
+) -> crate::api::Result<WarehouseStatsResponse> {
+    // TODO: pagination
+    let stats = sqlx::query!(
+        r#"
+        SELECT number_of_views, number_of_tables, created_at
+        FROM warehouse_statistics ws
+        WHERE ws.warehouse_id = $1
+        ORDER BY created_at DESC
+        "#,
+        warehouse_ident.0
+    )
+    .fetch_all(&conn)
+    .await
+    .map_err(|e| e.into_error_model("failed to get stats"))?;
+    let stats = stats
+        .into_iter()
+        .map(|s| WarehouseStatistics {
+            number_of_tables: s.number_of_tables,
+            number_of_views: s.number_of_views,
+            taken_at: s.created_at,
+        })
+        .collect();
+    Ok(WarehouseStatsResponse {
+        warehouse_ident: *warehouse_ident,
+        stats,
+    })
+}
 
 pub(crate) async fn update_stats(
     conn: PgPool,
@@ -12,55 +42,36 @@ pub(crate) async fn update_stats(
     // TODO: use list_flags for filtering
     _list_flags: ListFlags,
 ) -> crate::api::Result<WarehouseStatistics> {
-    // TODO: we could also pass the task idempotency key into here instead and use it as the stats id
-    let mut t = conn
-        .begin()
-        .await
-        .map_err(|e| e.into_error_model("failed to begin transaction collectin stats"))?;
-    let statistics_id = Uuid::now_v7();
-
-    sqlx::query!(
-        r#"INSERT INTO statistics (statistics_id, warehouse_id) VALUES ($1, $2)"#,
-        statistics_id,
-        warehouse_ident.0
-    )
-    .execute(&mut *t)
-    .await
-    .map_err(|e| e.into_error_model("failed to collect stats"))?;
-
-    let stats = sqlx::query_as!(
-        WarehouseStatistics,
+    let stats = sqlx::query!(
         r#"
         WITH update_tables AS (
-            INSERT INTO scalars (name, statistic_id, value)
-            VALUES ('tables', $1, (SELECT count(*) AS value FROM "table" t
+            SELECT count(*) AS value FROM "table" t
                 INNER JOIN tabular ti ON t.table_id = ti.tabular_id
                 INNER JOIN namespace n ON ti.namespace_id = n.namespace_id
                 INNER JOIN warehouse w ON n.warehouse_id = w.warehouse_id
-            WHERE w.warehouse_id = $2 AND w.status = 'active'))
-            RETURNING value
+            WHERE w.warehouse_id = $1 AND w.status = 'active'
         ),
         update_views AS (
-            INSERT INTO scalars (name, statistic_id, value)
-            VALUES ('views', $1, (SELECT count(*) AS value FROM "view" v
+            SELECT count(*) AS value FROM "view" v
                 INNER JOIN tabular vi ON v.view_id = vi.tabular_id
                 INNER JOIN namespace n ON vi.namespace_id = n.namespace_id
                 INNER JOIN warehouse w ON n.warehouse_id = w.warehouse_id
-            WHERE w.warehouse_id = $2 AND w.status = 'active'))
-            RETURNING value
+            WHERE w.warehouse_id = $1 AND w.status = 'active'
         )
-        SELECT $1 as "statistics_id!", $2 as "warehouse_ident!", (SELECT value FROM update_tables) as "number_of_tables!", (SELECT value FROM update_views) as "number_of_views!"
+        INSERT INTO warehouse_statistics (warehouse_id, number_of_views, number_of_tables) VALUES ($1, (SELECT value FROM update_views), (SELECT value FROM update_tables))
+        RETURNING (SELECT value as "number_of_views!" FROM update_views), (SELECT value as "number_of_tables!" FROM update_tables), created_at as "taken_at"
         "#,
-        statistics_id,
         warehouse_ident.0
     )
-        .fetch_one(&mut *t)
+        .fetch_one(&conn)
         .await
         .map_err(|e| e.into_error_model("failed to collect stats"))?;
-    t.commit()
-        .await
-        .map_err(|e| e.into_error_model("failed to commit transaction recording stats"))?;
-    Ok(stats)
+
+    Ok(WarehouseStatistics {
+        number_of_tables: stats.number_of_tables,
+        number_of_views: stats.number_of_views,
+        taken_at: stats.taken_at,
+    })
 }
 
 // pub struct PostgresStatsSink {

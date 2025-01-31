@@ -132,7 +132,7 @@ impl TaskQueue for TabularExpirationQueue {
             FROM tabular_expirations
             WHERE task_id = $1
             "#,
-            task.task_id
+            *task.task_id
         )
             .fetch_one(&self.pg_queue.read_write.read_pool)
             .await
@@ -174,19 +174,22 @@ impl TaskQueue for TabularExpirationQueue {
 #[cfg(test)]
 mod test {
     use super::super::test::setup;
+    use crate::implementations::postgres::task_queues::test::create_test_project;
     use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
     use crate::service::task_queue::{TaskFilter, TaskQueue, TaskQueueConfig};
-    use crate::{ProjectIdent, WarehouseIdent};
+    use crate::{WarehouseIdent, DEFAULT_PROJECT_ID};
     use sqlx::PgPool;
 
     #[sqlx::test]
     async fn test_queue_expiration_queue_task(pool: PgPool) {
+        create_test_project(pool.clone()).await;
+
         let config = TaskQueueConfig::default();
         let pg_queue = setup(pool, config);
         let queue = super::TabularExpirationQueue { pg_queue };
         let input = TabularExpirationInput {
             tabular_id: uuid::Uuid::new_v4(),
-            project_ident: ProjectIdent::default(),
+            project_ident: DEFAULT_PROJECT_ID.unwrap(),
             warehouse_ident: uuid::Uuid::new_v4().into(),
             tabular_type: crate::api::management::v1::TabularType::Table,
             purge: false,
@@ -218,13 +221,15 @@ mod test {
 
     #[sqlx::test]
     async fn test_cancel_pending_tasks(pool: PgPool) {
+        create_test_project(pool.clone()).await;
+
         let config = TaskQueueConfig::default();
         let pg_queue = setup(pool, config);
         let queue = super::TabularExpirationQueue { pg_queue };
         let warehouse_ident: WarehouseIdent = uuid::Uuid::now_v7().into();
         let input = TabularExpirationInput {
             tabular_id: uuid::Uuid::new_v4(),
-            project_ident: ProjectIdent::default(),
+            project_ident: DEFAULT_PROJECT_ID.unwrap(),
             warehouse_ident,
             tabular_type: crate::api::management::v1::TabularType::Table,
             purge: false,

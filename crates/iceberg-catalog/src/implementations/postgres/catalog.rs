@@ -5,6 +5,7 @@ use super::{
         update_namespace_properties,
     },
     role::{create_role, delete_role, list_roles, update_role},
+    stats,
     tabular::table::{
         drop_table, get_table_metadata_by_id, get_table_metadata_by_s3_location, list_tables,
         load_tables, rename_table, resolve_table_ident, table_idents_to_ids,
@@ -23,6 +24,7 @@ use crate::api::management::v1::task::{
 use crate::api::management::v1::user::{
     ListUsersResponse, SearchUserResponse, UserLastUpdatedWith, UserType,
 };
+use crate::api::management::v1::warehouse::{WarehouseStatistics, WarehouseStatsResponse};
 use crate::implementations::postgres::role::search_role;
 use crate::implementations::postgres::stats::update_stats;
 use crate::implementations::postgres::tabular::table::create_table;
@@ -37,7 +39,6 @@ use crate::implementations::postgres::user::{
     create_or_update_user, delete_user, list_users, search_user,
 };
 use crate::service::authn::UserId;
-use crate::service::stats::entities::WarehouseStatistics;
 use crate::service::task_queue::TaskId;
 use crate::service::{
     storage::StorageProfile, Catalog, CreateNamespaceRequest, CreateNamespaceResponse,
@@ -642,5 +643,12 @@ impl Catalog for super::PostgresCatalog {
         state: Self::State,
     ) -> Result<ListTaskInstancesResponse> {
         list_task_instances(task_id, pagination, &state.read_write.read_pool).await
+    }
+
+    async fn get_warehouse_stats(
+        warehouse_id: WarehouseIdent,
+        state: Self::State,
+    ) -> Result<WarehouseStatsResponse> {
+        stats::get_warehouse_stats(state.read_pool(), warehouse_id).await
     }
 }

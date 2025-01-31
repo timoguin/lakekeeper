@@ -392,7 +392,7 @@ pub(crate) mod test {
                     Arc::new(
                         crate::implementations::postgres::task_queues::StatsQueue::from_config(ReadWrite::from_pools(pool.clone(), pool.clone()), CONFIG.queue_config.clone()).unwrap()
                     ),
-                    Arc::new(ReadWrite::from_pools(pool.clone(), pool))
+                    Arc::new(PgScheduler::from_config(ReadWrite::from_pools(pool.clone(), pool), CONFIG.queue_config.clone()))
                 ),
             },
         }
@@ -631,5 +631,6 @@ pub(crate) mod test {
             }
         };
     }
+    use crate::implementations::postgres::task_queues::PgScheduler;
     pub(crate) use impl_pagination_tests;
 }

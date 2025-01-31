@@ -17,7 +17,7 @@ use iceberg_catalog::{SecretBackend, CONFIG};
 use reqwest::Url;
 
 use iceberg_catalog::implementations::postgres::task_queues::{
-    StatsQueue, TabularExpirationQueue, TabularPurgeQueue,
+    PgScheduler, StatsQueue, TabularExpirationQueue, TabularPurgeQueue,
 };
 use iceberg_catalog::service::authn::IdpVerifier;
 use iceberg_catalog::service::authn::K8sVerifier;
@@ -111,7 +111,10 @@ pub(crate) async fn serve(bind_addr: std::net::SocketAddr) -> Result<(), anyhow:
             ReadWrite::from_pools(read_pool.clone(), write_pool.clone()),
             CONFIG.queue_config.clone(),
         )?),
-        Arc::new(ReadWrite::from_pools(read_pool.clone(), write_pool.clone())),
+        Arc::new(PgScheduler::from_config(
+            ReadWrite::from_pools(read_pool.clone(), write_pool.clone()),
+            CONFIG.queue_config.clone(),
+        )),
     );
 
     let listener = tokio::net::TcpListener::bind(bind_addr).await?;

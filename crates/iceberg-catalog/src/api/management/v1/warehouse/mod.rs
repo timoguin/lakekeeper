@@ -24,7 +24,7 @@ use crate::{ProjectIdent, WarehouseIdent, DEFAULT_PROJECT_ID};
 use futures::FutureExt;
 use iceberg_ext::catalog::rest::ErrorModel;
 use itertools::Itertools;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::LazyLock;
 use utoipa::ToSchema;
@@ -228,6 +228,22 @@ impl axum::response::IntoResponse for CreateWarehouseResponse {
     }
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WarehouseStatistics {
+    pub number_of_tables: i64, // silly but necessary due to sqlx wanting i64, not usize
+    pub number_of_views: i64,
+    pub taken_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "kebab-case")]
+pub struct WarehouseStatsResponse {
+    /// ID of the warehouse for which the stats were collected.
+    pub warehouse_ident: uuid::Uuid,
+    /// Ordered list of warehouse statistics.
+    pub stats: Vec<WarehouseStatistics>,
+}
+
 #[derive(Deserialize, Debug, ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub struct UndropTabularsRequest {
@@ -385,6 +401,25 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         let warehouses = C::require_warehouse(warehouse_id, transaction.transaction()).await?;
         transaction.commit().await?;
         Ok(warehouses.into())
+    }
+
+    async fn get_warehouse_stats(
+        warehouse_id: WarehouseIdent,
+        context: ApiContext<State<A, C, S>>,
+        request_metadata: RequestMetadata,
+    ) -> Result<WarehouseStatsResponse> {
+        // ------------------- AuthZ -------------------
+        let authorizer = context.v1_state.authz;
+        authorizer
+            .require_warehouse_action(
+                &request_metadata,
+                warehouse_id,
+                &CatalogWarehouseAction::CanGetMetadata,
+            )
+            .await?;
+
+        // ------------------- Business Logic -------------------
+        C::get_warehouse_stats(warehouse_id, context.v1_state.catalog.clone()).await
     }
 
     async fn delete_warehouse(

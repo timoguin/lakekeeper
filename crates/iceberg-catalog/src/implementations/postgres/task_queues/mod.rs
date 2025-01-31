@@ -64,13 +64,31 @@ impl PgQueue {
     }
 }
 
+#[derive(Debug)]
+pub struct PgScheduler {
+    pub read_write: ReadWrite,
+    pub config: TaskQueueConfig,
+}
+
+impl PgScheduler {
+    /// Create a new `PgScheduler` with the given configuration.
+    #[must_use]
+    pub fn from_config(read_write: ReadWrite, config: TaskQueueConfig) -> Self {
+        Self { read_write, config }
+    }
+}
+
 #[async_trait]
-impl Scheduler for ReadWrite {
+impl Scheduler for PgScheduler {
     async fn schedule_task_instance(&self) -> Result<(), IcebergErrorResponse> {
-        let mut conn = self.write_pool.acquire().await.map_err(|e| {
+        let mut conn = self.read_write.write_pool.acquire().await.map_err(|e| {
             e.into_error_model("Failed to acquire connection to schedule task instance")
         })?;
         schedule_task(&mut conn, None).await
+    }
+
+    fn config(&self) -> &TaskQueueConfig {
+        &self.config
     }
 }
 
@@ -81,6 +99,7 @@ async fn schedule_task_instance(
     idempotency_key: Uuid,
     schedule: Schedule,
 ) -> Result<(), IcebergErrorResponse> {
+    tracing::info!("Scheduling task instance for task_id: {task_id:?}, schedule: {schedule}",);
     let (next_tick, run_at, idempotency_key_data) = match schedule {
         Schedule::RunAt { date } => (None, Some(date), Some(date.to_rfc3339())),
         Schedule::Cron { schedule } => {
@@ -89,7 +108,7 @@ async fn schedule_task_instance(
         }
         Schedule::Immediate {} => (None, Some(Utc::now()), None),
     };
-    tracing::debug!("{:?}", idempotency_key_data);
+    tracing::info!("{:?}", idempotency_key_data);
     let idempotency_key = if let Some(idempotency_key_data) = idempotency_key_data {
         Uuid::new_v5(&idempotency_key, idempotency_key_data.as_bytes())
     } else {
@@ -100,7 +119,7 @@ async fn schedule_task_instance(
     // TODO: Updating task status like this transitions the task to done before its last
     //       instance is done. That means we'll probably have to introduce a secondary status
     //       to capture the success-state of the task as a function of its instances.
-    tracing::debug!("Scheduling task instance for task_id: {task_id:?}, next_tick: {next_tick:?}, run_at: {run_at:?}, idempotency_key: {idempotency_key:?}, has_next: {has_next:?}");
+    tracing::info!("Scheduling task instance for task_id: {task_id:?}, next_tick: {next_tick:?}, run_at: {run_at:?}, idempotency_key: {idempotency_key:?}, has_next: {has_next:?}");
     sqlx::query!(
             r#"
                 WITH updated_tasks AS (UPDATE task
@@ -146,7 +165,7 @@ async fn schedule_task(
             Utc::now()
         ).fetch_optional(&mut *read_write).await.map_err(|e| e.into_error_model("Failed to begin transaction"))?;
 
-    tracing::debug!("Found {task:?}");
+    tracing::info!("Found {task:?} for scheduling");
     if let Some(row) = task {
         let task_id = row.task_id;
         let sched = row
@@ -162,7 +181,10 @@ async fn schedule_task(
                 )
             })?
             .map(|schedule| Schedule::Cron { schedule });
-
+        tracing::info!(
+            "Scheduling task {task_id:?} with schedule {:?}",
+            sched.as_ref().map(ToString::to_string)
+        );
         schedule_task_instance(
             read_write,
             task_id,
@@ -213,7 +235,7 @@ async fn queue_task(
     .fetch_optional(&mut *conn)
     .await
     .map_err(|e| e.into_error_model("failed queueing task"))?;
-    eprintln!("INS {inserted:?}");
+
     if let Some(inserted) = inserted {
         schedule_task_instance(
             conn,
@@ -285,7 +307,7 @@ async fn pick_task(
             tracing::error!(?e, "Failed to pick a task");
             e.into_error_model(format!("Failed to pick a '{queue_name}' task"))
         })?;
-    eprintln!("t: {x:?}");
+
     if let Some(task) = x.as_ref() {
         tracing::info!("Picked up task: {:?}", task);
     }
@@ -410,19 +432,19 @@ pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
         .unzip();
 
     let r = sqlx::query!(
-        r#"SELECT t.task_id,
-       t.project_id,
-       t.queue_name,
+        r#"SELECT t.task_id as "task_id!",
+       t.project_id as "project_id!",
+       t.queue_name as "queue_name!",
        t.parent_task_id,
-       t.created_at,
+       t.created_at as "created_at!",
        t.updated_at,
        t.schedule,
-       t.status as "status: TaskStatus",
-       COALESCE(
-           jsonb_build_object('tabular_expirations', row_to_json(te.*)),
-           jsonb_build_object('tabular_purges', row_to_json(tp.*)),
-           jsonb_build_object('statistics_task', row_to_json(s.*))
-       ) as details
+       t.status as "status!: TaskStatus",
+       CASE
+           WHEN te.task_id IS NOT NULL THEN jsonb_build_object('tabular_expirations', row_to_json(te.*))
+           WHEN tp.task_id IS NOT NULL THEN jsonb_build_object('tabular_purges', row_to_json(tp.*))
+           WHEN s.task_id IS NOT NULL THEN jsonb_build_object('statistics_task', row_to_json(s.*))
+        END as details
 FROM task t
 LEFT JOIN tabular_expirations te ON t.task_id = te.task_id
 LEFT JOIN tabular_purges tp ON t.task_id = tp.task_id
@@ -457,6 +479,7 @@ LIMIT $4;"#,
                     })?,
                     status: row.status,
                     project_id: row.project_id.into(),
+                    details: row.details,
                 })
             })
             .collect::<crate::api::Result<Vec<_>>>()?,
@@ -515,7 +538,7 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
             .into_iter()
             .map(|row| {
                 Ok(TaskInstance {
-                    task_id: row.task_id,
+                    task_id: row.task_id.into(),
                     task_instance_id: row.task_instance_id,
                     attempt: row.attempt,
                     status: row.status,
@@ -531,40 +554,62 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use super::*;
 
     use crate::api::iceberg::types::PageToken;
-    use crate::WarehouseIdent;
+    use crate::implementations::postgres::PostgresCatalog;
+    use crate::service::Catalog;
+    use crate::{WarehouseIdent, DEFAULT_PROJECT_ID};
     use sqlx::PgPool;
     use uuid::Uuid;
 
     const TEST_WAREHOUSE: WarehouseIdent = WarehouseIdent(Uuid::nil());
-    const TEST_PROJECT: ProjectIdent = ProjectIdent::new(Uuid::nil());
+
+    pub(crate) async fn create_test_project(pool: PgPool) {
+        let mut t = pool.begin().await.unwrap();
+        PostgresCatalog::create_project(DEFAULT_PROJECT_ID.unwrap(), "bla".to_string(), &mut t)
+            .await
+            .unwrap();
+        t.commit().await.unwrap();
+    }
 
     #[sqlx::test]
     async fn test_queue_task(pool: PgPool) {
+        create_test_project(pool.clone()).await;
         let mut conn = pool.acquire().await.unwrap();
 
         let idempotency_key = Uuid::new_v5(&TEST_WAREHOUSE, b"test");
 
-        let id = queue_task(&mut conn, "test", None, idempotency_key, TEST_PROJECT, None)
-            .await
-            .unwrap();
+        let id = queue_task(
+            &mut conn,
+            "test",
+            None,
+            idempotency_key,
+            DEFAULT_PROJECT_ID.unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
 
-        assert!(
-            queue_task(&mut conn, "test", None, idempotency_key, TEST_PROJECT, None,)
-                .await
-                .unwrap()
-                .is_none()
-        );
+        assert!(queue_task(
+            &mut conn,
+            "test",
+            None,
+            idempotency_key,
+            DEFAULT_PROJECT_ID.unwrap(),
+            None,
+        )
+        .await
+        .unwrap()
+        .is_none());
 
         let id3 = queue_task(
             &mut conn,
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test2"),
-            TEST_PROJECT,
+            DEFAULT_PROJECT_ID.unwrap(),
             None,
         )
         .await
@@ -579,7 +624,9 @@ mod test {
 
     #[sqlx::test]
     async fn test_failed_tasks_are_put_back(pool: PgPool) {
+        create_test_project(pool.clone()).await;
         let mut conn = pool.acquire().await.unwrap();
+
         let config = TaskQueueConfig::default();
         let queue = setup(pool.clone(), config);
         let id = queue_task(
@@ -587,7 +634,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_PROJECT,
+            DEFAULT_PROJECT_ID.unwrap(),
             None,
         )
         .await
@@ -599,7 +646,7 @@ mod test {
             .unwrap()
             .unwrap();
 
-        assert_eq!(task.task_id, id);
+        assert_eq!(task.task_id, id.into());
         assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 1);
         assert!(task.picked_up_at.is_some());
@@ -614,7 +661,7 @@ mod test {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(task.task_id, id);
+        assert_eq!(task.task_id, id.into());
         assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 2);
         assert!(task.picked_up_at.is_some());
@@ -633,7 +680,9 @@ mod test {
 
     #[sqlx::test]
     async fn test_success_task_arent_polled(pool: PgPool) {
+        create_test_project(pool.clone()).await;
         let mut conn = pool.acquire().await.unwrap();
+
         let config = TaskQueueConfig::default();
         let queue = setup(pool.clone(), config);
 
@@ -642,7 +691,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_PROJECT,
+            DEFAULT_PROJECT_ID.unwrap(),
             None,
         )
         .await
@@ -654,7 +703,7 @@ mod test {
             .unwrap()
             .unwrap();
 
-        assert_eq!(task.task_id, id);
+        assert_eq!(task.task_id, id.into());
         assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 1);
         assert!(task.picked_up_at.is_some());
@@ -671,6 +720,7 @@ mod test {
 
     #[sqlx::test]
     async fn test_scheduled_tasks_are_polled_later(pool: PgPool) {
+        create_test_project(pool.clone()).await;
         let mut conn = pool.acquire().await.unwrap();
         let config = TaskQueueConfig::default();
         let queue = setup(pool.clone(), config);
@@ -680,7 +730,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_PROJECT,
+            DEFAULT_PROJECT_ID.unwrap(),
             Some(Schedule::RunAt {
                 date: Utc::now() + chrono::Duration::milliseconds(500),
             }),
@@ -700,7 +750,7 @@ mod test {
             .unwrap()
             .unwrap();
 
-        assert_eq!(task.task_id, id);
+        assert_eq!(task.task_id, id.into());
         assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 1);
         assert!(task.picked_up_at.is_some());
@@ -710,6 +760,7 @@ mod test {
 
     #[sqlx::test]
     async fn test_stale_tasks_are_picked_up_again(pool: PgPool) {
+        create_test_project(pool.clone()).await;
         let mut conn = pool.acquire().await.unwrap();
         let config = TaskQueueConfig {
             max_age: chrono::Duration::milliseconds(500),
@@ -722,7 +773,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_PROJECT,
+            DEFAULT_PROJECT_ID.unwrap(),
             None,
         )
         .await
@@ -734,7 +785,7 @@ mod test {
             .unwrap()
             .unwrap();
 
-        assert_eq!(task.task_id, id);
+        assert_eq!(task.task_id, id.into());
         assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 1);
         assert!(task.picked_up_at.is_some());
@@ -748,7 +799,7 @@ mod test {
             .unwrap()
             .unwrap();
 
-        assert_eq!(task.task_id, id);
+        assert_eq!(task.task_id, id.into());
         assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 2);
         assert!(task.picked_up_at.is_some());
@@ -758,6 +809,7 @@ mod test {
 
     #[sqlx::test]
     async fn test_multiple_tasks(pool: PgPool) {
+        create_test_project(pool.clone()).await;
         let mut conn = pool.acquire().await.unwrap();
         let config = TaskQueueConfig::default();
         let queue = setup(pool.clone(), config);
@@ -767,7 +819,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_PROJECT,
+            DEFAULT_PROJECT_ID.unwrap(),
             None,
         )
         .await
@@ -779,7 +831,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test2"),
-            TEST_PROJECT,
+            DEFAULT_PROJECT_ID.unwrap(),
             None,
         )
         .await
@@ -803,26 +855,27 @@ mod test {
             "There are no tasks left, something is wrong."
         );
 
-        assert_eq!(task.task_id, id);
+        assert_eq!(task.task_id, id.into());
         assert!(matches!(task.status, TaskInstanceStatus::Running));
         assert_eq!(task.attempt, 1);
         assert!(task.picked_up_at.is_some());
         assert!(task.parent_task_id.is_none());
         assert_eq!(&task.queue_name, "test");
 
-        assert_eq!(task2.task_id, id2);
+        assert_eq!(task2.task_id, id2.into());
         assert!(matches!(task2.status, TaskInstanceStatus::Running));
         assert_eq!(task2.attempt, 1);
         assert!(task2.picked_up_at.is_some());
         assert!(task2.parent_task_id.is_none());
         assert_eq!(&task2.queue_name, "test");
 
-        record_success(task.task_id, &pool).await.unwrap();
+        record_success(*task.task_id, &pool).await.unwrap();
         record_success(id2, &pool).await.unwrap();
     }
 
     #[sqlx::test]
     async fn task_cancellation_works(pool: PgPool) {
+        create_test_project(pool.clone()).await;
         let mut conn = pool.acquire().await.unwrap();
         let config = TaskQueueConfig::default();
         let queue = setup(pool.clone(), config);
@@ -832,7 +885,7 @@ mod test {
             "test",
             None,
             Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
-            TEST_PROJECT,
+            DEFAULT_PROJECT_ID.unwrap(),
             None,
         )
         .await
@@ -878,7 +931,7 @@ mod test {
         .unwrap();
 
         assert_eq!(task_instances.tasks.len(), 1);
-        assert_eq!(task_instances.tasks[0].task_id, id);
+        assert_eq!(task_instances.tasks[0].task_id, id.into());
         assert_eq!(
             task_instances.tasks[0].status,
             TaskInstanceStatus::Cancelled

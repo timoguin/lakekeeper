@@ -1,6 +1,7 @@
 use crate::service::task_queue::{TaskInstance, TaskQueue};
 use crate::service::{Catalog, ListFlags};
 use crate::{ProjectIdent, WarehouseIdent};
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use std::time::Duration;
@@ -88,12 +89,23 @@ pub struct StatsTask {
     pub task: TaskInstance,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct StatsInput {
     pub warehouse_ident: WarehouseIdent,
     pub schedule: cron::Schedule,
     pub parent_id: Option<Uuid>,
     pub project_ident: ProjectIdent,
+}
+
+impl Debug for StatsInput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StatsInput")
+            .field("warehouse_ident", &self.warehouse_ident)
+            .field("schedule", &self.schedule.to_string())
+            .field("parent_id", &self.parent_id)
+            .field("project_ident", &self.project_ident)
+            .finish()
+    }
 }
 
 #[cfg(test)]

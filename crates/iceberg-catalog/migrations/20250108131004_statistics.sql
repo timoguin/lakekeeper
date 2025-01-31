@@ -6,7 +6,7 @@ create type task_status2 as enum ('active', 'inactive', 'cancelled', 'done');
 
 alter table task
     rename column status to old_status;
--- TODO: add project-id
+
 alter table task
     add column schedule   text,
     add version           int not null default 0,
@@ -78,23 +78,19 @@ create table statistics_task
 select trigger_updated_at('statistics_task');
 call add_time_columns('statistics_task');
 
-create table statistics
+
+create table warehouse_statistics
 (
-    statistics_id uuid primary key,
-    warehouse_id  uuid not null REFERENCES warehouse (warehouse_id)
+    number_of_views  bigint      not null,
+    number_of_tables bigint      not null,
+    warehouse_id     uuid        not null REFERENCES warehouse (warehouse_id) ON DELETE CASCADE,
+    created_at       timestamptz not null default now(),
+    updated_at       timestamptz not null default now(),
+    PRIMARY KEY (warehouse_id, created_at)
 );
+-- TODO: partitioning?
 
-select trigger_updated_at('statistics');
-call add_time_columns('statistics');
+select trigger_updated_at('warehouse_statistics');
 
-create table scalars
-(
-    name         text   not null,
-    statistic_id uuid REFERENCES statistics (statistics_id),
-    -- TODO: decimal?
-    value        bigint not null,
-    PRIMARY KEY (name, statistic_id)
-);
-
-select trigger_updated_at('scalars');
-call add_time_columns('scalars');
+CREATE INDEX idx_warehouse_stats_time
+    ON warehouse_statistics (created_at DESC);

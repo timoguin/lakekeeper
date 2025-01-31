@@ -47,7 +47,7 @@ impl TaskQueue for TabularPurgeQueue {
             FROM tabular_purges
             WHERE task_id = $1
             "#,
-            task.task_id
+            *task.task_id
         )
         .fetch_one(&self.pg_queue.read_write.read_pool)
         .await
@@ -109,7 +109,7 @@ impl TaskQueue for TabularPurgeQueue {
         let Some(task_id) = queue_task(
             &mut transaction,
             self.queue_name(),
-            parent_id,
+            parent_id.as_deref().copied(),
             idempotency_key,
             project_ident,
             None,
@@ -168,20 +168,22 @@ impl TaskQueue for TabularPurgeQueue {
 #[cfg(test)]
 mod test {
     use super::super::test::setup;
+    use crate::implementations::postgres::task_queues::test::create_test_project;
     use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
     use crate::service::task_queue::{TaskQueue, TaskQueueConfig};
-    use crate::ProjectIdent;
+    use crate::DEFAULT_PROJECT_ID;
     use sqlx::PgPool;
 
     #[sqlx::test]
     async fn test_queue_expiration_queue_task(pool: PgPool) {
+        create_test_project(pool.clone()).await;
         let config = TaskQueueConfig::default();
         let pg_queue = setup(pool, config);
         let queue = super::TabularPurgeQueue { pg_queue };
         let input = TabularPurgeInput {
             tabular_id: uuid::Uuid::new_v4(),
             warehouse_ident: uuid::Uuid::new_v4().into(),
-            project_ident: ProjectIdent::default(),
+            project_ident: DEFAULT_PROJECT_ID.unwrap(),
             tabular_type: crate::api::management::v1::TabularType::Table,
             parent_id: None,
             tabular_location: String::new(),

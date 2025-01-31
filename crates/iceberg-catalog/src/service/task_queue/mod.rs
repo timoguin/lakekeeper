@@ -108,12 +108,16 @@ impl TaskQueues {
         let sched = self.scheduler.clone();
         let scheduler_task: JoinHandle<crate::api::Result<()>> = tokio::task::spawn(async move {
             loop {
+                tracing::info!("Scheduling task instances");
                 sched.schedule_task_instance().await.map_err(|err| {
                     tracing::error!("Failed to schedule task instance: {err:?}");
                     err
                 })?;
-                // TODO: configurable interval
-                tokio::time::sleep(CONFIG.queue_config.poll_interval).await;
+                tracing::debug!(
+                    "Sleeping for {}",
+                    CONFIG.queue_config.poll_interval.as_millis()
+                );
+                tokio::time::sleep(sched.config().poll_interval).await;
             }
         });
 
@@ -185,6 +189,7 @@ impl Deref for TaskId {
 pub trait Scheduler: Debug {
     /// Scans existing tasks and schedules task instances as required
     async fn schedule_task_instance(&self) -> crate::api::Result<()>;
+    fn config(&self) -> &TaskQueueConfig;
 }
 
 /// A filter to select tasks
@@ -241,7 +246,7 @@ pub trait TaskQueue: Debug {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(feature = "sqlx-postgres", derive(FromRow))]
 pub struct TaskInstance {
-    pub task_id: Uuid,
+    pub task_id: TaskId,
     pub task_instance_id: Uuid,
     pub status: TaskInstanceStatus,
     pub picked_up_at: Option<chrono::DateTime<Utc>>,
@@ -259,9 +264,9 @@ pub struct Task {
     pub schedule: Option<cron::Schedule>,
     pub status: TaskStatus,
     pub parent_task_id: Option<Uuid>,
-    pub details: serde_json::Value,
     pub updated_at: Option<chrono::DateTime<Utc>>,
     pub created_at: chrono::DateTime<Utc>,
+    pub details: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -364,6 +369,7 @@ mod test {
     use crate::api::iceberg::v1::PaginationQuery;
     use crate::api::management::v1::TabularType;
     use crate::implementations::postgres::tabular::table::tests::initialize_table;
+    use crate::implementations::postgres::task_queues::PgScheduler;
     use crate::implementations::postgres::warehouse::test::initialize_warehouse;
     use crate::implementations::postgres::PostgresTransaction;
     use crate::implementations::postgres::{CatalogState, PostgresCatalog};
@@ -372,7 +378,7 @@ mod test {
     use crate::service::task_queue::tabular_expiration_queue::TabularExpirationInput;
     use crate::service::task_queue::{TaskQueue, TaskQueueConfig};
     use crate::service::{Catalog, ListFlags, Transaction};
-    use crate::ProjectIdent;
+    use crate::DEFAULT_PROJECT_ID;
     use sqlx::PgPool;
     use std::sync::Arc;
 
@@ -384,7 +390,6 @@ mod test {
             max_age: chrono::Duration::seconds(3600),
             poll_interval: std::time::Duration::from_millis(100),
         };
-
         let rw =
             crate::implementations::postgres::ReadWrite::from_pools(pool.clone(), pool.clone());
         let expiration_queue = Arc::new(
@@ -404,7 +409,7 @@ mod test {
         let stats_queue = Arc::new(
             crate::implementations::postgres::task_queues::StatsQueue::from_config(
                 rw.clone(),
-                config,
+                config.clone(),
             )
             .unwrap(),
         );
@@ -414,7 +419,7 @@ mod test {
             expiration_queue.clone(),
             purge_queue,
             stats_queue,
-            Arc::new(rw.clone()),
+            Arc::new(PgScheduler::from_config(rw.clone(), config)),
         );
         let secrets =
             crate::implementations::postgres::SecretsState::from_pools(pool.clone(), pool);
@@ -478,7 +483,7 @@ mod test {
         expiration_queue
             .enqueue(TabularExpirationInput {
                 tabular_id: tab.table_id.0,
-                project_ident: ProjectIdent::default(),
+                project_ident: DEFAULT_PROJECT_ID.unwrap(),
                 warehouse_ident: warehouse,
                 tabular_type: TabularType::Table,
                 purge: true,

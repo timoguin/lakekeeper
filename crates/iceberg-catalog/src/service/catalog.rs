@@ -15,7 +15,7 @@ use crate::api::management::v1::role::{ListRolesResponse, Role, SearchRoleRespon
 use crate::api::management::v1::user::{
     ListUsersResponse, SearchUserResponse, User, UserLastUpdatedWith, UserType,
 };
-use crate::api::management::v1::warehouse::TabularDeleteProfile;
+use crate::api::management::v1::warehouse::{TabularDeleteProfile, WarehouseStatsResponse};
 use crate::service::tabular_idents::{TabularIdentOwned, TabularIdentUuid};
 use iceberg::spec::{TableMetadata, ViewMetadata};
 use iceberg_ext::catalog::rest::{CatalogConfig, ErrorModel};
@@ -25,9 +25,9 @@ use iceberg_ext::configs::Location;
 use crate::api::management::v1::task::{
     ListTaskInstancesResponse, ListTasksRequest, ListTasksResponse,
 };
+use crate::api::management::v1::warehouse::WarehouseStatistics;
 use crate::catalog::tables::TableMetadataDiffs;
 use crate::service::authn::UserId;
-use crate::service::stats::entities::WarehouseStatistics;
 use crate::service::task_queue::TaskId;
 use iceberg::TableUpdate;
 use std::collections::{HashMap, HashSet};
@@ -531,6 +531,11 @@ where
             .into(),
         )
     }
+
+    async fn get_warehouse_stats(
+        warehouse_id: WarehouseIdent,
+        state: Self::State,
+    ) -> Result<WarehouseStatsResponse>;
 
     /// Delete a warehouse.
     async fn delete_warehouse<'a>(

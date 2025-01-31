@@ -13,7 +13,9 @@ use crate::api::management::v1::warehouse::{
 use crate::api::management::v1::ApiServer;
 use crate::api::ApiContext;
 use crate::catalog::CatalogServer;
-use crate::implementations::postgres::task_queues::{TabularExpirationQueue, TabularPurgeQueue};
+use crate::implementations::postgres::task_queues::{
+    PgScheduler, TabularExpirationQueue, TabularPurgeQueue,
+};
 use crate::implementations::postgres::{CatalogState, PostgresCatalog, ReadWrite, SecretsState};
 use crate::request_metadata::RequestMetadata;
 use crate::service::authz::Authorizer;
@@ -129,6 +131,7 @@ pub(crate) async fn create_view<T: Authorizer>(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn setup<T: Authorizer>(
     pool: PgPool,
     storage_profile: StorageProfile,
@@ -213,11 +216,14 @@ pub(crate) fn get_api_context<T: Authorizer>(
                 Arc::new(
                     crate::implementations::postgres::task_queues::StatsQueue::from_config(
                         ReadWrite::from_pools(pool.clone(), pool.clone()),
-                        q_config,
+                        q_config.clone(),
                     )
                     .unwrap(),
                 ),
-                Arc::new(ReadWrite::from_pools(pool.clone(), pool)),
+                Arc::new(PgScheduler::from_config(
+                    ReadWrite::from_pools(pool.clone(), pool),
+                    q_config,
+                )),
             ),
         },
     }

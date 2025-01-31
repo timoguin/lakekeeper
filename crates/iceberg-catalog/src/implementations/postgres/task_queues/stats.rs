@@ -46,7 +46,7 @@ impl TaskQueue for StatsQueue {
 
         let idempotency_key = warehouse_ident.0;
 
-        let task_id = queue_task(
+        let Some(task_id) = queue_task(
             &mut transaction,
             self.queue_name(),
             parent_id,
@@ -54,7 +54,13 @@ impl TaskQueue for StatsQueue {
             project_ident,
             Some(Schedule::Cron { schedule }),
         )
-        .await?;
+        .await?
+        else {
+            tracing::debug!("Stats task already exists for warehouse: '{warehouse_ident}'",);
+            return Ok(None);
+        };
+
+        tracing::debug!("Enqueued stats task with id: '{task_id}'",);
 
         sqlx::query!(
             r#"
@@ -74,15 +80,7 @@ impl TaskQueue for StatsQueue {
             e.into_error_model("failed to commit tabular purge task")
         })?;
 
-        match task_id {
-            None => {
-                tracing::debug!("Stats task already exists for warehouse: '{warehouse_ident}'",);
-            }
-            Some(id) => {
-                tracing::debug!("Enqueued stats task with id: '{id}'",);
-            }
-        }
-        Ok(task_id.map(Into::into))
+        Ok(Some(task_id.into()))
     }
 
     #[tracing::instrument(skip(self))]
@@ -101,7 +99,7 @@ impl TaskQueue for StatsQueue {
 
         let warehouse_ident = sqlx::query_scalar!(
             r#"SELECT warehouse_id from statistics_task where task_id = $1"#,
-            task.task_id
+            *task.task_id
         )
         .fetch_one(&self.pg_queue.read_write.write_pool)
         .await
@@ -135,27 +133,49 @@ impl TaskQueue for StatsQueue {
 #[cfg(test)]
 mod test {
     use super::super::test::setup;
+    use crate::api::management::v1::warehouse::TabularDeleteProfile;
+    use crate::implementations::postgres::task_queues::test::create_test_project;
+    use crate::implementations::postgres::task_queues::PgScheduler;
+    use crate::implementations::postgres::warehouse::create_warehouse;
     use crate::implementations::postgres::ReadWrite;
+    use crate::service::storage::{StorageProfile, TestProfile};
     use crate::service::task_queue::stats::StatsInput;
     use crate::service::task_queue::{Scheduler, TaskQueue, TaskQueueConfig};
-    use crate::ProjectIdent;
+    use crate::DEFAULT_PROJECT_ID;
     use sqlx::PgPool;
     use std::str::FromStr;
 
     #[sqlx::test]
     async fn test_queue_stats_task(pool: PgPool) {
+        create_test_project(pool.clone()).await;
+
+        let mut trx = pool.begin().await.unwrap();
+        let warehouse_ident = create_warehouse(
+            "wh".to_string(),
+            DEFAULT_PROJECT_ID.unwrap(),
+            StorageProfile::Test(TestProfile::default()),
+            TabularDeleteProfile::Hard {},
+            None,
+            &mut trx,
+        )
+        .await
+        .unwrap();
+        trx.commit().await.unwrap();
+
         let config = TaskQueueConfig::default();
         let rw = ReadWrite::from_pools(pool.clone(), pool.clone());
+        let rw = PgScheduler::from_config(rw.clone(), config.clone());
         let pg_queue = setup(pool.clone(), config);
         let queue = super::StatsQueue { pg_queue };
         let input = StatsInput {
-            warehouse_ident: uuid::Uuid::new_v4().into(),
+            warehouse_ident,
             schedule: cron::Schedule::from_str("*/1 * * * * *").unwrap(),
             parent_id: None,
-            project_ident: ProjectIdent::default(),
+            project_ident: DEFAULT_PROJECT_ID.unwrap(),
         };
         queue.enqueue(input.clone()).await.unwrap();
         queue.enqueue(input.clone()).await.unwrap();
+
         rw.schedule_task_instance().await.unwrap();
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         let task = queue
