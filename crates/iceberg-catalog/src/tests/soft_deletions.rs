@@ -166,6 +166,67 @@ mod test {
 
         assert_eq!(table.metadata.uuid(), t2.metadata.uuid());
     }
+
+    #[sqlx::test]
+    async fn test_undropped_tables_can_be_dropped(pool: PgPool) {
+        let DropSetup {
+            ctx,
+            warehouse,
+            namespace_name,
+            table_name,
+            table,
+        } = setup_drop_test(
+            pool,
+            chrono::Duration::milliseconds(500),
+            std::time::Duration::from_millis(100),
+        )
+        .await;
+
+        purge_table(&ctx, warehouse.warehouse_id, &namespace_name, &table_name).await;
+
+        spawn_drop_queues(&ctx);
+        let err = load_table(&ctx, warehouse.warehouse_id, &namespace_name, &table_name)
+            .await
+            .unwrap_err();
+        assert_eq!(err.error.code, http::StatusCode::NOT_FOUND.as_u16());
+
+        ApiServer::undrop_tabulars(
+            random_request_metadata(),
+            UndropTabularsRequest {
+                targets: vec![TabularIdentUuid::Table(table.metadata.uuid())],
+            },
+            ctx.clone(),
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(750)).await;
+        let t2 = load_table(&ctx, warehouse.warehouse_id, &namespace_name, &table_name)
+            .await
+            .unwrap();
+
+        assert_eq!(table.metadata.uuid(), t2.metadata.uuid());
+
+        purge_table(&ctx, warehouse.warehouse_id, &namespace_name, &table_name).await;
+
+        spawn_drop_queues(&ctx);
+        let err = load_table(&ctx, warehouse.warehouse_id, &namespace_name, &table_name)
+            .await
+            .unwrap_err();
+        assert_eq!(err.error.code, http::StatusCode::NOT_FOUND.as_u16());
+
+        assert_eq!(err.error.code, http::StatusCode::NOT_FOUND.as_u16());
+        assert!(table_location_exists(&table.metadata).await);
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        let mut exists = table_location_exists(&table.metadata).await;
+        let mut cnt = 1;
+        while exists && cnt < 5 {
+            tokio::time::sleep(tokio::time::Duration::from_millis(75 * cnt)).await;
+            exists = table_location_exists(&table.metadata).await;
+            cnt += 1;
+        }
+        assert!(!exists);
+    }
 }
 
 struct DropSetup {
@@ -184,7 +245,7 @@ async fn setup_drop_test(
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
+                .with_default_directive(LevelFilter::DEBUG.into())
                 .from_env_lossy(),
         )
         .try_init()

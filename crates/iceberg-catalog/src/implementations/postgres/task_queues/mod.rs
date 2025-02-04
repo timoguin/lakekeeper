@@ -221,8 +221,14 @@ async fn queue_task(
                 schedule,
                 version)
         VALUES ($1, $2, 'active', $3, $4, $5, $6, $7)
-        ON CONFLICT ON CONSTRAINT unique_idempotency_key
-        DO NOTHING
+        ON CONFLICT ON CONSTRAINT unique_idempotency_key DO UPDATE
+        SET
+            status = 'active'
+        WHERE task.status in ('done', 'cancelled')
+        AND NOT EXISTS (SELECT 1
+            FROM task_instance ti
+            WHERE task_id = task.task_id
+            AND ti.status in ('running', 'done', 'failed'))
         RETURNING task_id"#,
         task_id,
         queue_name,
@@ -234,9 +240,13 @@ async fn queue_task(
     )
     .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| e.into_error_model("failed queueing task"))?;
+    .map_err(|e| {
+        tracing::error!(?e, "Failed to queue task");
+        e.into_error_model("failed queueing task")
+    })?;
 
     if let Some(inserted) = inserted {
+        tracing::debug!("Queued task with id '{inserted}'");
         schedule_task_instance(
             conn,
             inserted,
@@ -244,7 +254,9 @@ async fn queue_task(
             schedul.unwrap_or(Schedule::Immediate {}),
         )
         .await?;
-    }
+    } else {
+        tracing::debug!("Task already exists and wasn't restarted.");
+    };
     Ok(inserted)
 }
 
@@ -381,12 +393,18 @@ async fn cancel_pending_tasks(
     // TODO: we're only cancelling task_instances here, have to cancel tasks elsewhere too, probably different api?
     match filter {
         TaskFilter::TaskIds(task_ids) => {
-            sqlx::query!(r#"
-                         WITH updated_task AS (
-                             UPDATE task t
-                             SET status = 'cancelled'
-                             WHERE status = 'active' AND task_id = ANY($1)
-                         ),
+            sqlx::query!(r#"WITH updated_task AS (
+                                UPDATE task t
+                                SET status = 'cancelled'
+                                FROM (
+                                    SELECT task_id
+                                    FROM task_instance ti
+                                    WHERE ti.task_id = ANY('{0194d191-b4b8-7bf3-930c-2310c4ebabba}')
+                                    GROUP BY task_id
+                                    HAVING BOOL_AND(ti.status IN ('pending', 'cancelled'))
+                                ) as sti
+                                WHERE sti.task_id = t.task_id
+                        ),
                          updated_task_instance AS (
                              UPDATE task_instance ti
                              SET status = 'cancelled'
@@ -591,7 +609,19 @@ pub(crate) mod test {
         )
         .await
         .unwrap();
-
+        let t = pick_task(
+            &pool,
+            "test",
+            &sqlx::postgres::types::PgInterval {
+                months: 0,
+                days: 0,
+                microseconds: 999999,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(t.task_id, id.unwrap().into());
         assert!(queue_task(
             &mut conn,
             "test",
