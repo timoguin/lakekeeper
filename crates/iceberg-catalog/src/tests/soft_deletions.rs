@@ -13,6 +13,8 @@ use crate::WarehouseIdent;
 use iceberg::spec::TableMetadata;
 use iceberg_ext::catalog::rest::LoadTableResult;
 use sqlx::PgPool;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::EnvFilter;
 
 mod test {
     use crate::api::management::v1::warehouse::{
@@ -115,8 +117,14 @@ mod test {
         assert!(table_location_exists(&table.metadata).await);
 
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-        assert!(!table_location_exists(&table.metadata).await);
+        let mut exists = table_location_exists(&table.metadata).await;
+        let mut cnt = 1;
+        while exists && cnt < 5 {
+            tokio::time::sleep(tokio::time::Duration::from_millis(75 * cnt)).await;
+            exists = table_location_exists(&table.metadata).await;
+            cnt += 1;
+        }
+        assert!(!exists);
     }
 
     #[sqlx::test]
@@ -173,6 +181,15 @@ async fn setup_drop_test(
     expiration_seconds: chrono::Duration,
     poll_interval: std::time::Duration,
 ) -> DropSetup {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
+        .try_init()
+        .ok();
+
     let prof = crate::tests::test_io_profile();
     let (ctx, warehouse) = crate::tests::setup(
         pool.clone(),

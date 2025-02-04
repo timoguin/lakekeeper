@@ -131,8 +131,13 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         let warehouse_id = require_warehouse_id(prefix.clone())?;
         let table = TableIdent::new(namespace.clone(), request.name.clone());
         validate_table_or_view_ident(&table)?;
-
+        tracing::debug!(
+            "Creating table: '{}' in '{}'",
+            table.name,
+            table.namespace.to_url_string()
+        );
         if let Some(properties) = &request.properties {
+            tracing::debug!(?properties, "validating properties table properties");
             validate_table_properties(properties.keys())?;
         }
 
@@ -148,7 +153,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
             t.transaction(),
         )
         .await?;
-
+        tracing::debug!("Namespace authorized and resolved to '{}'", namespace_id);
         // ------------------- BUSINESS LOGIC -------------------
         let id = Uuid::now_v7();
         let tabular_id = TabularIdentUuid::Table(id);
@@ -170,11 +175,15 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         request.location = Some(table_location.to_string());
         let request = request; // Make it non-mutable again for our sanity
 
+        tracing::debug!("Determined table location: '{}'", table_location);
+
         // If stage-create is true, we should not create the metadata file
         let metadata_location = if request.stage_create.unwrap_or(false) {
+            tracing::debug!("Staged creation requested, skipping metadata file creation");
             None
         } else {
             let metadata_id = Uuid::now_v7();
+            tracing::debug!("Creating metadata file with id: '{}'", metadata_id);
             Some(storage_profile.default_metadata_location(
                 &table_location,
                 &CompressionCodec::try_from_maybe_properties(request.properties.as_ref())?,
@@ -201,12 +210,14 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
             t.transaction(),
         )
         .await?;
-
+        tracing::debug!("Created table with id: '{}'", table_metadata.uuid());
         // We don't commit the transaction yet, first we need to write the metadata file.
         let storage_secret = if let Some(secret_id) = &warehouse.storage_secret_id {
+            tracing::debug!("Fetching storage secret with id: '{secret_id}'");
             let secret_state = state.v1_state.secrets;
             Some(secret_state.get_secret_by_id(secret_id).await?.secret)
         } else {
+            tracing::debug!("Not fetching storage secret.");
             None
         };
 
@@ -268,6 +279,8 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
             )
             .await?;
 
+        tracing::debug!("Generated storage config.");
+
         let storage_credentials = (!config.creds.inner().is_empty()).then(|| {
             vec![StorageCredential {
                 prefix: table_location.to_string(),
@@ -290,11 +303,18 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
             )
             .await?;
 
+        tracing::debug!("Created table in authz.");
+
         // Metadata file written, now we can commit the transaction
         t.commit().await?;
 
+        tracing::debug!("Committed table creation database transaction.");
+
         if let Some(staged_table_id) = staged_table_id {
             authorizer.delete_table(staged_table_id).await.ok();
+            tracing::debug!(
+                "Deleted pre-existing staged table with id '{staged_table_id}' from authorizer."
+            );
         }
 
         emit_change_event(
@@ -1583,6 +1603,7 @@ where
             .contains(&prop.as_str()))
             || prop.starts_with("write.data.path")
         {
+            tracing::debug!("Unsupported property: '{prop}'");
             return Err(ErrorModel::conflict(
                 format!("Properties contain unsupported property: '{prop}'"),
                 "FailedToSetProperties",

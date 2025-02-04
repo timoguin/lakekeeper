@@ -153,7 +153,8 @@ async fn setup_stats_test(
                 .with_default_directive(LevelFilter::INFO.into())
                 .from_env_lossy(),
         )
-        .init();
+        .try_init()
+        .ok();
     let prof = crate::tests::test_io_profile();
     let (ctx, warehouse) = crate::tests::setup(
         pool.clone(),
