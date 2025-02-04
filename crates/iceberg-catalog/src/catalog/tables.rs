@@ -2,7 +2,9 @@ use super::commit_tables::apply_commit;
 use super::io::delete_file;
 use super::namespace::authorized_namespace_ident_to_id;
 use super::{
-    io::write_metadata_file, maybe_get_secret, namespace::validate_namespace_ident,
+    io::{read_metadata_file, write_metadata_file},
+    maybe_get_secret,
+    namespace::validate_namespace_ident,
     require_warehouse_id, CatalogServer,
 };
 use crate::api::iceberg::types::DropParams;
@@ -268,7 +270,6 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // This requires the storage secret
         // because the table config might contain vended-credentials based
-        //
         // on the `data_access` parameter.
         let config = storage_profile
             .generate_table_config(
@@ -337,19 +338,113 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
     }
 
     /// Register a table in the given namespace using given metadata file location
-    #[allow(clippy::too_many_lines)]
     async fn register_table(
-        _parameters: NamespaceParameters,
-        _request: RegisterTableRequest,
-        _state: ApiContext<State<A, C, S>>,
-        _request_metadata: RequestMetadata,
+        parameters: NamespaceParameters,
+        request: RegisterTableRequest,
+        state: ApiContext<State<A, C, S>>,
+        request_metadata: RequestMetadata,
     ) -> Result<LoadTableResult> {
-        Err(ErrorModel::not_implemented(
-            "Registering tables is not supported",
-            "RegisterTableNotSupported",
-            None,
+        // ------------------- VALIDATIONS -------------------
+        let NamespaceParameters { namespace, prefix } = parameters;
+        let warehouse_id = require_warehouse_id(prefix.clone())?;
+        let table = TableIdent::new(namespace.clone(), request.name.clone());
+        validate_table_or_view_ident(&table)?;
+        let metadata_location =
+            parse_location(&request.metadata_location, StatusCode::BAD_REQUEST)?;
+
+        // ------------------- AUTHZ -------------------
+        let authorizer = state.v1_state.authz.clone();
+        let mut t = C::Transaction::begin_write(state.v1_state.catalog).await?;
+        let namespace_id = authorized_namespace_ident_to_id::<C, _>(
+            authorizer.clone(),
+            &request_metadata,
+            &warehouse_id,
+            &namespace,
+            &CatalogNamespaceAction::CanCreateTable,
+            t.transaction(),
         )
-        .into())
+        .await?;
+
+        // ------------------- BUSINESS LOGIC -------------------
+        let warehouse = C::require_warehouse(warehouse_id, t.transaction()).await?;
+        let storage_profile = &warehouse.storage_profile;
+
+        require_active_warehouse(warehouse.status)?;
+        storage_profile.require_allowed_location(&metadata_location)?;
+
+        let storage_secret =
+            maybe_get_secret(warehouse.storage_secret_id, &state.v1_state.secrets).await?;
+        let file_io = storage_profile.file_io(storage_secret.as_ref())?;
+        let table_metadata = read_metadata_file(&file_io, &metadata_location).await?;
+        let table_location = parse_location(table_metadata.location(), StatusCode::BAD_REQUEST)?;
+
+        validate_table_properties(table_metadata.properties().keys())?;
+        storage_profile.require_allowed_location(&table_location)?;
+
+        let namespace = C::get_namespace(warehouse_id, namespace_id, t.transaction()).await?;
+        let tabular_id = TableIdentUuid::from(table_metadata.uuid());
+
+        let CreateTableResponse {
+            table_metadata,
+            staged_table_id,
+        } = C::create_table(
+            TableCreation {
+                namespace_id: namespace.namespace_id,
+                table_ident: &table,
+                table_metadata,
+                metadata_location: Some(&metadata_location),
+            },
+            t.transaction(),
+        )
+        .await?;
+
+        let config = storage_profile
+            .generate_table_config(
+                &DataAccess {
+                    vended_credentials: false,
+                    remote_signing: false,
+                },
+                storage_secret.as_ref(),
+                &table_location,
+                StoragePermissions::ReadWriteDelete,
+            )
+            .await?;
+
+        authorizer
+            .create_table(&request_metadata, tabular_id, namespace_id)
+            .await?;
+
+        t.commit().await?;
+
+        // If a staged table was overwritten, delete it from authorizer
+        if let Some(staged_table_id) = staged_table_id {
+            authorizer.delete_table(staged_table_id).await.ok();
+        }
+
+        // ------------------- CHANGE Event -------------------
+        emit_change_event(
+            EventMetadata {
+                tabular_id: TabularIdentUuid::Table(*tabular_id),
+                warehouse_id,
+                name: table.name.clone(),
+                namespace: table.namespace.to_url_string(),
+                prefix: prefix.map(Prefix::into_string).unwrap_or_default(),
+                num_events: 1,
+                sequence_number: 0,
+                trace_id: request_metadata.request_id,
+            },
+            maybe_body_to_json(&request),
+            "registerTable",
+            state.v1_state.publisher.clone(),
+        )
+        .await;
+
+        Ok(LoadTableResult {
+            metadata_location: Some(metadata_location.to_string()),
+            metadata: table_metadata,
+            config: Some(config.config.into()),
+            storage_credentials: None,
+        })
     }
 
     /// Load a table from the catalog
@@ -804,7 +899,6 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
     /// Commit updates to multiple tables in an atomic operation
     #[allow(clippy::too_many_lines)]
-    // ToDo: Split some of this into helper functions
     async fn commit_transaction(
         prefix: Option<Prefix>,
         request: CommitTransactionRequest,
@@ -869,7 +963,6 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore> CatalogServer<C, A, S> {
     }
 }
 
-// TODO: split this into smaller functions
 #[allow(clippy::too_many_lines)]
 async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
     prefix: Option<Prefix>,
@@ -1455,14 +1548,7 @@ pub(super) fn determine_tabular_location(
         .transpose()?;
 
     let mut location = if let Some(location) = request_table_location {
-        if !storage_profile.is_allowed_location(&location) {
-            return Err(ErrorModel::bad_request(
-                format!("Specified table location is not allowed: {location}"),
-                "InvalidTableLocation",
-                None,
-            )
-            .into());
-        }
+        storage_profile.require_allowed_location(&location)?;
         location
     } else {
         let namespace_props = NamespaceProperties::from_props_unchecked(
@@ -2544,13 +2630,73 @@ pub(crate) mod test {
     }
 
     #[sqlx::test]
+    async fn test_can_create_tables_with_same_prefix_1(pool: PgPool) {
+        let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
+        let tmp_id = Uuid::now_v7();
+        let mut create_request_1 = create_request(Some("tab-1".to_string()));
+        create_request_1.location = Some(format!("{base_location}/{tmp_id}/my-table-2"));
+        let mut create_request_2 = create_request(Some("tab-2".to_string()));
+        create_request_2.location = Some(format!("{base_location}/{tmp_id}/my-table"));
+
+        let _ = CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_1,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .unwrap();
+
+        CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_2,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[sqlx::test]
+    async fn test_can_create_tables_with_same_prefix_2(pool: PgPool) {
+        let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
+        let tmp_id = Uuid::now_v7();
+        let mut create_request_1 = create_request(Some("tab-1".to_string()));
+        create_request_1.location = Some(format!("{base_location}/{tmp_id}/my-table"));
+        let mut create_request_2 = create_request(Some("tab-2".to_string()));
+        create_request_2.location = Some(format!("{base_location}/{tmp_id}/my-table-2"));
+
+        let _ = CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_1,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .unwrap();
+
+        CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_2,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[sqlx::test]
     async fn test_cannot_create_table_at_same_location(pool: PgPool) {
         let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
         let tmp_id = Uuid::now_v7();
         let mut create_request_1 = create_request(Some("tab-1".to_string()));
-        create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket/"));
+        create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket"));
         let mut create_request_2 = create_request(Some("tab-2".to_string()));
-        create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket/"));
+        create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket"));
 
         let _ = CatalogServer::create_table(
             ns_params.clone(),
@@ -2576,7 +2722,7 @@ pub(crate) mod test {
     }
 
     #[sqlx::test]
-    async fn test_cannot_create_staged_tables_at_sublocations(pool: PgPool) {
+    async fn test_cannot_create_staged_tables_at_sublocations_1(pool: PgPool) {
         let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
         let tmp_id = Uuid::now_v7();
         let mut create_request_1 = create_request(Some("tab-1".to_string()));
@@ -2584,7 +2730,7 @@ pub(crate) mod test {
         create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket/inner"));
         let mut create_request_2 = create_request(Some("tab-2".to_string()));
         create_request_2.stage_create = Some(true);
-        create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket/"));
+        create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket"));
         let _ = CatalogServer::create_table(
             ns_params.clone(),
             create_request_1,
@@ -2609,12 +2755,45 @@ pub(crate) mod test {
     }
 
     #[sqlx::test]
-    async fn test_cannot_create_tables_at_sublocations(pool: PgPool) {
+    async fn test_cannot_create_staged_tables_at_sublocations_2(pool: PgPool) {
+        let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
+        let tmp_id = Uuid::now_v7();
+        let mut create_request_1 = create_request(Some("tab-1".to_string()));
+        create_request_1.stage_create = Some(true);
+        create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket"));
+        let mut create_request_2 = create_request(Some("tab-2".to_string()));
+        create_request_2.stage_create = Some(true);
+        create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket/inner"));
+        let _ = CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_1,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .unwrap();
+
+        let e = CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_2,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .expect_err("Staged table could be created at sublocation which should not be possible");
+        assert_eq!(e.error.code, StatusCode::BAD_REQUEST, "{e:?}");
+        assert_eq!(e.error.r#type.as_str(), "LocationAlreadyTaken");
+    }
+
+    #[sqlx::test]
+    async fn test_cannot_create_tables_at_sublocations_1(pool: PgPool) {
         let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
         let tmp_id = Uuid::now_v7();
 
         let mut create_request_1 = create_request(Some("tab-1".to_string()));
-        create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket/"));
+        create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket"));
         let mut create_request_2 = create_request(Some("tab-2".to_string()));
         create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket/sublocation"));
         let _ = CatalogServer::create_table(

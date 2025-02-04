@@ -2,6 +2,42 @@
 
 
 
+## [0.6.2](https://github.com/lakekeeper/lakekeeper/compare/v0.6.1...v0.6.2) (2025-01-30)
+
+
+### Features
+
+* Scope validation ([#790](https://github.com/lakekeeper/lakekeeper/issues/790)) ([65e664f](https://github.com/lakekeeper/lakekeeper/commit/65e664fb804fc6657dcfab655344d9bfd0224b5a))
+
+
+### Bug Fixes
+
+* Add S3 path style access to UI ([#787](https://github.com/lakekeeper/lakekeeper/issues/787)) ([f393881](https://github.com/lakekeeper/lakekeeper/commit/f393881acf60b8bd3910c17eca6f7325aedbf8a7))
+
+
+### Miscellaneous Chores
+
+* release 0.6.2 ([0c7e181](https://github.com/lakekeeper/lakekeeper/commit/0c7e1814eef9c039f6d05dbb3256c70caed1c36f))
+
+## [0.6.2](https://github.com/lakekeeper/lakekeeper/compare/v0.6.1...v0.6.2) (2025-01-29)
+
+
+### Bug Fixes
+
+* Add S3 path style access to UI ([#787](https://github.com/lakekeeper/lakekeeper/issues/787)) ([f393881](https://github.com/lakekeeper/lakekeeper/commit/f393881acf60b8bd3910c17eca6f7325aedbf8a7))
+
+## [0.6.1](https://github.com/lakekeeper/lakekeeper/compare/v0.6.0...v0.6.1) (2025-01-27)
+
+
+### Features
+
+* expose cloud-events tracing publisher on cli ([#747](https://github.com/lakekeeper/lakekeeper/issues/747)) ([798e85d](https://github.com/lakekeeper/lakekeeper/commit/798e85d39c034b2351443d7b1f9983160b820ed7))
+
+
+### Miscellaneous Chores
+
+* release 0.6.1 ([a17f5c4](https://github.com/lakekeeper/lakekeeper/commit/a17f5c4919bbe5797099dcbf45cf8a6becf0b3c1))
+
 ## [0.6.0](https://github.com/lakekeeper/lakekeeper/compare/v0.5.2...v0.6.0) (2025-01-07)
 
 

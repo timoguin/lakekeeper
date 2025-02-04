@@ -105,6 +105,7 @@ Please check the [Authentication Guide](./authentication.md) for more details.
 | `LAKEKEEPER__OPENID_AUDIENCE`                  | `the-client-id-of-my-app`                    | If set, the `aud` of the provided token must match the value provided. Multiple allowed audiences can be provided as a comma separated list. |
 | `LAKEKEEPER__OPENID_ADDITIONAL_ISSUERS`        | `https://sts.windows.net/<Tenant>/`          | A comma separated list of additional issuers to trust. The issuer defined in the `issuer` field of the `.well-known/openid-configuration` is always trusted. `LAKEKEEPER__OPENID_ADDITIONAL_ISSUERS` has no effect if `LAKEKEEPER__OPENID_PROVIDER_URI` is not set. |
 | `LAKEKEEPER__ENABLE_KUBERNETES_AUTHENTICATION` | true                                         | If true, kubernetes service accounts can authenticate to Lakekeeper. This option is compatible with `LAKEKEEPER__OPENID_PROVIDER_URI` - multiple IdPs (OIDC and Kubernetes) can be enabled simultaneously. |
+| `LAKEKEEPER__OPENID_SCOPE`                     | `lakekeeper`                                 | Specify a scope that must be present in provided tokens received from the openid provider. |
 
 ### Authorization
 Authorization is only effective if [Authentication](#authentication) is enabled. Authorization must not be enabled after Lakekeeper has been bootstrapped! Please create a new Lakekeeper instance, bootstrap it with authorization enabled, and migrate your tables.
@@ -132,6 +133,7 @@ When using the built-in UI which is hosted as part of the Lakekeeper binary, mos
 | <nobr>`LAKEKEEPER__UI__OPENID_SCOPE`</nobr>        | `openid email`                               | Scopes to request from the IdP. Defaults to `openid profile email`. |
 | <nobr>`LAKEKEEPER__UI__OPENID_RESOURCE`</nobr>     | `lakekeeper-api`                             | Resources to request from the IdP. If not specified, the `resource` field is omitted (default). |
 | `LAKEKEEPER__UI__OPENID_POST_LOGOUT_REDIRECT_PATH` | `/logout`                                    | Path the UI calls when users are logged out from the IdP. Defaults to `/logout` |
+| `LAKEKEEPER__UI__LAKEKEEPER_URL`                   | `https://example.com/lakekeeper`             | URI where the users browser can reach Lakekeeper. Defaults to the value of `LAKEKEEPER__BASE_URI`. |
 
 
 ### SSL Dependencies
