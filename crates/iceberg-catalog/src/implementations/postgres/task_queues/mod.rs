@@ -92,6 +92,51 @@ impl Scheduler for PgScheduler {
     }
 }
 
+async fn schedule_task(
+    read_write: &mut PgConnection,
+    single_task: Option<Uuid>,
+) -> Result<(), IcebergErrorResponse> {
+    // TODO: should we schedule more than one at a time?
+    let task = sqlx::query!(
+            r#"
+            SELECT t.task_id, schedule, t.idempotency_key
+            FROM task t
+            WHERE (($1 = t.task_id or $1 is null) AND t.status = 'active' AND ((next_tick < $2 AT TIME ZONE 'UTC' AND next_tick is not null)))
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1"#,
+            single_task,
+            Utc::now()
+        ).fetch_optional(&mut *read_write).await.map_err(|e| e.into_error_model("Failed to check for schedulable tasks."))?;
+
+    if let Some(row) = task {
+        let task_id = row.task_id;
+        let sched = row
+            .schedule
+            .as_deref()
+            .map(cron::Schedule::from_str)
+            .transpose()
+            .map_err(|e| {
+                ErrorModel::internal(
+                    "Failed to parse cron schedule from database.",
+                    "InternalDatabaseError",
+                    Some(Box::new(e)),
+                )
+            })?
+            .map(|schedule| Schedule::Cron { schedule });
+
+        schedule_task_instance(
+            read_write,
+            task_id,
+            row.idempotency_key,
+            sched.unwrap_or(Schedule::Immediate {}),
+        )
+        .await?;
+    } else {
+        tracing::debug!("No tasks to schedule.");
+    }
+    Ok(())
+}
+
 #[instrument(skip(conn))]
 async fn schedule_task_instance(
     conn: &mut PgConnection,
@@ -99,7 +144,6 @@ async fn schedule_task_instance(
     idempotency_key: Uuid,
     schedule: Schedule,
 ) -> Result<(), IcebergErrorResponse> {
-    tracing::info!("Scheduling task instance for task_id: {task_id:?}, schedule: {schedule}",);
     let (next_tick, run_at, idempotency_key_data) = match schedule {
         Schedule::RunAt { date } => (None, Some(date), Some(date.to_rfc3339())),
         Schedule::Cron { schedule } => {
@@ -108,7 +152,7 @@ async fn schedule_task_instance(
         }
         Schedule::Immediate {} => (None, Some(Utc::now()), None),
     };
-    tracing::info!("{:?}", idempotency_key_data);
+
     let idempotency_key = if let Some(idempotency_key_data) = idempotency_key_data {
         Uuid::new_v5(&idempotency_key, idempotency_key_data.as_bytes())
     } else {
@@ -116,10 +160,20 @@ async fn schedule_task_instance(
     };
 
     let has_next = next_tick.is_some();
+    let task_instance_id = Uuid::now_v7();
     // TODO: Updating task status like this transitions the task to done before its last
     //       instance is done. That means we'll probably have to introduce a secondary status
     //       to capture the success-state of the task as a function of its instances.
-    tracing::info!("Scheduling task instance for task_id: {task_id:?}, next_tick: {next_tick:?}, run_at: {run_at:?}, idempotency_key: {idempotency_key:?}, has_next: {has_next:?}");
+    //       it also complicates task resets quite a bit, e.g. when we drop a table, we create a
+    //       tabular_expiration task, the task spawns a task_instance and transitions to done, now
+    //       when we cancel the task, we transition the task_instance to cancelled, but the task
+    //       remains in done. When we're now dropping the table again, we have to check if the task
+    //       has a task_instance in cancelled state, if it does, we have to transition the task to
+    //       active.
+
+    // split task_status2 -> enabled/disabled + status-enum (active, done, cancelled, failed)
+
+    tracing::debug!("Scheduling task instance for task_id: '{task_id}', next_tick: '{next_tick:?}', run_at: '{run_at:?}', idempotency_key: '{idempotency_key}'");
     sqlx::query!(
             r#"
                 WITH updated_tasks AS (UPDATE task
@@ -136,7 +190,7 @@ async fn schedule_task_instance(
                 WHERE task_instance.status = 'cancelled'
                 "#,
             task_id,
-            Uuid::now_v7(),
+            task_instance_id,
             run_at,
             idempotency_key,
             next_tick,
@@ -146,53 +200,6 @@ async fn schedule_task_instance(
         .await
         .map_err(|e| e.into_error_model("Failed to schedule task instance"))?;
 
-    Ok(())
-}
-
-async fn schedule_task(
-    read_write: &mut PgConnection,
-    single_task: Option<Uuid>,
-) -> Result<(), IcebergErrorResponse> {
-    // TODO: should we schedule more than one at a time?
-    let task = sqlx::query!(
-            r#"
-            SELECT t.task_id, schedule, t.idempotency_key
-            FROM task t
-            WHERE (($1 = t.task_id or $1 is null) AND t.status = 'active' AND ((next_tick < $2 AT TIME ZONE 'UTC' AND next_tick is not null)))
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1"#,
-            single_task,
-            Utc::now()
-        ).fetch_optional(&mut *read_write).await.map_err(|e| e.into_error_model("Failed to begin transaction"))?;
-
-    tracing::info!("Found {task:?} for scheduling");
-    if let Some(row) = task {
-        let task_id = row.task_id;
-        let sched = row
-            .schedule
-            .as_deref()
-            .map(cron::Schedule::from_str)
-            .transpose()
-            .map_err(|e| {
-                ErrorModel::internal(
-                    "Failed to parse cron schedule from database.",
-                    "InternalDatabaseError",
-                    Some(Box::new(e)),
-                )
-            })?
-            .map(|schedule| Schedule::Cron { schedule });
-        tracing::info!(
-            "Scheduling task {task_id:?} with schedule {:?}",
-            sched.as_ref().map(ToString::to_string)
-        );
-        schedule_task_instance(
-            read_write,
-            task_id,
-            row.idempotency_key,
-            sched.unwrap_or(Schedule::Immediate {}),
-        )
-        .await?;
-    }
     Ok(())
 }
 
@@ -210,6 +217,8 @@ async fn queue_task(
     });
 
     let task_id = Uuid::now_v7();
+    // TODO: in this query, we have to deal with the issue that we might have to restart a task which
+    //       is in done state, see comment in schedule_task_instance
     let inserted = sqlx::query_scalar!(
         r#"INSERT INTO task(
                 task_id,
@@ -266,19 +275,23 @@ async fn record_failure(
     n_retries: i32,
     details: &str,
 ) -> Result<(), IcebergErrorResponse> {
+    let error_id = Uuid::now_v7();
     sqlx::query!(
         r#"
         WITH cte as (
-            SELECT attempt >= $2 as should_fail
+            SELECT attempt >= $3 as should_fail
             FROM task_instance
             WHERE task_instance_id = $1
+        ),
+        cte2 as (
+            INSERT INTO task_instance_error_history (task_instance_id, task_instance_error_history_id, error_details) VALUES ($1, $2, $4)
         )
         UPDATE task_instance
-        SET status = CASE WHEN (select should_fail from cte) THEN 'failed'::task_status ELSE 'pending'::task_status END,
-            last_error_details = $3
+        SET status = CASE WHEN (select should_fail from cte) THEN 'failed'::task_status ELSE 'pending'::task_status END
         WHERE task_instance_id = $1
         "#,
         id,
+        error_id,
         n_retries,
         details
     )
@@ -308,7 +321,12 @@ async fn pick_task(
         SET status = 'running', picked_up_at = now(), attempt = ti.attempt + 1
         FROM updated_task
         WHERE ti.task_instance_id = updated_task.task_instance_id
-        RETURNING ti.task_id, ti.task_instance_id, ti.status as "status: TaskInstanceStatus", ti.picked_up_at, ti.attempt, (select parent_task_id from updated_task), (select queue_name from updated_task) as "queue_name!", (select project_id from updated_task) as "project_ident!"
+        RETURNING ti.task_id,
+                  ti.task_instance_id,
+                  ti.status as "status: TaskInstanceStatus",
+                  ti.picked_up_at,
+                  ti.attempt,
+                  (select parent_task_id from updated_task), (select queue_name from updated_task) as "queue_name!", (select project_id from updated_task) as "project_ident!", '{}'::TEXT[] as "error_history!"
         "#,
         queue_name,
         max_age,
@@ -459,6 +477,7 @@ pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
        t.schedule,
        t.status as "status!: TaskStatus",
        CASE
+           -- TODO: join tabular names + warehouse names etc into the json object
            WHEN te.task_id IS NOT NULL THEN jsonb_build_object('tabular_expirations', row_to_json(te.*))
            WHEN tp.task_id IS NOT NULL THEN jsonb_build_object('tabular_purges', row_to_json(tp.*))
            WHEN s.task_id IS NOT NULL THEN jsonb_build_object('statistics_task', row_to_json(s.*))
@@ -526,30 +545,55 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
         .unzip();
 
     let r = sqlx::query!(
-        r#"SELECT ti.task_id,
-                  ti.task_instance_id,
-                  attempt,
-                  ti.status as "status: TaskInstanceStatus",
-                  ti.last_error_details,
-                  ti.picked_up_at,
-                  ti.suspend_until,
-                  ti.completed_at,
-                  ti.created_at,
-                  ti.updated_at,
-                  t.project_id,
-                  t.queue_name,
-                  t.parent_task_id
-        FROM task_instance ti
-        JOIN task t ON ti.task_id = t.task_id
-        WHERE (t.task_id = $1 or $1 IS NULL) AND ((t.created_at > $2 OR $2 IS NULL) OR (t.created_at = $2 AND t.task_id > $3))
-        LIMIT $4"#,
+        r#"SELECT
+                                            ti.task_id,
+                                            ti.task_instance_id,
+                                            ti.attempt,
+                                            ti.status as "status: TaskInstanceStatus",
+                                            ti.last_error_details,
+                                            ti.picked_up_at,
+                                            ti.suspend_until,
+                                            ti.completed_at,
+                                            ti.created_at,
+                                            ti.updated_at,
+                                            t.project_id,
+                                            t.queue_name,
+                                            t.parent_task_id,
+                                            array_agg(tieh.error_details) as error_details
+                                        FROM task_instance ti
+                                        JOIN task t
+                                            ON ti.task_id = t.task_id
+                                        LEFT JOIN task_instance_error_history tieh
+                                            ON ti.task_instance_id = tieh.task_instance_id
+                                        WHERE
+                                            t.task_id = $1
+                                            AND (
+                                                (t.created_at > $2 OR $2 IS NULL)
+                                                OR (t.created_at = $2 AND t.task_id > $3)
+                                            )
+                                        GROUP BY
+                                            ti.task_id,
+                                            ti.task_instance_id,
+                                            ti.attempt,
+                                            ti.status,
+                                            ti.last_error_details,
+                                            ti.picked_up_at,
+                                            ti.suspend_until,
+                                            ti.completed_at,
+                                            ti.created_at,
+                                            ti.updated_at,
+                                            t.project_id,
+                                            t.queue_name,
+                                            t.parent_task_id
+                                        LIMIT $4"#,
         task_id.map(Uuid::from),
         token_ts,
         token_id,
         page_size,
     )
-        .fetch_all(conn)
-        .await.map_err(|db| db.into_error_model("Failed to read tasks."))?;
+    .fetch_all(conn)
+    .await
+    .map_err(|db| db.into_error_model("Failed to read tasks."))?;
     Ok(ListTaskInstancesResponse {
         tasks: r
             .into_iter()
@@ -559,6 +603,7 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
                     task_instance_id: row.task_instance_id,
                     attempt: row.attempt,
                     status: row.status,
+                    error_history: row.error_details.unwrap_or_default(),
                     picked_up_at: row.picked_up_at,
                     project_ident: row.project_id.into(),
                     queue_name: row.queue_name,

@@ -37,6 +37,16 @@ create table task_instance
     CONSTRAINT task_instance_unique_idempotency_key UNIQUE (idempotency_key, task_id)
 );
 
+create table task_instance_error_history
+(
+    task_instance_error_history_id uuid primary key,
+    task_instance_id               uuid not null references task_instance (task_instance_id) ON DELETE CASCADE,
+    error_details                  text not null
+);
+
+select trigger_updated_at('task_instance_error_history');
+call add_time_columns('task_instance_error_history');
+
 insert into task_instance (task_instance_id, task_id, attempt, idempotency_key, status, suspend_until,
                            last_error_details)
 select task_id,

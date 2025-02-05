@@ -252,6 +252,7 @@ pub struct TaskInstance {
     pub picked_up_at: Option<chrono::DateTime<Utc>>,
     pub parent_task_id: Option<Uuid>,
     pub attempt: i32,
+    pub error_history: Vec<String>,
     pub queue_name: String,
     pub project_ident: ProjectIdent,
 }
