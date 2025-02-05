@@ -543,9 +543,8 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
         .as_ref()
         .map(|PaginateToken::V1(V1PaginateToken { created_at, id })| (created_at, id))
         .unzip();
-
-    let r = sqlx::query!(
-        r#"SELECT
+    tracing::debug!("Listing task instances for task_id: '{task_id:?}', page_size: '{page_size}'");
+    let r = sqlx::query!(r#"SELECT
                                             ti.task_id,
                                             ti.task_instance_id,
                                             ti.attempt,
@@ -559,14 +558,14 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
                                             t.project_id,
                                             t.queue_name,
                                             t.parent_task_id,
-                                            array_agg(tieh.error_details) as error_details
+                                            array_agg(tieh.error_details) FILTER (WHERE tieh.error_details IS NOT NULL) as error_details
                                         FROM task_instance ti
                                         JOIN task t
                                             ON ti.task_id = t.task_id
                                         LEFT JOIN task_instance_error_history tieh
                                             ON ti.task_instance_id = tieh.task_instance_id
                                         WHERE
-                                            t.task_id = $1
+                                            (t.task_id = $1 OR $1 IS NULL)
                                             AND (
                                                 (t.created_at > $2 OR $2 IS NULL)
                                                 OR (t.created_at = $2 AND t.task_id > $3)
@@ -593,7 +592,10 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
     )
     .fetch_all(conn)
     .await
-    .map_err(|db| db.into_error_model("Failed to read tasks."))?;
+    .map_err(|db| {
+        tracing::debug!("Failed to read tasks. {db:?} {db}");
+        db.into_error_model("Failed to read tasks.")
+    })?;
     Ok(ListTaskInstancesResponse {
         tasks: r
             .into_iter()

@@ -166,6 +166,6 @@ mod test {
             )
             .await
             .unwrap();
-        assert_eq!(ti.tasks.len(), 1, "{t:?}, {ti:?}");
+        assert_eq!(ti.tasks.len(), 1, "{t:?}\n{ti:?}");
     }
 }
