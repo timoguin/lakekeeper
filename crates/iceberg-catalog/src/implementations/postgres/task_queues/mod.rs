@@ -331,7 +331,7 @@ async fn record_success(id: Uuid, pool: &PgPool) -> Result<(), IcebergErrorRespo
     let _ = sqlx::query!(
         r#"
         UPDATE task_instance
-        SET status = 'done'
+        SET status = 'done', completed_at = now()
         WHERE task_instance_id = $1
         "#,
         id
@@ -614,7 +614,7 @@ pub(crate) mod test {
             &sqlx::postgres::types::PgInterval {
                 months: 0,
                 days: 0,
-                microseconds: 999999,
+                microseconds: 999_999,
             },
         )
         .await
