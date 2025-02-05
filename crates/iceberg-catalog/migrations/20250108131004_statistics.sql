@@ -31,7 +31,6 @@ create table task_instance
     idempotency_key    uuid        not null,
     status             task_status not null,
     last_error_details text,
-    last_heartbeat_at  timestamptz,
     picked_up_at       timestamptz,
     suspend_until      timestamptz,
     completed_at       timestamptz,

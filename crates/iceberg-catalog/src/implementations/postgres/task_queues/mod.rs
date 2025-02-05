@@ -536,7 +536,6 @@ pub(crate) async fn list_task_instances<'e, E: Executor<'e, Database = sqlx::Pos
                   ti.completed_at,
                   ti.created_at,
                   ti.updated_at,
-                  ti.last_heartbeat_at,
                   t.project_id,
                   t.queue_name,
                   t.parent_task_id
