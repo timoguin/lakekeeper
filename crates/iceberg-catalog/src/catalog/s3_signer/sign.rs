@@ -96,9 +96,8 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                     &CatalogTableAction::CanGetMetadata,
                 )
                 .await
-                .map_err(|e| {
+                .inspect_err(|e| {
                     tracing::debug!(error = %e.error, "Failed to authorize table action");
-                    e
                 })?
         } else {
             tracing::debug!(
@@ -119,15 +118,13 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 state.v1_state.catalog.clone(),
             )
             .await
-            .map(|inner| {
+            .inspect(|inner| {
                 tracing::debug!(
                     "Table resolve result: '{}' ",
                     inner
                         .as_ref()
-                        .map(|t| t.table_id.to_string())
-                        .unwrap_or("None".to_string())
+                        .map_or("None".to_string(), |t| t.table_id.to_string())
                 );
-                inner
             });
             authorizer
                 .require_table_action(
@@ -136,9 +133,8 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                     &CatalogTableAction::CanGetMetadata,
                 )
                 .await
-                .map_err(|e| {
+                .inspect_err(|e| {
                     tracing::debug!(error = %e.error, "Failed to authorize table action");
-                    e
                 })?
         };
 
