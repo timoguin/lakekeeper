@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use super::{cancel_pending_tasks, TaskFilter};
+use super::{delete_task, TaskFilter};
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use crate::implementations::postgres::task_queues::{
     pick_task, queue_task, record_failure, record_success,
@@ -125,8 +125,9 @@ impl TaskQueue for StatsQueue {
         .await
     }
 
-    async fn cancel_pending_tasks(&self, filter: TaskFilter) -> crate::api::Result<()> {
-        cancel_pending_tasks(&self.pg_queue, filter, self.queue_name()).await
+    async fn delete_task(&self, filter: TaskFilter) -> crate::api::Result<()> {
+        delete_task(&self.pg_queue.read_write.write_pool, &filter).await?;
+        Ok(())
     }
 }
 

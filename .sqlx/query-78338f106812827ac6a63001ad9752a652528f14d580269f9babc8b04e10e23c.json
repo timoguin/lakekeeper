@@ -28,7 +28,7 @@
               "Enum": [
                 "pending",
                 "running",
-                "done",
+                "success",
                 "failed",
                 "cancelled"
               ]

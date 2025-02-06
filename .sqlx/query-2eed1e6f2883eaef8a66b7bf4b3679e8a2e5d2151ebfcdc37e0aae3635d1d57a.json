@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT t.task_id, schedule, t.idempotency_key\n            FROM task t\n            WHERE (($1 = t.task_id or $1 is null) AND t.status = 'active' AND ((next_tick < $2 AT TIME ZONE 'UTC' AND next_tick is not null)))\n            FOR UPDATE SKIP LOCKED\n            LIMIT 1",
+  "query": "\n            SELECT t.task_id, schedule, t.idempotency_key\n            FROM task t\n            WHERE ($1 = t.task_id or $1 is null) AND t.status = 'enabled' AND (next_tick < now() AT TIME ZONE 'UTC' AND next_tick is not null)\n            ORDER BY next_tick\n            FOR UPDATE SKIP LOCKED\n            LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -21,8 +21,7 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Timestamptz"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -31,5 +30,5 @@
       false
     ]
   },
-  "hash": "ac72f04501cfb015dac3358279c2211d97f738d49492d6a88f9985a4a2f34c37"
+  "hash": "2eed1e6f2883eaef8a66b7bf4b3679e8a2e5d2151ebfcdc37e0aae3635d1d57a"
 }

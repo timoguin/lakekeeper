@@ -83,7 +83,7 @@ impl TaskQueues {
         &self,
         filter: TaskFilter,
     ) -> crate::api::Result<()> {
-        self.tabular_expiration.cancel_pending_tasks(filter).await
+        self.tabular_expiration.delete_task(filter).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -149,8 +149,8 @@ impl TaskQueues {
                 tracing::error!("Tabular purge queue handler exited unexpectedly");
                 Err(anyhow::anyhow!("Tabular purge queue handler exited unexpectedly"))
             },
-            _ = scheduler_task => {
-                tracing::error!("Scheduler task exited unexpectedly");
+            e = scheduler_task => {
+                tracing::error!("Scheduler task exited unexpectedly {e:?}");
                 Err(anyhow::anyhow!("Scheduler task exited unexpectedly"))
             }
             _ = stats_handler => {
@@ -214,7 +214,7 @@ pub trait TaskQueue: Debug {
     async fn pick_new_task(&self) -> crate::api::Result<Option<Self::Task>>;
     async fn record_success(&self, id: Uuid) -> crate::api::Result<()>;
     async fn record_failure(&self, id: Uuid, error_details: &str) -> crate::api::Result<()>;
-    async fn cancel_pending_tasks(&self, filter: TaskFilter) -> crate::api::Result<()>;
+    async fn delete_task(&self, filter: TaskFilter) -> crate::api::Result<()>;
 
     async fn retrying_record_success(&self, task: &TaskInstance) {
         self.retrying_record_success_or_failure(task, Status::Success)
@@ -274,13 +274,11 @@ pub struct Task {
 #[cfg_attr(feature = "sqlx-postgres", derive(sqlx::Type))]
 #[cfg_attr(
     feature = "sqlx-postgres",
-    sqlx(type_name = "task_status2", rename_all = "kebab-case")
+    sqlx(type_name = "schedule_Status", rename_all = "kebab-case")
 )]
 pub enum TaskStatus {
-    Active,
-    Inactive,
-    Cancelled,
-    Done,
+    Enabled,
+    Disabled,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -291,7 +289,7 @@ pub enum TaskStatus {
 )]
 pub enum TaskInstanceStatus {
     Pending,
-    Finished,
+    Success,
     Running,
     Failed,
     Cancelled,

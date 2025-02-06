@@ -2,7 +2,12 @@ mod stats;
 mod tabular_expiration_queue;
 mod tabular_purge_queue;
 
+use crate::api::iceberg::v1::{PaginationQuery, MAX_PAGE_SIZE};
+use crate::api::management::v1::task::{
+    ListTaskInstancesResponse, ListTasksRequest, ListTasksResponse,
+};
 use crate::implementations::postgres::dbutils::DBErrorHandler;
+use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToken};
 use crate::implementations::postgres::ReadWrite;
 use crate::service::task_queue::{
     Schedule, Scheduler, Task, TaskFilter, TaskId, TaskInstance, TaskInstanceStatus,
@@ -10,9 +15,8 @@ use crate::service::task_queue::{
 };
 use crate::ProjectIdent;
 use async_trait::async_trait;
-use std::str::FromStr;
-
 pub use stats::StatsQueue;
+use std::str::FromStr;
 pub use tabular_expiration_queue::TabularExpirationQueue;
 pub use tabular_purge_queue::TabularPurgeQueue;
 
@@ -64,6 +68,41 @@ impl PgQueue {
     }
 }
 
+macro_rules! impl_pg_task_queue {
+    ($name:ident) => {
+        use crate::implementations::postgres::task_queues::PgQueue;
+        use crate::implementations::postgres::ReadWrite;
+
+        #[derive(Debug, Clone)]
+        pub struct $name {
+            pg_queue: PgQueue,
+        }
+
+        impl $name {
+            #[must_use]
+            pub fn new(read_write: ReadWrite) -> Self {
+                Self {
+                    pg_queue: PgQueue::new(read_write),
+                }
+            }
+
+            /// Create a new `$name` with the default configuration.
+            ///
+            /// # Errors
+            /// Returns an error if the max age duration is invalid.
+            pub fn from_config(
+                read_write: ReadWrite,
+                config: TaskQueueConfig,
+            ) -> anyhow::Result<Self> {
+                Ok(Self {
+                    pg_queue: PgQueue::from_config(read_write, config)?,
+                })
+            }
+        }
+    };
+}
+use impl_pg_task_queue;
+
 #[derive(Debug)]
 pub struct PgScheduler {
     pub read_write: ReadWrite,
@@ -101,12 +140,15 @@ async fn schedule_task(
             r#"
             SELECT t.task_id, schedule, t.idempotency_key
             FROM task t
-            WHERE (($1 = t.task_id or $1 is null) AND t.status = 'active' AND ((next_tick < $2 AT TIME ZONE 'UTC' AND next_tick is not null)))
+            WHERE ($1 = t.task_id or $1 is null) AND t.status = 'enabled' AND (next_tick < now() AT TIME ZONE 'UTC' AND next_tick is not null)
+            ORDER BY next_tick
             FOR UPDATE SKIP LOCKED
             LIMIT 1"#,
             single_task,
-            Utc::now()
-        ).fetch_optional(&mut *read_write).await.map_err(|e| e.into_error_model("Failed to check for schedulable tasks."))?;
+        ).fetch_optional(&mut *read_write).await.map_err(|e| {
+            tracing::error!(?e, "Failed to check for schedulable tasks.");
+            e.into_error_model("Failed to check for schedulable tasks.")
+        })?;
 
     if let Some(row) = task {
         let task_id = row.task_id;
@@ -161,44 +203,49 @@ async fn schedule_task_instance(
 
     let has_next = next_tick.is_some();
     let task_instance_id = Uuid::now_v7();
-    // TODO: Updating task status like this transitions the task to done before its last
-    //       instance is done. That means we'll probably have to introduce a secondary status
-    //       to capture the success-state of the task as a function of its instances.
-    //       it also complicates task resets quite a bit, e.g. when we drop a table, we create a
-    //       tabular_expiration task, the task spawns a task_instance and transitions to done, now
-    //       when we cancel the task, we transition the task_instance to cancelled, but the task
-    //       remains in done. When we're now dropping the table again, we have to check if the task
-    //       has a task_instance in cancelled state, if it does, we have to transition the task to
-    //       active.
-
-    // split task_status2 -> enabled/disabled + status-enum (active, done, cancelled, failed)
 
     tracing::debug!("Scheduling task instance for task_id: '{task_id}', next_tick: '{next_tick:?}', run_at: '{run_at:?}', idempotency_key: '{idempotency_key}'");
-    sqlx::query!(
-            r#"
-                WITH updated_tasks AS (UPDATE task
-                    SET next_tick = $5,
-                    status = CASE WHEN $6 THEN 'active'::task_status2 ELSE 'done'::task_status2 END
-                    WHERE task_id = $1)
-                INSERT INTO task_instance (task_id, task_instance_id, status, suspend_until, idempotency_key)
-                    VALUES
-                    ($1, $2, 'pending', $3, $4)
-                ON CONFLICT ON CONSTRAINT task_instance_unique_idempotency_key
-                DO UPDATE SET
-                    status = EXCLUDED.status,
-                    suspend_until = EXCLUDED.suspend_until
-                WHERE task_instance.status = 'cancelled'
-                "#,
-            task_id,
-            task_instance_id,
-            run_at,
-            idempotency_key,
-            next_tick,
-            has_next
-        )
-        .execute(conn)
-        .await
-        .map_err(|e| e.into_error_model("Failed to schedule task instance"))?;
+
+    let it = sqlx::query_scalar!(
+        r#"WITH updated_tasks AS (
+           UPDATE task
+           SET
+               next_tick = $5,
+               status = CASE
+                   WHEN $6 THEN 'enabled'::schedule_status
+                   ELSE 'disabled'::schedule_status
+               END
+           WHERE task_id = $1
+           )
+           INSERT INTO task_instance (
+               task_id,
+               task_instance_id,
+               status,
+               suspend_until,
+               idempotency_key
+           )
+           VALUES ($1, $2, 'pending', $3, $4)
+           ON CONFLICT ON CONSTRAINT task_instance_unique_idempotency_key DO NOTHING
+           RETURNING task_instance_id"#,
+        task_id,
+        task_instance_id,
+        run_at,
+        idempotency_key,
+        next_tick,
+        has_next
+    )
+    .fetch_optional(conn)
+    .await
+    .map_err(|e| {
+        tracing::error!(?e, "Failed to schedule task instance");
+        e.into_error_model("Failed to schedule task instance")
+    })?;
+
+    if let Some(it) = it {
+        tracing::debug!("Scheduled task instance with id: '{it}'");
+    } else {
+        tracing::debug!("Task instance already exists.");
+    }
 
     Ok(())
 }
@@ -217,8 +264,6 @@ async fn queue_task(
     });
 
     let task_id = Uuid::now_v7();
-    // TODO: in this query, we have to deal with the issue that we might have to restart a task which
-    //       is in done state, see comment in schedule_task_instance
     let inserted = sqlx::query_scalar!(
         r#"INSERT INTO task(
                 task_id,
@@ -227,17 +272,9 @@ async fn queue_task(
                 parent_task_id,
                 idempotency_key,
                 project_id,
-                schedule,
-                version)
-        VALUES ($1, $2, 'active', $3, $4, $5, $6, $7)
-        ON CONFLICT ON CONSTRAINT unique_idempotency_key DO UPDATE
-        SET
-            status = 'active'
-        WHERE task.status in ('done', 'cancelled')
-        AND NOT EXISTS (SELECT 1
-            FROM task_instance ti
-            WHERE task_id = task.task_id
-            AND ti.status in ('running', 'done', 'failed'))
+                schedule)
+        VALUES ($1, $2, 'enabled', $3, $4, $5, $6)
+        ON CONFLICT ON CONSTRAINT unique_idempotency_key DO NOTHING
         RETURNING task_id"#,
         task_id,
         queue_name,
@@ -245,7 +282,6 @@ async fn queue_task(
         idempotency_key,
         *project_ident,
         sched,
-        0, // TODO: add version,
     )
     .fetch_optional(&mut *conn)
     .await
@@ -264,9 +300,95 @@ async fn queue_task(
         )
         .await?;
     } else {
-        tracing::debug!("Task already exists and wasn't restarted.");
+        tracing::debug!("Task already exists.");
     };
     Ok(inserted)
+}
+
+#[tracing::instrument]
+async fn pick_task(
+    pool: &PgPool,
+    queue_name: &'static str,
+    max_age: &sqlx::postgres::types::PgInterval,
+) -> Result<Option<TaskInstance>, IcebergErrorResponse> {
+    let x = sqlx::query_as!(
+        TaskInstance,
+        r#"
+        WITH updated_task_instance AS (
+            SELECT
+                ti.task_id,
+                ti.task_instance_id,
+                t.queue_name,
+                t.parent_task_id,
+                t.project_id
+            FROM task_instance ti
+            JOIN task t ON ti.task_id = t.task_id
+            WHERE (
+                ti.status = 'pending'
+                AND t.queue_name = $1
+                AND (
+                    (ti.suspend_until < now() AT TIME ZONE 'UTC')
+                    OR (ti.suspend_until IS NULL)
+                )
+            ) OR (
+                ti.status = 'running'
+                AND (now() - ti.picked_up_at) > $2
+            )
+            ORDER BY ti.suspend_until NULLS FIRST
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+        )
+        UPDATE task_instance ti
+        SET
+            status = 'running',
+            picked_up_at = now(),
+            attempt = ti.attempt + 1
+        FROM updated_task_instance
+        WHERE ti.task_instance_id = updated_task_instance.task_instance_id
+        RETURNING
+            ti.task_id,
+            ti.task_instance_id,
+            ti.status as "status: TaskInstanceStatus",
+            ti.picked_up_at,
+            ti.attempt,
+            (select parent_task_id from updated_task_instance),
+            (select queue_name from updated_task_instance) as "queue_name!",
+            (select project_id from updated_task_instance) as "project_ident!",
+            '{}'::TEXT[] as "error_history!"
+        "#,
+        queue_name,
+        max_age,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(?e, "Failed to pick a task");
+        e.into_error_model(format!("Failed to pick a '{queue_name}' task"))
+    })?;
+
+    if let Some(task) = x.as_ref() {
+        tracing::info!("Picked up task: {:?}", task);
+    }
+
+    Ok(x)
+}
+
+async fn record_success(id: Uuid, pool: &PgPool) -> Result<(), IcebergErrorResponse> {
+    let _ = sqlx::query!(
+        r#"UPDATE task_instance
+           SET status = 'success', completed_at = now()
+           WHERE task_instance_id = $1
+           RETURNING task_instance_id"#,
+        id
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(?e, "Failed to record task success");
+        e.into_error_model("failed to record task success")
+    })?;
+
+    Ok(())
 }
 
 async fn record_failure(
@@ -276,7 +398,7 @@ async fn record_failure(
     details: &str,
 ) -> Result<(), IcebergErrorResponse> {
     let error_id = Uuid::now_v7();
-    sqlx::query!(
+    let _ = sqlx::query!(
         r#"
         WITH cte as (
             SELECT attempt >= $3 as should_fail
@@ -289,164 +411,59 @@ async fn record_failure(
         UPDATE task_instance
         SET status = CASE WHEN (select should_fail from cte) THEN 'failed'::task_status ELSE 'pending'::task_status END
         WHERE task_instance_id = $1
+        RETURNING task_instance_id
         "#,
         id,
         error_id,
         n_retries,
         details
     )
-        .execute(conn)
-        .await.map_err(|e| e.into_error_model("failed to record task failure"))?;
-    Ok(())
-}
-
-#[tracing::instrument]
-async fn pick_task(
-    pool: &PgPool,
-    queue_name: &'static str,
-    max_age: &sqlx::postgres::types::PgInterval,
-) -> Result<Option<TaskInstance>, IcebergErrorResponse> {
-    let x = sqlx::query_as!(
-        TaskInstance,
-        r#"
-        WITH updated_task AS (
-            SELECT ti.task_id, ti.task_instance_id, t.queue_name, t.parent_task_id, t.project_id
-            FROM task_instance ti JOIN task t ON ti.task_id = t.task_id
-            WHERE (ti.status = 'pending' AND t.queue_name = $1 AND ((ti.suspend_until < now() AT TIME ZONE 'UTC') OR (ti.suspend_until IS NULL)))
-                    OR (ti.status = 'running' AND (now() - ti.picked_up_at) > $2)
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1
-        )
-        UPDATE task_instance ti
-        SET status = 'running', picked_up_at = now(), attempt = ti.attempt + 1
-        FROM updated_task
-        WHERE ti.task_instance_id = updated_task.task_instance_id
-        RETURNING ti.task_id,
-                  ti.task_instance_id,
-                  ti.status as "status: TaskInstanceStatus",
-                  ti.picked_up_at,
-                  ti.attempt,
-                  (select parent_task_id from updated_task), (select queue_name from updated_task) as "queue_name!", (select project_id from updated_task) as "project_ident!", '{}'::TEXT[] as "error_history!"
-        "#,
-        queue_name,
-        max_age,
-    )
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| {
-            tracing::error!(?e, "Failed to pick a task");
-            e.into_error_model(format!("Failed to pick a '{queue_name}' task"))
-        })?;
-
-    if let Some(task) = x.as_ref() {
-        tracing::info!("Picked up task: {:?}", task);
-    }
-
-    Ok(x)
-}
-
-async fn record_success(id: Uuid, pool: &PgPool) -> Result<(), IcebergErrorResponse> {
-    let _ = sqlx::query!(
-        r#"
-        UPDATE task_instance
-        SET status = 'done', completed_at = now()
-        WHERE task_instance_id = $1
-        "#,
-        id
-    )
-    .execute(pool)
+    .fetch_one(conn)
     .await
-    .map_err(|e| e.into_error_model("failed to record task success"))?;
+    .map_err(|err| {
+        tracing::error!(?err, "Failed to record task failure");
+        err.into_error_model("failed to record task failure")
+    })?;
     Ok(())
 }
 
-macro_rules! impl_pg_task_queue {
-    ($name:ident) => {
-        use crate::implementations::postgres::task_queues::PgQueue;
-        use crate::implementations::postgres::ReadWrite;
-
-        #[derive(Debug, Clone)]
-        pub struct $name {
-            pg_queue: PgQueue,
-        }
-
-        impl $name {
-            #[must_use]
-            pub fn new(read_write: ReadWrite) -> Self {
-                Self {
-                    pg_queue: PgQueue::new(read_write),
-                }
-            }
-
-            /// Create a new `$name` with the default configuration.
-            ///
-            /// # Errors
-            /// Returns an error if the max age duration is invalid.
-            pub fn from_config(
-                read_write: ReadWrite,
-                config: TaskQueueConfig,
-            ) -> anyhow::Result<Self> {
-                Ok(Self {
-                    pg_queue: PgQueue::from_config(read_write, config)?,
-                })
-            }
-        }
-    };
-}
-use crate::api::iceberg::v1::{PaginationQuery, MAX_PAGE_SIZE};
-use crate::api::management::v1::task::{
-    ListTaskInstancesResponse, ListTasksRequest, ListTasksResponse,
-};
-use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToken};
-use impl_pg_task_queue;
-
-/// Cancel pending tasks for a warehouse
-/// If `task_ids` are provided in `filter` which are not pending, they are ignored
-async fn cancel_pending_tasks(
-    queue: &PgQueue,
-    filter: TaskFilter,
-    // TODO: remove?
-    _queue_name: &'static str,
-) -> crate::api::Result<()> {
-    // TODO: we're only cancelling task_instances here, have to cancel tasks elsewhere too, probably different api?
+async fn delete_task(queue: &PgPool, filter: &TaskFilter) -> crate::api::Result<()> {
     match filter {
         TaskFilter::TaskIds(task_ids) => {
-            sqlx::query!(r#"WITH updated_task AS (
-                                UPDATE task t
-                                SET status = 'cancelled'
-                                FROM (
-                                    SELECT task_id
-                                    FROM task_instance ti
-                                    WHERE ti.task_id = ANY('{0194d191-b4b8-7bf3-930c-2310c4ebabba}')
-                                    GROUP BY task_id
-                                    HAVING BOOL_AND(ti.status IN ('pending', 'cancelled'))
-                                ) as sti
-                                WHERE sti.task_id = t.task_id
-                        ),
-                         updated_task_instance AS (
-                             UPDATE task_instance ti
-                             SET status = 'cancelled'
-                             FROM task t
-                             WHERE ti.status = 'pending' AND ti.task_id = ANY($1) AND t.task_id = ti.task_id
-                             RETURNING ti.task_instance_id
-                         )
-                         SELECT task_instance_id FROM updated_task_instance"#,
+            let r = sqlx::query!(
+                r#"DELETE FROM task
+                    WHERE task_id = ANY($1)
+                    AND (
+                        -- Case 1: No task instances exist
+                        NOT EXISTS (
+                            SELECT 1
+                            FROM task_instance
+                            WHERE task_instance.task_id = task.task_id
+                        )
+                        OR
+                        -- Case 2: All instances are in pending/failed/done state
+                        NOT EXISTS (
+                            SELECT 1
+                            FROM task_instance
+                            WHERE task_instance.task_id = task.task_id
+                            AND status NOT IN ('pending', 'failed', 'success')
+                        ));"#,
                 &task_ids.iter().map(|s| **s).collect::<Vec<_>>(),
             )
-            .fetch_all(&queue
-                .read_write
-                .write_pool)
+            .execute(queue)
             .await
             .map_err(|e| {
-                tracing::error!(?e, "Failed to cancel Tasks for task_ids {task_ids:?}");
-                e.into_error_model("Failed to cancel Tasks for specified ids")
+                tracing::error!("Failed to disable Tasks for task_ids {task_ids:?}, {e:?}");
+                e.into_error_model("Failed to disable Tasks for specified ids")
             })?;
+            tracing::debug!("Deleted {}/{} tasks", r.rows_affected(), task_ids.len());
         }
-    }
+    };
 
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
     PaginationQuery {
         page_token,
@@ -477,18 +494,61 @@ pub(crate) async fn list_tasks<'e, E: Executor<'e, Database = sqlx::Postgres>>(
        t.schedule,
        t.status as "status!: TaskStatus",
        CASE
-           -- TODO: join tabular names + warehouse names etc into the json object
-           WHEN te.task_id IS NOT NULL THEN jsonb_build_object('tabular_expirations', row_to_json(te.*))
-           WHEN tp.task_id IS NOT NULL THEN jsonb_build_object('tabular_purges', row_to_json(tp.*))
-           WHEN s.task_id IS NOT NULL THEN jsonb_build_object('statistics_task', row_to_json(s.*))
+           WHEN te.task_id IS NOT NULL THEN jsonb_build_object(
+               'tabular_expirations',
+               jsonb_build_object(
+                   'task_data', row_to_json(te.*),
+                   'tabular', (
+                        SELECT row_to_json(subq)
+                        FROM (
+                            SELECT tab.name as tabular_name,
+                                   n.namespace_name,
+                                   w.warehouse_name
+                            FROM tabular tab
+                            JOIN namespace n ON tab.namespace_id = n.namespace_id
+                            JOIN warehouse w ON n.warehouse_id = w.warehouse_id
+                            WHERE tab.tabular_id = te.tabular_id
+                        ) subq
+                    )
+               )
+           )
+           WHEN tp.task_id IS NOT NULL THEN jsonb_build_object(
+               'tabular_purges',
+               jsonb_build_object(
+                   'task_data', row_to_json(tp.*),
+                   'tabular', (
+                        SELECT row_to_json(subq)
+                        FROM (
+                            SELECT tab.name as tabular_name,
+                                   n.namespace_name,
+                                   w.warehouse_name
+                            FROM tabular tab
+                            JOIN namespace n ON tab.namespace_id = n.namespace_id
+                            JOIN warehouse w ON n.warehouse_id = w.warehouse_id
+                            WHERE tab.tabular_id = te.tabular_id
+                        ) subq
+                    )
+               )
+           )
+           WHEN s.task_id IS NOT NULL THEN jsonb_build_object(
+               'statistics_task',
+               jsonb_build_object(
+                   'task_data', row_to_json(s.*),
+                   'warehouse', (
+                       SELECT row_to_json(ROW(w.warehouse_name))
+                       FROM warehouse w
+                       WHERE w.warehouse_id = s.warehouse_id
+                   )
+               )
+           )
         END as details
-FROM task t
-LEFT JOIN tabular_expirations te ON t.task_id = te.task_id
-LEFT JOIN tabular_purges tp ON t.task_id = tp.task_id
-LEFT JOIN statistics_task s ON t.task_id = s.task_id
-WHERE (t.project_id = $1 OR $1 IS NULL)
-      AND ((t.created_at > $2 OR $2 IS NULL) OR (t.created_at = $2 AND t.task_id > $3))
-LIMIT $4;"#,
+        FROM task t
+        LEFT JOIN tabular_expirations te ON t.task_id = te.task_id
+        LEFT JOIN tabular_purges tp ON t.task_id = tp.task_id
+        LEFT JOIN statistics_task s ON t.task_id = s.task_id
+        WHERE (t.project_id = $1 OR $1 IS NULL)
+              AND ((t.created_at > $2 OR $2 IS NULL) OR (t.created_at = $2 AND t.task_id > $3))
+        LIMIT $4;"#,
         project_ident.map(Uuid::from),
         token_ts,
         token_id,
@@ -945,12 +1005,27 @@ pub(crate) mod test {
         assert!(task2.parent_task_id.is_none());
         assert_eq!(&task2.queue_name, "test");
 
-        record_success(*task.task_id, &pool).await.unwrap();
-        record_success(id2, &pool).await.unwrap();
+        record_success(task.task_instance_id, &pool).await.unwrap();
+        record_success(task2.task_instance_id, &pool).await.unwrap();
+
+        let tis = list_task_instances(
+            None,
+            PaginationQuery {
+                page_token: PageToken::NotSpecified,
+                page_size: None,
+            },
+            &pool,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(tis.tasks.len(), 2);
+        assert_eq!(tis.tasks[0].status, TaskInstanceStatus::Success);
+        assert_eq!(tis.tasks[1].status, TaskInstanceStatus::Success);
     }
 
     #[sqlx::test]
-    async fn task_cancellation_works(pool: PgPool) {
+    async fn task_deletion_works(pool: PgPool) {
         create_test_project(pool.clone()).await;
         let mut conn = pool.acquire().await.unwrap();
         let config = TaskQueueConfig::default();
@@ -967,10 +1042,12 @@ pub(crate) mod test {
         .await
         .unwrap()
         .unwrap();
-
-        cancel_pending_tasks(&queue, TaskFilter::TaskIds(vec![id.into()]), "test")
-            .await
-            .unwrap();
+        delete_task(
+            &queue.read_write.write_pool,
+            &TaskFilter::TaskIds(vec![id.into()]),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(
             pick_task(&pool, "test", &queue.max_age).await.unwrap(),
@@ -990,10 +1067,7 @@ pub(crate) mod test {
         .await
         .unwrap();
 
-        assert_eq!(tasks.tasks.len(), 1);
-        assert_eq!(tasks.tasks[0].task_id, id.into());
-        // TODO: this happens because the task is marked as done once its last instance is scheduled
-        assert_eq!(tasks.tasks[0].status, TaskStatus::Done);
+        assert_eq!(tasks.tasks.len(), 0);
 
         let task_instances = list_task_instances(
             Some(id.into()),
@@ -1006,11 +1080,63 @@ pub(crate) mod test {
         .await
         .unwrap();
 
-        assert_eq!(task_instances.tasks.len(), 1);
-        assert_eq!(task_instances.tasks[0].task_id, id.into());
-        assert_eq!(
-            task_instances.tasks[0].status,
-            TaskInstanceStatus::Cancelled
-        );
+        assert_eq!(task_instances.tasks.len(), 0);
+    }
+
+    #[sqlx::test]
+    async fn cannot_delete_task_with_running_instance(pool: PgPool) {
+        create_test_project(pool.clone()).await;
+        let mut conn = pool.acquire().await.unwrap();
+        let config = TaskQueueConfig::default();
+        let queue = setup(pool.clone(), config);
+
+        let id = queue_task(
+            &mut conn,
+            "test",
+            None,
+            Uuid::new_v5(&TEST_WAREHOUSE, b"test"),
+            DEFAULT_PROJECT_ID.unwrap(),
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        let ti = pick_task(&pool, "test", &queue.max_age)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(ti.task_id, id.into());
+        assert!(matches!(ti.status, TaskInstanceStatus::Running));
+
+        let t = list_tasks(
+            PaginationQuery {
+                page_token: PageToken::NotSpecified,
+                page_size: None,
+            },
+            ListTasksRequest {
+                project_ident: None,
+            },
+            &pool,
+        )
+        .await
+        .unwrap();
+        assert_eq!(t.tasks.len(), 1);
+        assert_eq!(t.tasks[0].task_id, id.into());
+        let tis = list_task_instances(
+            Some(id.into()),
+            PaginationQuery {
+                page_token: PageToken::NotSpecified,
+                page_size: None,
+            },
+            &pool,
+        )
+        .await
+        .unwrap();
+        assert_eq!(tis.tasks.len(), 1);
+        assert_eq!(tis.tasks[0].task_id, id.into());
+        assert_eq!(tis.tasks[0].status, TaskInstanceStatus::Running);
+        assert_eq!(tis.tasks[0].task_instance_id, ti.task_instance_id);
     }
 }

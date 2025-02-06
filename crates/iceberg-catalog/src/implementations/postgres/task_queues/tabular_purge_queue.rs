@@ -5,12 +5,12 @@ use crate::api::management::v1::TabularType;
 use crate::implementations::postgres::dbutils::DBErrorHandler;
 use crate::implementations::postgres::tabular::TabularType as DbTabularType;
 use crate::implementations::postgres::task_queues::{
-    pick_task, queue_task, record_failure, record_success,
+    delete_task, pick_task, queue_task, record_failure, record_success,
 };
 use crate::service::task_queue::tabular_purge_queue::{TabularPurgeInput, TabularPurgeTask};
 use crate::service::task_queue::{TaskId, TaskQueue, TaskQueueConfig};
 
-use super::{cancel_pending_tasks, TaskFilter};
+use super::TaskFilter;
 
 super::impl_pg_task_queue!(TabularPurgeQueue);
 
@@ -160,8 +160,9 @@ impl TaskQueue for TabularPurgeQueue {
         Ok(Some(task_id.into()))
     }
 
-    async fn cancel_pending_tasks(&self, filter: TaskFilter) -> crate::api::Result<()> {
-        cancel_pending_tasks(&self.pg_queue, filter, self.queue_name()).await
+    async fn delete_task(&self, filter: TaskFilter) -> crate::api::Result<()> {
+        delete_task(&self.pg_queue.read_write.write_pool, &filter).await?;
+        Ok(())
     }
 }
 
