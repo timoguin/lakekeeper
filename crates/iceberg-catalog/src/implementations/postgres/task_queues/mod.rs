@@ -846,7 +846,7 @@ pub(crate) mod test {
         assert!(task.parent_task_id.is_none());
         assert_eq!(&task.queue_name, "test");
 
-        record_success(id, &pool).await.unwrap();
+        record_success(task.task_instance_id, &pool).await.unwrap();
 
         assert!(pick_task(&pool, "test", &queue.max_age)
             .await
