@@ -890,7 +890,6 @@ pub mod v1 {
         pub next_page_token: Option<String>,
     }
 
-    // TODO: body with optional project id
     #[utoipa::path(
         get,
         tag = "task",
