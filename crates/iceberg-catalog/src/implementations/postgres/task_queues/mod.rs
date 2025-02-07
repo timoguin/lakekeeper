@@ -817,6 +817,7 @@ pub(crate) mod test {
     #[sqlx::test]
     async fn test_success_task_arent_polled(pool: PgPool) {
         create_test_project(pool.clone()).await;
+
         let mut conn = pool.acquire().await.unwrap();
 
         let config = TaskQueueConfig::default();
@@ -833,7 +834,7 @@ pub(crate) mod test {
         .await
         .unwrap()
         .unwrap();
-
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         let task = pick_task(&pool, "test", &queue.max_age)
             .await
             .unwrap()
