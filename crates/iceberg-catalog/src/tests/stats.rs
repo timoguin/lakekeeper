@@ -56,7 +56,10 @@ mod test {
             .unwrap();
         assert!(t.schedule.is_some());
         assert_eq!(
-            dbg!(t.details.unwrap())
+            t.details
+                .unwrap()
+                .get("statistics_task")
+                .unwrap()
                 .get("task_data")
                 .unwrap()
                 .get("warehouse_id")
