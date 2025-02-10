@@ -26,6 +26,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub use secrets::SecretsState;
+pub use stats::PostgresStatsSink;
 pub use tabular::DeletionKind;
 
 /// # Errors

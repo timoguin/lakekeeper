@@ -22,7 +22,7 @@ impl<A: Authorizer + Clone, C: Catalog, S: SecretStore>
         request_metadata: RequestMetadata,
     ) -> Result<CatalogConfig> {
         let authorizer = api_context.v1_state.authz;
-        let project_id_from_auth = &request_metadata.auth_details.preferred_project_id();
+        let project_id_from_auth = &request_metadata.project_id();
         let warehouse_id_from_auth = &request_metadata.auth_details.warehouse_id();
 
         maybe_register_user::<C>(&request_metadata, api_context.v1_state.catalog.clone()).await?;

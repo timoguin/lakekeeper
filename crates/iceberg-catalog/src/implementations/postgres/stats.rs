@@ -1,9 +1,10 @@
-use crate::implementations::postgres::dbutils::DBErrorHandler;
-use sqlx::PgPool;
-// use crate::service::stats::endpoint::StatsSink;
 use crate::api::management::v1::warehouse::{WarehouseStatistics, WarehouseStatsResponse};
+use crate::implementations::postgres::dbutils::DBErrorHandler;
+use crate::service::stats::endpoint::{EndpointIdentifier, StatsSink, WarehouseIdentOrPrefix};
 use crate::service::ListFlags;
-use crate::WarehouseIdent;
+use crate::{ProjectIdent, WarehouseIdent};
+use sqlx::PgPool;
+use std::collections::HashMap;
 
 pub(crate) async fn get_warehouse_stats(
     conn: PgPool,
@@ -74,43 +75,65 @@ pub(crate) async fn update_stats(
     })
 }
 
-// pub struct PostgresStatsSink {
-//     pool: sqlx::PgPool,
-// }
-//
-// impl PostgresStatsSink {
-//     pub fn new(pool: sqlx::PgPool) -> Self {
-//         Self { pool }
-//     }
-// }
+#[derive(Debug)]
+pub struct PostgresStatsSink {
+    pool: sqlx::PgPool,
+}
 
-// #[async_trait::async_trait]
-// impl StatsSink for PostgresStatsSink {
-//     async fn consume_endpoint_stats(
-//         &self,
-//         stats_id: Uuid,
-//         stats: std::collections::HashMap<String, i64>,
-//     ) {
-//         let mut conn = self.pool.begin().await.unwrap();
-//         let _ = sqlx::query!(
-//             r#"
-//             INSERT INTO statistics (statistics_id)
-//             VALUES ($1)
-//             "#,
-//             stats_id
-//         )
-//         for (endpoint, count) in stats {
-//             let _ = sqlx::query!(
-//                 r#"
-//                 INSERT INTO endpoint_stats (stats_id, endpoint, count)
-//                 VALUES ($1, $2)
-//                 ON CONFLICT (endpoint) DO UPDATE SET count = endpoint_stats.count + $2
-//                 "#,
-//                 endpoint,
-//                 count
-//             )
-//             .execute(&mut conn)
-//             .await;
-//         }
-//     }
-// }
+impl PostgresStatsSink {
+    #[must_use]
+    pub fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait::async_trait]
+impl StatsSink for PostgresStatsSink {
+    async fn consume_endpoint_stats(
+        &self,
+        stats: HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>>,
+    ) {
+        // let mut conn = self.pool.begin().await.unwrap();
+
+        for (project, endpoints) in stats {
+            tracing::info!("Consuming stats for project: {project:?}, counts: {count:?}",);
+            for (
+                EndpointIdentifier {
+                    uri,
+                    status_code,
+                    method,
+                    warehouse,
+                },
+                count,
+            ) in endpoints
+            {
+                tracing::info!("Consuming stats for endpoint: {endpoint:?}, count: {count:?}",);
+                let (ident, prefix) = warehouse
+                    .map(|w| match w {
+                        WarehouseIdentOrPrefix::Ident(ident) => (Some(ident), None),
+                        WarehouseIdentOrPrefix::Prefix(prefix) => (None, Some(prefix)),
+                    })
+                    .unzip();
+                let ident = ident.flatten();
+                let prefix = prefix.flatten();
+
+                let (matched, non_matched) = uri.into_pair();
+                let _ = sqlx::query!(
+                    r#"
+                    INSERT INTO endpoint_stats (project_id, warehouse_id, warehouse_name, uri, status_code, method, count)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    ON CONFLICT (project_id, warehouse_id, uri, status_code, method)
+                    DO UPDATE SET count = endpoint_stats.count + $6
+                    "#,
+                    project.map(|p| p.0),
+                    ident,
+                    prefix,
+
+                )
+                .execute(&mut conn)
+                .await
+                .map_err(|e| e.into_error_model("failed to consume stats"))?;
+            }
+        }
+    }
+}

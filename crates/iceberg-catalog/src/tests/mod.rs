@@ -25,7 +25,7 @@ use crate::service::storage::{
     S3Credential, S3Flavor, S3Profile, StorageCredential, StorageProfile, TestProfile,
 };
 use crate::service::task_queue::{TaskQueueConfig, TaskQueues};
-use crate::service::{AuthDetails, State, UserId};
+use crate::service::{State, UserId};
 use crate::CONFIG;
 use iceberg::NamespaceIdent;
 use iceberg_ext::catalog::rest::{
@@ -230,10 +230,7 @@ pub(crate) fn get_api_context<T: Authorizer>(
 }
 
 pub(crate) fn random_request_metadata() -> RequestMetadata {
-    RequestMetadata {
-        request_id: Uuid::new_v4(),
-        auth_details: AuthDetails::Unauthenticated,
-    }
+    RequestMetadata::new_random()
 }
 
 pub(crate) fn spawn_drop_queues<T: Authorizer>(

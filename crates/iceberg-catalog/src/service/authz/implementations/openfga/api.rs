@@ -368,10 +368,7 @@ async fn get_project_access<C: Catalog, S: SecretStore>(
     Query(query): Query<GetAccessQuery>,
 ) -> Result<(StatusCode, Json<GetProjectAccessResponse>)> {
     let authorizer = api_context.v1_state.authz;
-    let project_id = metadata
-        .auth_details
-        .preferred_project_id()
-        .ok_or(OpenFGAError::NoProjectId)?;
+    let project_id = metadata.project_id().ok_or(OpenFGAError::NoProjectId)?;
     let relations = get_allowed_actions(
         authorizer,
         metadata.actor(),
@@ -793,10 +790,7 @@ async fn get_project_assignments<C: Catalog, S: SecretStore>(
     Query(query): Query<GetProjectAssignmentsQuery>,
 ) -> Result<(StatusCode, Json<GetProjectAssignmentsResponse>)> {
     let authorizer = api_context.v1_state.authz;
-    let project_id = metadata
-        .auth_details
-        .preferred_project_id()
-        .ok_or(OpenFGAError::NoProjectId)?;
+    let project_id = metadata.project_id().ok_or(OpenFGAError::NoProjectId)?;
     authorizer
         .require_action(
             &metadata,
@@ -1029,10 +1023,7 @@ async fn update_project_assignments<C: Catalog, S: SecretStore>(
     Json(request): Json<UpdateProjectAssignmentsRequest>,
 ) -> Result<StatusCode> {
     let authorizer = api_context.v1_state.authz;
-    let project_id = metadata
-        .auth_details
-        .preferred_project_id()
-        .ok_or(OpenFGAError::NoProjectId)?;
+    let project_id = metadata.project_id().ok_or(OpenFGAError::NoProjectId)?;
     checked_write(
         authorizer,
         metadata.actor(),

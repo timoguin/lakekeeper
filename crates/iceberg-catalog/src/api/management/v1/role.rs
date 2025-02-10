@@ -6,7 +6,7 @@ use crate::api::ApiContext;
 use crate::request_metadata::RequestMetadata;
 use crate::service::authz::{Authorizer, CatalogProjectAction, CatalogRoleAction};
 use crate::service::{Catalog, Result, RoleId, SecretStore, State, Transaction};
-use crate::{ProjectIdent, DEFAULT_PROJECT_ID};
+use crate::ProjectIdent;
 use axum::response::IntoResponse;
 use axum::Json;
 use iceberg_ext::catalog::rest::ErrorModel;
@@ -345,8 +345,7 @@ pub(super) fn require_project_id(
     request_metadata: &RequestMetadata,
 ) -> Result<ProjectIdent> {
     specified_project_id
-        .or(request_metadata.auth_details.preferred_project_id())
-        .or(*DEFAULT_PROJECT_ID)
+        .or(request_metadata.project_id())
         .ok_or_else(|| {
             ErrorModel::bad_request(
                 "Project ID is required to create a role".to_string(),

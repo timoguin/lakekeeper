@@ -37,6 +37,7 @@ use std::str::FromStr;
 
 pub use authn::{IdpVerifier, K8sVerifier, UserId};
 pub use secrets::{SecretIdent, SecretStore};
+pub use stats::endpoint::TrackerTx;
 
 // ---------------- State ----------------
 #[derive(Clone, Debug)]

@@ -1,4 +1,4 @@
-use super::{ProjectIdent, RoleId, WarehouseIdent};
+use super::{RoleId, WarehouseIdent};
 use crate::api::Result;
 use iceberg_ext::catalog::rest::ErrorModel;
 use k8s_openapi::api::authentication::v1::TokenReviewStatus;
@@ -8,7 +8,6 @@ use std::fmt::Debug;
 mod identities;
 mod verification;
 
-use crate::DEFAULT_PROJECT_ID;
 pub use identities::{Principal, UserId};
 pub(crate) use verification::{auth_middleware_fn, VerifierChain};
 pub use verification::{IdpVerifier, K8sVerifier};
@@ -112,11 +111,6 @@ impl AuthDetails {
             Self::Principal(principal) => &principal.actor,
             Self::Unauthenticated => &Actor::Anonymous,
         }
-    }
-
-    #[must_use]
-    pub fn preferred_project_id(&self) -> Option<ProjectIdent> {
-        *DEFAULT_PROJECT_ID
     }
 
     #[must_use]
