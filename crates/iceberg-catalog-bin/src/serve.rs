@@ -9,8 +9,7 @@ use iceberg_catalog::service::authz::Authorizer;
 use iceberg_catalog::service::contract_verification::ContractVerifiers;
 use iceberg_catalog::service::event_publisher::{
     kafka::KafkaBackend, kafka::KafkaConfig, nats::NatsBackend, CloudEventBackend,
-    CloudEventBackend, CloudEventBackend, CloudEventsPublisher, CloudEventsPublisherBackgroundTask,
-    Message, TracingPublisher,
+    CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message, TracingPublisher,
 };
 use iceberg_catalog::service::health::ServiceHealthProvider;
 use iceberg_catalog::service::{Catalog, StartupValidationData};

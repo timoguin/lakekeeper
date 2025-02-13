@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::service::event_publisher::kafka::vendor::cloudevents::binding::rdkafka::{
     FutureRecordExt, MessageRecord,
 };
-use axum::async_trait;
+use async_trait::async_trait;
 use cloudevents::Event;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde::{Deserialize, Serialize};
