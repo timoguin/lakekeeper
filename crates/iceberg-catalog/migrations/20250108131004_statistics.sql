@@ -29,7 +29,6 @@ create table warehouse_statistics
     CONSTRAINT positive_counts
         CHECK (number_of_views >= 0 AND number_of_tables >= 0)
 );
--- TODO: partitioning?
 
 call add_time_columns('warehouse_statistics');
 select trigger_updated_at('warehouse_statistics');
@@ -47,6 +46,7 @@ declare
     coalesced_type         tabular_type;
     truncated_date         timestamptz;
 begin
+    -- COALESCE here is to handle the case when the row is being deleted and NEW is null
     coalesced_type := COALESCE(NEW.typ, OLD.typ);
     coalesced_namespace_id := COALESCE(NEW.namespace_id, OLD.namespace_id);
     truncated_date := get_stats_date_default();
@@ -91,11 +91,21 @@ begin
 end;
 $$ language plpgsql;
 
-CREATE TRIGGER update_counts
+
+-- we only do insert or delete since we don't support moving tabular between warehouses and stats are warehouse level
+CREATE CONSTRAINT TRIGGER update_counts
     AFTER INSERT OR DELETE
     ON tabular
+    DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW
-EXECUTE FUNCTION update_counts();
+EXECUTE PROCEDURE update_counts();
+
+-- TRUNCATE triggers must be FOR EACH STATEMENT
+CREATE TRIGGER update_counts_trunc
+    AFTER TRUNCATE
+    ON tabular
+    FOR EACH STATEMENT
+EXECUTE PROCEDURE update_counts();
 
 -- initial count
 insert into warehouse_statistics (number_of_views, number_of_tables, warehouse_id)
