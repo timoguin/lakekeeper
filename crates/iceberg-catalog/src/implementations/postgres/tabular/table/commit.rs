@@ -14,7 +14,7 @@ use iceberg_ext::configs::Location;
 use itertools::Itertools;
 use sqlx::{Postgres, Transaction};
 
-pub(crate) async fn commit_table_transaction<'a>(
+pub(crate) async fn commit_table_transaction(
     // We do not need the warehouse_id here, because table_ids are unique across warehouses
     _: WarehouseIdent,
     commits: impl IntoIterator<Item = TableCommit> + Send,
@@ -303,6 +303,45 @@ async fn handle_atomic_updates(
                 .take(diffs.added_metadata_log)
                 .rev()
                 .cloned(),
+            transaction,
+        )
+        .await?;
+    }
+
+    if !diffs.added_partition_stats.is_empty() {
+        common::insert_partition_statistics(
+            new_metadata.uuid(),
+            diffs
+                .added_partition_stats
+                .into_iter()
+                .filter_map(|s| new_metadata.partition_statistics_for_snapshot(s))
+                .collect::<Vec<_>>()
+                .into_iter(),
+            transaction,
+        )
+        .await?;
+    }
+    if !diffs.added_stats.is_empty() {
+        common::insert_table_statistics(
+            new_metadata.uuid(),
+            diffs
+                .added_stats
+                .into_iter()
+                .filter_map(|s| new_metadata.statistics_for_snapshot(s))
+                .collect::<Vec<_>>()
+                .into_iter(),
+            transaction,
+        )
+        .await?;
+    }
+    if !diffs.removed_stats.is_empty() {
+        common::remove_table_statistics(new_metadata.uuid(), diffs.removed_stats, transaction)
+            .await?;
+    }
+    if !diffs.removed_partition_stats.is_empty() {
+        common::remove_partition_statistics(
+            new_metadata.uuid(),
+            diffs.removed_partition_stats,
             transaction,
         )
         .await?;

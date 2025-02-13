@@ -17,6 +17,7 @@ use error::{ConversionError, CredentialsError, FileIoError, TableConfigError, Up
 use futures::StreamExt;
 pub use gcs::{GcsCredential, GcsProfile, GcsServiceKey};
 use iceberg::io::FileIO;
+use iceberg_ext::catalog::rest::ErrorModel;
 use iceberg_ext::configs::table::TableProperties;
 use iceberg_ext::configs::Location;
 pub use s3::{S3Credential, S3Flavor, S3Location, S3Profile};
@@ -67,6 +68,12 @@ pub enum StoragePermissions {
     ReadWriteDelete,
 }
 
+#[derive(Debug)]
+pub struct TableConfig {
+    pub(crate) creds: TableProperties,
+    pub(crate) config: TableProperties,
+}
+
 impl StorageProfile {
     #[must_use]
     pub fn generate_catalog_config(&self, warehouse_id: WarehouseIdent) -> CatalogConfig {
@@ -74,10 +81,12 @@ impl StorageProfile {
             StorageProfile::S3(profile) => profile.generate_catalog_config(warehouse_id),
             #[cfg(test)]
             StorageProfile::Test(_) => {
+                use crate::api;
                 use std::collections::HashMap;
                 CatalogConfig {
                     overrides: HashMap::default(),
                     defaults: HashMap::default(),
+                    endpoints: api::iceberg::supported_endpoints(),
                 }
             }
             StorageProfile::Adls(prof) => prof.generate_catalog_config(warehouse_id),
@@ -193,7 +202,7 @@ impl StorageProfile {
         secret: Option<&StorageCredential>,
         table_location: &Location,
         storage_permissions: StoragePermissions,
-    ) -> Result<TableProperties, TableConfigError> {
+    ) -> Result<TableConfig, TableConfigError> {
         match self {
             StorageProfile::S3(profile) => {
                 profile
@@ -220,7 +229,10 @@ impl StorageProfile {
                     .await
             }
             #[cfg(test)]
-            StorageProfile::Test(_) => Ok(TableProperties::default()),
+            StorageProfile::Test(_) => Ok(TableConfig {
+                creds: TableProperties::default(),
+                config: TableProperties::default(),
+            }),
             StorageProfile::Gcs(profile) => {
                 profile
                     .generate_table_config(
@@ -302,17 +314,18 @@ impl StorageProfile {
                 .await?;
             match &self {
                 StorageProfile::S3(_) => {
-                    let sts_file_io = s3::get_file_io_from_table_config(&tbl_config)?;
+                    let sts_file_io = s3::get_file_io_from_table_config(&tbl_config.config)?;
                     self.validate_read_write(&sts_file_io, &test_location, true)
                         .await?;
                 }
                 StorageProfile::Adls(_) => {
-                    az::validate_vended_credentials(&tbl_config, &test_location, self).await?;
+                    az::validate_vended_credentials(&tbl_config.config, &test_location, self)
+                        .await?;
                 }
                 #[cfg(test)]
                 StorageProfile::Test(_) => {}
                 StorageProfile::Gcs(_) => {
-                    let sts_file_io = gcs::get_file_io_from_table_config(&tbl_config)?;
+                    let sts_file_io = gcs::get_file_io_from_table_config(&tbl_config.config)?;
                     self.validate_read_write(&sts_file_io, &test_location, true)
                         .await?;
                 }
@@ -446,6 +459,9 @@ impl StorageProfile {
     }
 
     #[must_use]
+    /// Check whether the location is allowed for the storage profile.
+    ///
+    /// Allowed locations are sublocations of the base location.
     pub fn is_allowed_location(&self, other: &Location) -> bool {
         let base_location = self.base_location().ok();
 
@@ -459,6 +475,25 @@ impl StorageProfile {
         } else {
             false
         }
+    }
+
+    /// Require that the location is allowed for the storage profile.
+    ///
+    /// # Errors
+    /// Fails if the provided location is not a sublocation of the base location.
+    pub fn require_allowed_location(&self, other: &Location) -> Result<(), ErrorModel> {
+        if !self.is_allowed_location(other) {
+            let base_location = self
+                .base_location()
+                .ok()
+                .map_or(String::new(), |l| l.to_string());
+            return Err(ErrorModel::bad_request(
+                format!("Provided location {other} is not a valid sublocation of the storage profile {base_location}."),
+                "InvalidLocation",
+                None,
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -498,7 +533,7 @@ impl StorageLocations for StorageProfile {}
 impl StorageLocations for S3Profile {}
 impl StorageLocations for AdlsProfile {}
 
-#[derive(Debug, Eq, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TestProfile {
     base_location: Uuid,
 }
@@ -973,13 +1008,13 @@ mod tests {
                 unimplemented!("Not supported")
             }
             StorageProfile::S3(_) => {
-                let downscoped1 = s3::get_file_io_from_table_config(&config1).unwrap();
-                let downscoped2 = s3::get_file_io_from_table_config(&config2).unwrap();
+                let downscoped1 = s3::get_file_io_from_table_config(&config1.config).unwrap();
+                let downscoped2 = s3::get_file_io_from_table_config(&config2.config).unwrap();
                 (downscoped1, downscoped2)
             }
             StorageProfile::Gcs(_) => {
-                let downscoped1 = gcs::get_file_io_from_table_config(&config1).unwrap();
-                let downscoped2 = gcs::get_file_io_from_table_config(&config2).unwrap();
+                let downscoped1 = gcs::get_file_io_from_table_config(&config1.config).unwrap();
+                let downscoped2 = gcs::get_file_io_from_table_config(&config2.config).unwrap();
                 (downscoped1, downscoped2)
             }
         };

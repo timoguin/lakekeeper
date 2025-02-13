@@ -9,7 +9,8 @@ use iceberg_catalog::service::authz::Authorizer;
 use iceberg_catalog::service::contract_verification::ContractVerifiers;
 use iceberg_catalog::service::event_publisher::{
     kafka::KafkaBackend, kafka::KafkaConfig, nats::NatsBackend, CloudEventBackend,
-    CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message,
+    CloudEventBackend, CloudEventBackend, CloudEventsPublisher, CloudEventsPublisherBackgroundTask,
+    Message, TracingPublisher,
 };
 use iceberg_catalog::service::health::ServiceHealthProvider;
 use iceberg_catalog::service::{Catalog, StartupValidationData};
@@ -156,16 +157,30 @@ async fn serve_inner<A: Authorizer>(
         let nats_publisher = build_nats_client(nat_addr).await?;
         cloud_event_sinks
             .push(Arc::new(nats_publisher) as Arc<dyn CloudEventBackend + Sync + Send>);
-    }
+    } else {
+        tracing::info!("Running without NATS publisher.");
+    };
+
     if let (Some(kafka_config), Some(kafka_topic)) = (&CONFIG.kafka_config, &CONFIG.kafka_topic) {
         let kafka_publisher = build_kafka_producer(kafka_config, kafka_topic)?;
         cloud_event_sinks
             .push(Arc::new(kafka_publisher) as Arc<dyn CloudEventBackend + Sync + Send>);
+    } else {
+        tracing::info!("Running without Kafka publisher.");
+    }
+
+    if let Some(true) = &CONFIG.log_cloudevents {
+        let tracing_publisher = TracingPublisher;
+        cloud_event_sinks
+            .push(Arc::new(tracing_publisher) as Arc<dyn CloudEventBackend + Sync + Send>);
+        tracing::info!("Logging Cloudevents.");
+    } else {
+        tracing::info!("Running without logging Cloudevents.");
     }
 
     if cloud_event_sinks.is_empty() {
         tracing::info!("Running without publisher.");
-    };
+    }
 
     let x: CloudEventsPublisherBackgroundTask = CloudEventsPublisherBackgroundTask {
         source: rx,
@@ -188,6 +203,9 @@ async fn serve_inner<A: Authorizer>(
     } else {
         None
     };
+    if k8s_token_verifier.is_none() && CONFIG.openid_provider_uri.is_none() {
+        tracing::warn!("Authentication is disabled. This is not suitable for production!");
+    }
     let (layer, metrics_future) =
         iceberg_catalog::metrics::get_axum_layer_and_install_recorder(CONFIG.metrics_port)?;
     let router = new_full_router::<PostgresCatalog, _, Secrets>(RouterArgs {
@@ -203,6 +221,7 @@ async fn serve_inner<A: Authorizer>(
                     uri,
                     CONFIG.openid_audience.clone(),
                     CONFIG.openid_additional_issuers.clone(),
+                    CONFIG.openid_scope.clone(),
                 )
                 .await?,
             )
@@ -230,8 +249,8 @@ async fn serve_inner<A: Authorizer>(
             get(|| async { axum::response::Redirect::permanent("/ui/") }),
         )
         .route("/ui/", get(ui::index_handler))
-        .route("/ui/assets/*file", get(ui::static_handler))
-        .route("/ui/*file", get(ui::index_handler));
+        .route("/ui/assets/{*file}", get(ui::static_handler))
+        .route("/ui/{*file}", get(ui::index_handler));
 
     let publisher_handle = tokio::task::spawn(async move {
         match x.publish().await {

@@ -2,6 +2,79 @@
 
 
 
+## [0.6.2](https://github.com/lakekeeper/lakekeeper/compare/v0.6.1...v0.6.2) (2025-01-30)
+
+
+### Features
+
+* Scope validation ([#790](https://github.com/lakekeeper/lakekeeper/issues/790)) ([65e664f](https://github.com/lakekeeper/lakekeeper/commit/65e664fb804fc6657dcfab655344d9bfd0224b5a))
+
+
+### Bug Fixes
+
+* Add S3 path style access to UI ([#787](https://github.com/lakekeeper/lakekeeper/issues/787)) ([f393881](https://github.com/lakekeeper/lakekeeper/commit/f393881acf60b8bd3910c17eca6f7325aedbf8a7))
+
+
+### Miscellaneous Chores
+
+* release 0.6.2 ([0c7e181](https://github.com/lakekeeper/lakekeeper/commit/0c7e1814eef9c039f6d05dbb3256c70caed1c36f))
+
+## [0.6.2](https://github.com/lakekeeper/lakekeeper/compare/v0.6.1...v0.6.2) (2025-01-29)
+
+
+### Bug Fixes
+
+* Add S3 path style access to UI ([#787](https://github.com/lakekeeper/lakekeeper/issues/787)) ([f393881](https://github.com/lakekeeper/lakekeeper/commit/f393881acf60b8bd3910c17eca6f7325aedbf8a7))
+
+## [0.6.1](https://github.com/lakekeeper/lakekeeper/compare/v0.6.0...v0.6.1) (2025-01-27)
+
+
+### Features
+
+* expose cloud-events tracing publisher on cli ([#747](https://github.com/lakekeeper/lakekeeper/issues/747)) ([798e85d](https://github.com/lakekeeper/lakekeeper/commit/798e85d39c034b2351443d7b1f9983160b820ed7))
+
+
+### Miscellaneous Chores
+
+* release 0.6.1 ([a17f5c4](https://github.com/lakekeeper/lakekeeper/commit/a17f5c4919bbe5797099dcbf45cf8a6becf0b3c1))
+
+## [0.6.0](https://github.com/lakekeeper/lakekeeper/compare/v0.5.2...v0.6.0) (2025-01-07)
+
+
+### Features
+
+* Lakekeeper Open Policy Agent Bridge with trino support ([3735742](https://github.com/lakekeeper/lakekeeper/commit/3735742e5c8efb05894f02208afdc2b03e321093))
+* Update Lakekeeper UI to 0.4.0 ([3735742](https://github.com/lakekeeper/lakekeeper/commit/3735742e5c8efb05894f02208afdc2b03e321093))
+
+
+### Bug Fixes
+
+* Enable openfga integration tests ([3735742](https://github.com/lakekeeper/lakekeeper/commit/3735742e5c8efb05894f02208afdc2b03e321093))
+
+## [0.5.2](https://github.com/lakekeeper/lakekeeper/compare/v0.5.1...v0.5.2) (2024-12-17)
+
+
+### Features
+
+* Update UI to 0.3.0 ([#684](https://github.com/lakekeeper/lakekeeper/issues/684)) ([2f9da51](https://github.com/lakekeeper/lakekeeper/commit/2f9da5148f80293eefda25ac9bc53cac30d92b78))
+
+
+### Miscellaneous Chores
+
+* release 0.5.2 ([c5774b2](https://github.com/lakekeeper/lakekeeper/commit/c5774b26183dc41e938af130005e8df9230b3b82))
+
+## [0.5.1](https://github.com/lakekeeper/lakekeeper/compare/v0.5.0...v0.5.1) (2024-12-12)
+
+
+### Features
+
+* Update UI to 0.2.0 ([#661](https://github.com/lakekeeper/lakekeeper/issues/661)) ([fb7e2f5](https://github.com/lakekeeper/lakekeeper/commit/fb7e2f51d122ddf54a405684f5076e63d68d3cf6))
+
+
+### Miscellaneous Chores
+
+* release 0.5.1 ([f8aa87c](https://github.com/lakekeeper/lakekeeper/commit/f8aa87ca8b7a8074389cd43a39007b2652a46494))
+
 ## [0.5.0](https://github.com/lakekeeper/lakekeeper/compare/v0.4.3...v0.5.0) (2024-12-06)
 
 

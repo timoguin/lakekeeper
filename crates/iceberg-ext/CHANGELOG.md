@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.6.2](https://github.com/lakekeeper/lakekeeper/compare/v0.6.1...v0.6.2) (2025-01-30)
+
+
+### Miscellaneous Chores
+
+* release 0.6.2 ([0c7e181](https://github.com/lakekeeper/lakekeeper/commit/0c7e1814eef9c039f6d05dbb3256c70caed1c36f))
+
+## [0.6.1](https://github.com/lakekeeper/lakekeeper/compare/v0.5.2...v0.6.1) (2025-01-27)
+
+
+### Miscellaneous Chores
+
+* release 0.6.1 ([a17f5c4](https://github.com/lakekeeper/lakekeeper/commit/a17f5c4919bbe5797099dcbf45cf8a6becf0b3c1))
+
+## [0.5.2](https://github.com/lakekeeper/lakekeeper/compare/v0.5.1...v0.5.2) (2024-12-17)
+
+
+### Features
+
+* Support for Statistic Files ([1e4fa38](https://github.com/lakekeeper/lakekeeper/commit/1e4fa3876919bf5b926ea73f370ff62efd9081b9))
+* **tables:** load table credentials ([#675](https://github.com/lakekeeper/lakekeeper/issues/675)) ([9fd272e](https://github.com/lakekeeper/lakekeeper/commit/9fd272ee831b3347c3d4e790fcaacba6f4ded273))
+* Update UI to 0.3.0 ([#684](https://github.com/lakekeeper/lakekeeper/issues/684)) ([2f9da51](https://github.com/lakekeeper/lakekeeper/commit/2f9da5148f80293eefda25ac9bc53cac30d92b78))
+
+
+### Bug Fixes
+
+* Make BASE_URI trailing slash insensitive ([#681](https://github.com/lakekeeper/lakekeeper/issues/681)) ([4799ea7](https://github.com/lakekeeper/lakekeeper/commit/4799ea78e60e5c908547f0cf1421384da919bfe3))
+* Snapshots without schema ([1e4fa38](https://github.com/lakekeeper/lakekeeper/commit/1e4fa3876919bf5b926ea73f370ff62efd9081b9))
+
+
+### Miscellaneous Chores
+
+* release 0.5.2 ([c5774b2](https://github.com/lakekeeper/lakekeeper/commit/c5774b26183dc41e938af130005e8df9230b3b82))
+
+## [0.5.1](https://github.com/lakekeeper/lakekeeper/compare/v0.5.0...v0.5.1) (2024-12-12)
+
+
+### Features
+
+* **openapi:** document error models in openapi ([#658](https://github.com/lakekeeper/lakekeeper/issues/658)) ([2a67196](https://github.com/lakekeeper/lakekeeper/commit/2a67196a9f9844db0f846cb2e9016c4d4620b0b5))
+
+
+### Miscellaneous Chores
+
+* release 0.5.1 ([f8aa87c](https://github.com/lakekeeper/lakekeeper/commit/f8aa87ca8b7a8074389cd43a39007b2652a46494))
+
 ## [0.5.0](https://github.com/lakekeeper/lakekeeper/compare/v0.4.3...v0.5.0) (2024-12-06)
 
 

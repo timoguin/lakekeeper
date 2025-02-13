@@ -124,10 +124,12 @@ impl AuthDetails {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, strum_macros::Display)]
 pub enum Actor {
     Anonymous,
+    #[strum(to_string = "Principal({0})")]
     Principal(UserId),
+    #[strum(to_string = "AssumedRole({assumed_role}) by Principal({principal})")]
     Role {
         principal: UserId,
         assumed_role: RoleId,
@@ -150,6 +152,7 @@ struct Claims {
     application_id: Option<String>,
     client_id: Option<String>,
     idtyp: Option<String>,
+    scope: Option<String>,
     name: Option<String>,
     #[serde(alias = "given_name", alias = "given-name", alias = "givenName")]
     given_name: Option<String>,
@@ -185,6 +188,8 @@ struct Claims {
 
 #[cfg(test)]
 mod test {
+    use core::assert_eq;
+
     use crate::api::management::v1::user::UserType;
     use crate::service::authn::Claims;
 
@@ -365,7 +370,7 @@ mod test {
         }))
         .unwrap();
 
-        let auth_details = super::AuthDetails::try_from_jwt_claims(claims).unwrap();
+        let auth_details = super::AuthDetails::try_from_jwt_claims(claims.clone()).unwrap();
         let principal = match auth_details {
             super::AuthDetails::Principal(principal) => principal,
             super::AuthDetails::Unauthenticated => panic!("Expected principal"),
@@ -374,6 +379,7 @@ mod test {
         assert_eq!(name, "Peter Cold");
         assert_eq!(user_type, UserType::Human);
         assert_eq!(principal.email(), Some("peter@example.com"));
+        assert_eq!("openid email profile", &claims.scope.unwrap());
     }
 
     #[test]

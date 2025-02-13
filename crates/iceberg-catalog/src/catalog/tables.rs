@@ -1,6 +1,10 @@
 use super::commit_tables::apply_commit;
+use super::io::delete_file;
+use super::namespace::authorized_namespace_ident_to_id;
 use super::{
-    io::write_metadata_file, maybe_get_secret, namespace::validate_namespace_ident,
+    io::{read_metadata_file, write_metadata_file},
+    maybe_get_secret,
+    namespace::validate_namespace_ident,
     require_warehouse_id, CatalogServer,
 };
 use crate::api::iceberg::types::DropParams;
@@ -26,7 +30,7 @@ use crate::service::task_queue::tabular_purge_queue::TabularPurgeInput;
 use crate::service::TabularIdentUuid;
 use crate::service::{
     authz::Authorizer, secrets::SecretStore, Catalog, CreateTableResponse, ListFlags,
-    LoadTableResponse as CatalogLoadTableResult, State, Transaction,
+    LoadTableResponse as CatalogLoadTableResult, State, TabularDetails, Transaction,
 };
 use crate::service::{
     GetNamespaceResponse, TableCommit, TableCreation, TableIdentUuid, WarehouseStatus,
@@ -36,9 +40,9 @@ use fxhash::FxHashSet;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr as _;
 
-use crate::catalog;
 use crate::catalog::tabular::list_entities;
 use crate::retry::retry_fn;
+use crate::{catalog, WarehouseIdent};
 use http::StatusCode;
 use iceberg::spec::{
     FormatVersion, MetadataLog, SchemaId, SortOrder, TableMetadata, TableMetadataBuildResult,
@@ -46,8 +50,9 @@ use iceberg::spec::{
     PROPERTY_METADATA_PREVIOUS_VERSIONS_MAX,
 };
 use iceberg::{NamespaceIdent, TableUpdate};
+use iceberg_ext::catalog::rest::{LoadCredentialsResponse, StorageCredential};
 use iceberg_ext::configs::namespace::NamespaceProperties;
-use iceberg_ext::configs::Location;
+use iceberg_ext::configs::{Location, ParseFromStr};
 use itertools::Itertools;
 use serde::Serialize;
 use uuid::Uuid;
@@ -58,7 +63,7 @@ const PROPERTY_METADATA_DELETE_AFTER_COMMIT_ENABLED_DEFAULT: bool = false;
 
 #[async_trait::async_trait]
 impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
-    crate::api::iceberg::v1::tables::Service<State<A, C, S>> for CatalogServer<C, A, S>
+    crate::api::iceberg::v1::tables::TablesService<State<A, C, S>> for CatalogServer<C, A, S>
 {
     #[allow(clippy::too_many_lines)]
     /// List all table identifiers underneath a given namespace
@@ -76,26 +81,16 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // ------------------- AUTHZ -------------------
         let authorizer = state.v1_state.authz;
-        authorizer
-            .require_warehouse_action(
-                &request_metadata,
-                warehouse_id,
-                &CatalogWarehouseAction::CanUse,
-            )
-            .await?;
-        let mut t: <C as Catalog>::Transaction =
-            Transaction::begin_read(state.v1_state.catalog).await?;
-        let namespace_id = C::namespace_to_id(warehouse_id, &namespace, t.transaction()).await; // We can't fail before AuthZ.
-
-        authorizer
-            .require_namespace_action(
-                &request_metadata,
-                warehouse_id,
-                namespace_id,
-                &CatalogNamespaceAction::CanListTables,
-            )
-            .await?;
-
+        let mut t = C::Transaction::begin_read(state.v1_state.catalog).await?;
+        let _namespace_id = authorized_namespace_ident_to_id::<C, _>(
+            authorizer.clone(),
+            &request_metadata,
+            &warehouse_id,
+            &namespace,
+            &CatalogNamespaceAction::CanListTables,
+            t.transaction(),
+        )
+        .await?;
         // ------------------- BUSINESS LOGIC -------------------
 
         let (identifiers, table_uuids, next_page_token) =
@@ -144,24 +139,17 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         }
 
         // ------------------- AUTHZ -------------------
-        let authorizer = state.v1_state.authz;
-        authorizer
-            .require_warehouse_action(
-                &request_metadata,
-                warehouse_id,
-                &CatalogWarehouseAction::CanUse,
-            )
-            .await?;
+        let authorizer = state.v1_state.authz.clone();
         let mut t = C::Transaction::begin_write(state.v1_state.catalog).await?;
-        let namespace_id = C::namespace_to_id(warehouse_id, &namespace, t.transaction()).await; // We can't fail before AuthZ.
-        let namespace_id = authorizer
-            .require_namespace_action(
-                &request_metadata,
-                warehouse_id,
-                namespace_id,
-                &CatalogNamespaceAction::CanCreateTable,
-            )
-            .await?;
+        let namespace_id = authorized_namespace_ident_to_id::<C, _>(
+            authorizer.clone(),
+            &request_metadata,
+            &warehouse_id,
+            &namespace,
+            &CatalogNamespaceAction::CanCreateTable,
+            t.transaction(),
+        )
+        .await?;
 
         // ------------------- BUSINESS LOGIC -------------------
         let id = Uuid::now_v7();
@@ -271,7 +259,6 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // This requires the storage secret
         // because the table config might contain vended-credentials based
-        //
         // on the `data_access` parameter.
         let config = storage_profile
             .generate_table_config(
@@ -281,10 +268,19 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 StoragePermissions::ReadWriteDelete,
             )
             .await?;
+
+        let storage_credentials = (!config.creds.inner().is_empty()).then(|| {
+            vec![StorageCredential {
+                prefix: table_location.to_string(),
+                config: config.creds.into(),
+            }]
+        });
+
         let load_table_result = LoadTableResult {
             metadata_location: metadata_location.map(|l| l.to_string()),
             metadata: table_metadata,
-            config: Some(config.into()),
+            config: Some(config.config.into()),
+            storage_credentials,
         };
 
         authorizer
@@ -298,6 +294,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         // Metadata file written, now we can commit the transaction
         t.commit().await?;
 
+        // If a staged table was overwritten, delete it from authorizer
         if let Some(staged_table_id) = staged_table_id {
             authorizer.delete_table(staged_table_id).await.ok();
         }
@@ -305,7 +302,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         emit_change_event(
             EventMetadata {
                 tabular_id: TabularIdentUuid::Table(*tabular_id),
-                warehouse_id: *warehouse_id,
+                warehouse_id,
                 name: table.name.clone(),
                 namespace: table.namespace.to_url_string(),
                 prefix: prefix.map(Prefix::into_string).unwrap_or_default(),
@@ -322,19 +319,113 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
     }
 
     /// Register a table in the given namespace using given metadata file location
-    #[allow(clippy::too_many_lines)]
     async fn register_table(
-        _parameters: NamespaceParameters,
-        _request: RegisterTableRequest,
-        _state: ApiContext<State<A, C, S>>,
-        _request_metadata: RequestMetadata,
+        parameters: NamespaceParameters,
+        request: RegisterTableRequest,
+        state: ApiContext<State<A, C, S>>,
+        request_metadata: RequestMetadata,
     ) -> Result<LoadTableResult> {
-        Err(ErrorModel::not_implemented(
-            "Registering tables is not supported",
-            "RegisterTableNotSupported",
-            None,
+        // ------------------- VALIDATIONS -------------------
+        let NamespaceParameters { namespace, prefix } = parameters;
+        let warehouse_id = require_warehouse_id(prefix.clone())?;
+        let table = TableIdent::new(namespace.clone(), request.name.clone());
+        validate_table_or_view_ident(&table)?;
+        let metadata_location =
+            parse_location(&request.metadata_location, StatusCode::BAD_REQUEST)?;
+
+        // ------------------- AUTHZ -------------------
+        let authorizer = state.v1_state.authz.clone();
+        let mut t = C::Transaction::begin_write(state.v1_state.catalog).await?;
+        let namespace_id = authorized_namespace_ident_to_id::<C, _>(
+            authorizer.clone(),
+            &request_metadata,
+            &warehouse_id,
+            &namespace,
+            &CatalogNamespaceAction::CanCreateTable,
+            t.transaction(),
         )
-        .into())
+        .await?;
+
+        // ------------------- BUSINESS LOGIC -------------------
+        let warehouse = C::require_warehouse(warehouse_id, t.transaction()).await?;
+        let storage_profile = &warehouse.storage_profile;
+
+        require_active_warehouse(warehouse.status)?;
+        storage_profile.require_allowed_location(&metadata_location)?;
+
+        let storage_secret =
+            maybe_get_secret(warehouse.storage_secret_id, &state.v1_state.secrets).await?;
+        let file_io = storage_profile.file_io(storage_secret.as_ref())?;
+        let table_metadata = read_metadata_file(&file_io, &metadata_location).await?;
+        let table_location = parse_location(table_metadata.location(), StatusCode::BAD_REQUEST)?;
+
+        validate_table_properties(table_metadata.properties().keys())?;
+        storage_profile.require_allowed_location(&table_location)?;
+
+        let namespace = C::get_namespace(warehouse_id, namespace_id, t.transaction()).await?;
+        let tabular_id = TableIdentUuid::from(table_metadata.uuid());
+
+        let CreateTableResponse {
+            table_metadata,
+            staged_table_id,
+        } = C::create_table(
+            TableCreation {
+                namespace_id: namespace.namespace_id,
+                table_ident: &table,
+                table_metadata,
+                metadata_location: Some(&metadata_location),
+            },
+            t.transaction(),
+        )
+        .await?;
+
+        let config = storage_profile
+            .generate_table_config(
+                &DataAccess {
+                    vended_credentials: false,
+                    remote_signing: false,
+                },
+                storage_secret.as_ref(),
+                &table_location,
+                StoragePermissions::ReadWriteDelete,
+            )
+            .await?;
+
+        authorizer
+            .create_table(&request_metadata, tabular_id, namespace_id)
+            .await?;
+
+        t.commit().await?;
+
+        // If a staged table was overwritten, delete it from authorizer
+        if let Some(staged_table_id) = staged_table_id {
+            authorizer.delete_table(staged_table_id).await.ok();
+        }
+
+        // ------------------- CHANGE Event -------------------
+        emit_change_event(
+            EventMetadata {
+                tabular_id: TabularIdentUuid::Table(*tabular_id),
+                warehouse_id,
+                name: table.name.clone(),
+                namespace: table.namespace.to_url_string(),
+                prefix: prefix.map(Prefix::into_string).unwrap_or_default(),
+                num_events: 1,
+                sequence_number: 0,
+                trace_id: request_metadata.request_id,
+            },
+            maybe_body_to_json(&request),
+            "registerTable",
+            state.v1_state.publisher.clone(),
+        )
+        .await;
+
+        Ok(LoadTableResult {
+            metadata_location: Some(metadata_location.to_string()),
+            metadata: table_metadata,
+            config: Some(config.config.into()),
+            storage_credentials: None,
+        })
     }
 
     /// Load a table from the catalog
@@ -351,79 +442,39 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         // It is important to throw a 404 if a table cannot be found,
         // because spark might check if `table`.`branch` exists, which should return 404.
         // Only then will it treat it as a branch.
-        match validate_table_or_view_ident(&table) {
-            Ok(()) => {}
-            Err(mut e) => {
-                if e.error.r#type == *"NamespaceDepthExceeded" {
-                    e.error.code = StatusCode::NOT_FOUND.into();
-                }
-                return Err(e);
+        if let Err(mut e) = validate_table_or_view_ident(&table) {
+            if e.error.r#type == *"NamespaceDepthExceeded" {
+                e.error.code = StatusCode::NOT_FOUND.into();
             }
+            return Err(e);
         }
+
+        let list_flags = ListFlags {
+            include_active: true,
+            include_staged: false,
+            include_deleted: false,
+        };
 
         // ------------------- AUTHZ -------------------
         let authorizer = state.v1_state.authz;
-        authorizer
-            .require_warehouse_action(
-                &request_metadata,
-                warehouse_id,
-                &CatalogWarehouseAction::CanUse,
-            )
-            .await?;
-        let include_staged: bool = false;
-        let include_deleted = false;
-        let include_active = true;
+        let catalog = state.v1_state.catalog;
+        let mut t = C::Transaction::begin_read(catalog).await?;
 
-        let mut t = C::Transaction::begin_read(state.v1_state.catalog).await?;
-        let table_id = C::table_to_id(
-            warehouse_id,
+        let (table_id, storage_permissions) = Self::resolve_and_authorize_table_access(
+            &request_metadata,
             &table,
-            ListFlags {
-                include_active,
-                include_staged,
-                include_deleted,
-            },
+            warehouse_id,
+            list_flags,
+            authorizer,
             t.transaction(),
         )
-        .await; // We can't fail before AuthZ.
-        let table_id = authorizer
-            .require_table_action(
-                &request_metadata,
-                warehouse_id,
-                table_id,
-                &CatalogTableAction::CanGetMetadata,
-            )
-            .await
-            .map_err(set_not_found_status_code)?;
-
-        let (read_access, write_access) = futures::try_join!(
-            authorizer.is_allowed_table_action(
-                &request_metadata,
-                warehouse_id,
-                table_id,
-                &CatalogTableAction::CanReadData,
-            ),
-            authorizer.is_allowed_table_action(
-                &request_metadata,
-                warehouse_id,
-                table_id,
-                &CatalogTableAction::CanWriteData,
-            ),
-        )?;
-
-        let storage_permissions = if write_access {
-            Some(StoragePermissions::ReadWriteDelete)
-        } else if read_access {
-            Some(StoragePermissions::Read)
-        } else {
-            None
-        };
+        .await?;
 
         // ------------------- BUSINESS LOGIC -------------------
         let mut metadatas = C::load_tables(
             warehouse_id,
-            vec![table_id],
-            include_deleted,
+            vec![table_id.ident],
+            list_flags.include_deleted,
             t.transaction(),
         )
         .await?;
@@ -435,7 +486,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
             metadata_location,
             storage_secret_ident,
             storage_profile,
-        } = remove_table(&table_id, &table, &mut metadatas)?;
+        } = remove_table(&table_id.ident, &table, &mut metadatas)?;
         require_not_staged(metadata_location.as_ref())?;
 
         let table_location =
@@ -460,13 +511,83 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
             None
         };
 
+        let storage_credentials = storage_config.as_ref().and_then(|c| {
+            (!c.creds.inner().is_empty()).then(|| {
+                vec![StorageCredential {
+                    prefix: table_location.to_string(),
+                    config: c.creds.clone().into(),
+                }]
+            })
+        });
+
         let load_table_result = LoadTableResult {
             metadata_location: metadata_location.as_ref().map(ToString::to_string),
             metadata: table_metadata,
-            config: storage_config.map(Into::into),
+            config: storage_config.map(|c| c.config.into()),
+            storage_credentials,
         };
 
         Ok(load_table_result)
+    }
+
+    async fn load_table_credentials(
+        parameters: TableParameters,
+        data_access: DataAccess,
+        state: ApiContext<State<A, C, S>>,
+        request_metadata: RequestMetadata,
+    ) -> Result<LoadCredentialsResponse> {
+        // ------------------- VALIDATIONS -------------------
+        let TableParameters { prefix, table } = parameters;
+        let warehouse_id = require_warehouse_id(prefix)?;
+
+        let mut t = C::Transaction::begin_read(state.v1_state.catalog).await?;
+        let (table_id, storage_permissions) = Self::resolve_and_authorize_table_access(
+            &request_metadata,
+            &table,
+            warehouse_id,
+            ListFlags {
+                include_active: true,
+                include_staged: false,
+                include_deleted: false,
+            },
+            state.v1_state.authz,
+            t.transaction(),
+        )
+        .await?;
+        let storage_permission = storage_permissions.ok_or(ErrorModel::unauthorized(
+            "No storage permissions for table",
+            "NoStoragePermissions",
+            None,
+        ))?;
+
+        let (storage_secret_ident, storage_profile) =
+            C::load_storage_profile(warehouse_id, table_id.ident, t.transaction()).await?;
+        let storage_secret =
+            maybe_get_secret(storage_secret_ident, &state.v1_state.secrets).await?;
+        let storage_config = storage_profile
+            .generate_table_config(
+                &data_access,
+                storage_secret.as_ref(),
+                &parse_location(
+                    table_id.location.as_str(),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )?,
+                storage_permission,
+            )
+            .await?;
+
+        let storage_credentials = if storage_config.creds.inner().is_empty() {
+            vec![]
+        } else {
+            vec![StorageCredential {
+                prefix: table_id.location.clone(),
+                config: storage_config.creds.into(),
+            }]
+        };
+
+        Ok(LoadCredentialsResponse {
+            storage_credentials,
+        })
     }
 
     /// Commit updates to a table
@@ -547,16 +668,11 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         .await; // We can't fail before AuthZ
 
         let table_id = authorizer
-            .require_table_action(
-                &request_metadata,
-                warehouse_id,
-                table_id,
-                &CatalogTableAction::CanDrop,
-            )
+            .require_table_action(&request_metadata, table_id, &CatalogTableAction::CanDrop)
             .await?;
 
         // ------------------- BUSINESS LOGIC -------------------
-        let purge = purge_requested.unwrap_or(false);
+        let purge = purge_requested.unwrap_or(true);
 
         let warehouse = C::require_warehouse(warehouse_id, t.transaction()).await?;
 
@@ -615,7 +731,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         emit_change_event(
             EventMetadata {
                 tabular_id: TabularIdentUuid::Table(*table_id),
-                warehouse_id: *warehouse_id,
+                warehouse_id,
                 name: table.name,
                 namespace: table.namespace.to_url_string(),
                 prefix: prefix
@@ -647,39 +763,22 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // ------------------- AUTHZ -------------------
         let authorizer = state.v1_state.authz;
-        authorizer
-            .require_warehouse_action(
-                &request_metadata,
-                warehouse_id,
-                &CatalogWarehouseAction::CanUse,
-            )
-            .await?;
-
-        let include_staged = false;
-        let include_deleted = false;
-        let include_active = true;
-
         let mut t = C::Transaction::begin_read(state.v1_state.catalog).await?;
-        let table_id = C::table_to_id(
+        let list_flags = ListFlags {
+            include_staged: false,
+            include_deleted: false,
+            include_active: true,
+        };
+        let _table_id = authorized_table_ident_to_id::<C, _>(
+            authorizer,
+            &request_metadata,
             warehouse_id,
             &table,
-            ListFlags {
-                include_active,
-                include_staged,
-                include_deleted,
-            },
+            list_flags,
+            &CatalogTableAction::CanGetMetadata,
             t.transaction(),
         )
-        .await; // We can't fail before AuthZ
-        authorizer
-            .require_table_action(
-                &request_metadata,
-                warehouse_id,
-                table_id,
-                &CatalogTableAction::CanGetMetadata,
-            )
-            .await
-            .map_err(set_not_found_status_code)?;
+        .await?;
         t.commit().await?;
 
         // ------------------- BUSINESS LOGIC -------------------
@@ -705,38 +804,23 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
         // ------------------- AUTHZ -------------------
         let authorizer = state.v1_state.authz;
-        authorizer
-            .require_warehouse_action(
-                &request_metadata,
-                warehouse_id,
-                &CatalogWarehouseAction::CanUse,
-            )
-            .await?;
-
-        let include_staged = false;
-        let include_deleted = false;
-        let include_active = true;
-
         let mut t = C::Transaction::begin_write(state.v1_state.catalog).await?;
-        let source_table_id = C::table_to_id(
+        let list_flags = ListFlags {
+            include_staged: false,
+            include_deleted: false,
+            include_active: true,
+        };
+        let source_table_id = authorized_table_ident_to_id::<C, _>(
+            authorizer.clone(),
+            &request_metadata,
             warehouse_id,
             &source,
-            ListFlags {
-                include_active,
-                include_staged,
-                include_deleted,
-            },
+            list_flags,
+            &CatalogTableAction::CanRename,
             t.transaction(),
         )
-        .await; // We can't fail before AuthZ;
-        let source_table_id = authorizer
-            .require_table_action(
-                &request_metadata,
-                warehouse_id,
-                source_table_id,
-                &CatalogTableAction::CanRename,
-            )
-            .await?;
+        .await?;
+
         let namespace_id =
             C::namespace_to_id(warehouse_id, &source.namespace, t.transaction()).await; // We can't fail before AuthZ
 
@@ -744,7 +828,6 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         authorizer
             .require_namespace_action(
                 &request_metadata,
-                warehouse_id,
                 namespace_id,
                 &CatalogNamespaceAction::CanCreateTable,
             )
@@ -776,7 +859,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         emit_change_event(
             EventMetadata {
                 tabular_id: TabularIdentUuid::Table(*source_table_id),
-                warehouse_id: *warehouse_id,
+                warehouse_id,
                 name: source.name,
                 namespace: source.namespace.to_url_string(),
                 prefix: prefix.map(Prefix::into_string).unwrap_or_default(),
@@ -795,7 +878,6 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
 
     /// Commit updates to multiple tables in an atomic operation
     #[allow(clippy::too_many_lines)]
-    // ToDo: Split some of this into helper functions
     async fn commit_transaction(
         prefix: Option<Prefix>,
         request: CommitTransactionRequest,
@@ -807,7 +889,59 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
     }
 }
 
-// TODO: split this into smaller functions
+impl<C: Catalog, A: Authorizer + Clone, S: SecretStore> CatalogServer<C, A, S> {
+    async fn resolve_and_authorize_table_access(
+        request_metadata: &RequestMetadata,
+        table: &TableIdent,
+        warehouse_id: WarehouseIdent,
+        list_flags: ListFlags,
+        authorizer: A,
+        transaction: <C::Transaction as Transaction<C::State>>::Transaction<'_>,
+    ) -> Result<(TabularDetails, Option<StoragePermissions>)> {
+        authorizer
+            .require_warehouse_action(
+                request_metadata,
+                warehouse_id,
+                &CatalogWarehouseAction::CanUse,
+            )
+            .await?;
+
+        // We can't fail before AuthZ.
+        let table_id = C::resolve_table_ident(warehouse_id, table, list_flags, transaction).await;
+
+        let table_id = authorizer
+            .require_table_action(
+                request_metadata,
+                table_id,
+                &CatalogTableAction::CanGetMetadata,
+            )
+            .await
+            .map_err(set_not_found_status_code)?;
+
+        let (read_access, write_access) = futures::try_join!(
+            authorizer.is_allowed_table_action(
+                request_metadata,
+                table_id.ident,
+                &CatalogTableAction::CanReadData,
+            ),
+            authorizer.is_allowed_table_action(
+                request_metadata,
+                table_id.ident,
+                &CatalogTableAction::CanWriteData,
+            ),
+        )?;
+
+        let storage_permissions = if write_access {
+            Some(StoragePermissions::ReadWriteDelete)
+        } else if read_access {
+            Some(StoragePermissions::Read)
+        } else {
+            None
+        };
+        Ok((table_id, storage_permissions))
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
     prefix: Option<Prefix>,
@@ -877,7 +1011,6 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
         .map(|table_id| {
             authorizer.require_table_action(
                 &request_metadata,
-                warehouse_id,
                 Ok(*table_id),
                 &CatalogTableAction::CanCommit,
             )
@@ -1040,16 +1173,30 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
     transaction.commit().await?;
 
     // Delete files in parallel - if one delete fails, we still want to delete the rest
+    let expired_locations = expired_metadata_logs
+        .into_iter()
+        .filter_map(|expired_metadata_log| {
+            Location::parse_value(&expired_metadata_log.metadata_file)
+                .map_err(|e| {
+                    tracing::warn!(
+                        "Failed to parse expired metadata file location {}: {:?}",
+                        expired_metadata_log.metadata_file,
+                        e
+                    );
+                })
+                .ok()
+        })
+        .collect::<Vec<_>>();
     let _ = futures::future::join_all(
-        expired_metadata_logs
-            .into_iter()
-            .map(|expired_metadata_log| file_io.delete(expired_metadata_log.metadata_file))
+        expired_locations
+            .iter()
+            .map(|location| delete_file(&file_io, location))
             .collect::<Vec<_>>(),
     )
     .await
     .into_iter()
     .map(|r| {
-        r.map_err(|e| tracing::warn!("Failed to delete metadata file: {:?}", e))
+        r.map_err(|e| tracing::warn!("Failed to delete expired metadata file: {:?}", e))
             .ok()
     });
 
@@ -1061,7 +1208,7 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
         emit_change_event(
             EventMetadata {
                 tabular_id: TabularIdentUuid::Table(*table_id),
-                warehouse_id: *warehouse_id,
+                warehouse_id,
                 name: table_ident.name,
                 namespace: table_ident.namespace.to_url_string(),
                 prefix: prefix
@@ -1079,6 +1226,25 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
         .await;
     }
     Ok(commits)
+}
+
+pub(crate) async fn authorized_table_ident_to_id<C: Catalog, A: Authorizer>(
+    authorizer: A,
+    metadata: &RequestMetadata,
+    warehouse_id: WarehouseIdent,
+    table_ident: &TableIdent,
+    list_flags: ListFlags,
+    action: impl From<&CatalogTableAction> + std::fmt::Display + Send,
+    transaction: <C::Transaction as Transaction<C::State>>::Transaction<'_>,
+) -> Result<TableIdentUuid> {
+    authorizer
+        .require_warehouse_action(metadata, warehouse_id, &CatalogWarehouseAction::CanUse)
+        .await?;
+    let table_id = C::table_to_id(warehouse_id, table_ident, list_flags, transaction).await; // We can't fail before AuthZ
+    authorizer
+        .require_table_action(metadata, table_id, action)
+        .await
+        .map_err(set_not_found_status_code)
 }
 
 pub(crate) fn extract_count_from_metadata_location(location: &Location) -> Option<usize> {
@@ -1127,6 +1293,7 @@ impl CommitContext {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn calculate_diffs(
     new_metadata: &TableMetadata,
     previous_metadata: &TableMetadata,
@@ -1220,6 +1387,40 @@ fn calculate_diffs(
             .saturating_sub(usize::from(head_of_snapshot_log_changed)),
     );
 
+    let old_stats = previous_metadata
+        .statistics_iter()
+        .map(|s| s.snapshot_id)
+        .collect::<FxHashSet<_>>();
+    let new_stats = new_metadata
+        .statistics_iter()
+        .map(|s| s.snapshot_id)
+        .collect::<FxHashSet<_>>();
+    let removed_stats = old_stats
+        .difference(&new_stats)
+        .copied()
+        .collect::<Vec<_>>();
+    let added_stats = new_stats
+        .difference(&old_stats)
+        .copied()
+        .collect::<Vec<_>>();
+
+    let old_partition_stats = previous_metadata
+        .partition_statistics_iter()
+        .map(|s| s.snapshot_id)
+        .collect::<FxHashSet<_>>();
+    let new_partition_stats = new_metadata
+        .partition_statistics_iter()
+        .map(|s| s.snapshot_id)
+        .collect::<FxHashSet<_>>();
+    let removed_partition_stats = old_partition_stats
+        .difference(&new_partition_stats)
+        .copied()
+        .collect::<Vec<_>>();
+    let added_partition_stats = new_partition_stats
+        .difference(&old_partition_stats)
+        .copied()
+        .collect::<Vec<_>>();
+
     TableMetadataDiffs {
         removed_snapshots: removed_snaps,
         added_snapshots,
@@ -1236,6 +1437,10 @@ fn calculate_diffs(
         n_removed_snapshot_log,
         expired_metadata_logs,
         added_metadata_log,
+        added_stats,
+        removed_stats,
+        added_partition_stats,
+        removed_partition_stats,
     }
 }
 
@@ -1256,6 +1461,10 @@ pub(crate) struct TableMetadataDiffs {
     pub(crate) n_removed_snapshot_log: usize,
     pub(crate) expired_metadata_logs: usize,
     pub(crate) added_metadata_log: usize,
+    pub(crate) added_stats: Vec<i64>,
+    pub(crate) removed_stats: Vec<i64>,
+    pub(crate) added_partition_stats: Vec<i64>,
+    pub(crate) removed_partition_stats: Vec<i64>,
 }
 
 pub(crate) fn determine_table_ident(
@@ -1318,14 +1527,7 @@ pub(super) fn determine_tabular_location(
         .transpose()?;
 
     let mut location = if let Some(location) = request_table_location {
-        if !storage_profile.is_allowed_location(&location) {
-            return Err(ErrorModel::bad_request(
-                format!("Specified table location is not allowed: {location}"),
-                "InvalidTableLocation",
-                None,
-            )
-            .into());
-        }
+        storage_profile.require_allowed_location(&location)?;
         location
     } else {
         let namespace_props = NamespaceProperties::from_props_unchecked(
@@ -1444,18 +1646,6 @@ fn validate_table_updates(updates: &Vec<TableUpdate>) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn validate_lowercase_property(prop: &str) -> Result<()> {
-    if prop != prop.to_lowercase() {
-        return Err(ErrorModel::builder()
-            .code(StatusCode::BAD_REQUEST.into())
-            .message(format!("The property '{prop}' is not all lowercase."))
-            .r#type("PropertyNotLowercase")
-            .build()
-            .into());
-    }
-    Ok(())
-}
-
 pub(crate) fn get_delete_after_commit_enabled(properties: &HashMap<String, String>) -> bool {
     properties
         .get(PROPERTY_METADATA_DELETE_AFTER_COMMIT_ENABLED)
@@ -1485,7 +1675,6 @@ where
             )
             .into());
         }
-        validate_lowercase_property(prop)?;
     }
 
     Ok(())
@@ -1589,7 +1778,7 @@ pub(crate) fn create_table_request_into_table_metadata(
 #[cfg(test)]
 mod test {
     use crate::api::iceberg::types::{PageToken, Prefix};
-    use crate::api::iceberg::v1::tables::Service as _;
+    use crate::api::iceberg::v1::tables::TablesService as _;
     use crate::api::iceberg::v1::{
         DataAccess, ListTablesQuery, NamespaceParameters, TableParameters,
     };
@@ -1600,7 +1789,7 @@ mod test {
     use crate::implementations::postgres::{PostgresCatalog, SecretsState};
     use crate::service::authz::implementations::openfga::tests::ObjectHidingMock;
     use crate::service::authz::AllowAllAuthorizer;
-    use crate::service::State;
+    use crate::service::{State, UserId};
 
     use http::StatusCode;
     use iceberg::spec::{
@@ -1617,10 +1806,17 @@ mod test {
     use std::collections::HashMap;
     use uuid::Uuid;
 
+    use crate::catalog::tables::validate_table_properties;
     use crate::catalog::test::impl_pagination_tests;
     use crate::service::authz::implementations::openfga::OpenFGAAuthorizer;
     use iceberg_ext::configs::Location;
     use std::str::FromStr;
+
+    #[test]
+    fn test_mixed_case_properties() {
+        let properties = ["a".to_string(), "B".to_string()];
+        assert!(validate_table_properties(properties.iter()).is_ok());
+    }
 
     #[test]
     fn test_extract_count_from_metadata_location() {
@@ -1900,18 +2096,18 @@ mod test {
     #[sqlx::test]
     async fn test_set_ref(pool: PgPool) {
         let (ctx, ns, ns_params, table) = commit_test_setup(pool).await;
-
+        let last_updated = table.metadata.last_updated_ms();
         let builder = table.metadata.into_builder(table.metadata_location);
 
         let snapshot = Snapshot::builder()
             .with_snapshot_id(1)
-            .with_timestamp_ms(builder.last_updated_ms() + 1)
+            .with_timestamp_ms(last_updated + 1)
             .with_sequence_number(0)
             .with_schema_id(0)
             .with_manifest_list("/snap-1.avro")
             .with_summary(Summary {
                 operation: Operation::Append,
-                other: HashMap::from_iter(vec![
+                additional_properties: HashMap::from_iter(vec![
                     (
                         "spark.app.id".to_string(),
                         "local-1662532784305".to_string(),
@@ -2116,17 +2312,18 @@ mod test {
             namespace: ns.namespace.clone(),
             name: "tab-1".to_string(),
         };
+        let last_updated = table.metadata.last_updated_ms();
         let builder = table.metadata.into_builder(table.metadata_location);
 
         let snap = Snapshot::builder()
             .with_snapshot_id(1)
-            .with_timestamp_ms(builder.last_updated_ms() + 1)
+            .with_timestamp_ms(last_updated + 1)
             .with_sequence_number(0)
             .with_schema_id(0)
             .with_manifest_list("/snap-1.avro")
             .with_summary(Summary {
                 operation: Operation::Append,
-                other: HashMap::from_iter(vec![
+                additional_properties: HashMap::from_iter(vec![
                     (
                         "spark.app.id".to_string(),
                         "local-1662532784305".to_string(),
@@ -2190,18 +2387,19 @@ mod test {
             serde_json::to_value(builder.metadata.clone()).unwrap()
         );
 
+        let last_updated = tab.metadata.last_updated_ms();
         let builder = builder.metadata.into_builder(tab.metadata_location);
 
         let snap = Snapshot::builder()
             .with_snapshot_id(2)
             .with_parent_snapshot_id(Some(1))
-            .with_timestamp_ms(builder.last_updated_ms() + 1)
+            .with_timestamp_ms(last_updated + 1)
             .with_sequence_number(1)
             .with_schema_id(0)
             .with_manifest_list("/snap-2.avro")
             .with_summary(Summary {
                 operation: Operation::Append,
-                other: HashMap::from_iter(vec![
+                additional_properties: HashMap::from_iter(vec![
                     (
                         "spark.app.id".to_string(),
                         "local-1662532784305".to_string(),
@@ -2246,18 +2444,19 @@ mod test {
 
         assert_eq!(tab.metadata, builder.metadata);
 
+        let last_updated = tab.metadata.last_updated_ms();
         let builder = builder.metadata.into_builder(tab.metadata_location);
 
         let snap = Snapshot::builder()
             .with_snapshot_id(3)
-            .with_timestamp_ms(builder.last_updated_ms() + 1)
+            .with_timestamp_ms(last_updated + 1)
             .with_parent_snapshot_id(Some(2))
             .with_sequence_number(2)
             .with_schema_id(0)
             .with_manifest_list("/snap-2.avro")
             .with_summary(Summary {
                 operation: Operation::Append,
-                other: HashMap::from_iter(vec![
+                additional_properties: HashMap::from_iter(vec![
                     (
                         "spark.app.id".to_string(),
                         "local-1662532784305".to_string(),
@@ -2392,6 +2591,7 @@ mod test {
             None,
             AllowAllAuthorizer,
             TabularDeleteProfile::Hard {},
+            None,
         )
         .await;
         let ns = crate::catalog::test::create_ns(
@@ -2408,13 +2608,73 @@ mod test {
     }
 
     #[sqlx::test]
+    async fn test_can_create_tables_with_same_prefix_1(pool: PgPool) {
+        let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
+        let tmp_id = Uuid::now_v7();
+        let mut create_request_1 = create_request(Some("tab-1".to_string()));
+        create_request_1.location = Some(format!("{base_location}/{tmp_id}/my-table-2"));
+        let mut create_request_2 = create_request(Some("tab-2".to_string()));
+        create_request_2.location = Some(format!("{base_location}/{tmp_id}/my-table"));
+
+        let _ = CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_1,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .unwrap();
+
+        CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_2,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[sqlx::test]
+    async fn test_can_create_tables_with_same_prefix_2(pool: PgPool) {
+        let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
+        let tmp_id = Uuid::now_v7();
+        let mut create_request_1 = create_request(Some("tab-1".to_string()));
+        create_request_1.location = Some(format!("{base_location}/{tmp_id}/my-table"));
+        let mut create_request_2 = create_request(Some("tab-2".to_string()));
+        create_request_2.location = Some(format!("{base_location}/{tmp_id}/my-table-2"));
+
+        let _ = CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_1,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .unwrap();
+
+        CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_2,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[sqlx::test]
     async fn test_cannot_create_table_at_same_location(pool: PgPool) {
         let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
         let tmp_id = Uuid::now_v7();
         let mut create_request_1 = create_request(Some("tab-1".to_string()));
-        create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket/"));
+        create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket"));
         let mut create_request_2 = create_request(Some("tab-2".to_string()));
-        create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket/"));
+        create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket"));
 
         let _ = CatalogServer::create_table(
             ns_params.clone(),
@@ -2440,7 +2700,7 @@ mod test {
     }
 
     #[sqlx::test]
-    async fn test_cannot_create_staged_tables_at_sublocations(pool: PgPool) {
+    async fn test_cannot_create_staged_tables_at_sublocations_1(pool: PgPool) {
         let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
         let tmp_id = Uuid::now_v7();
         let mut create_request_1 = create_request(Some("tab-1".to_string()));
@@ -2448,7 +2708,7 @@ mod test {
         create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket/inner"));
         let mut create_request_2 = create_request(Some("tab-2".to_string()));
         create_request_2.stage_create = Some(true);
-        create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket/"));
+        create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket"));
         let _ = CatalogServer::create_table(
             ns_params.clone(),
             create_request_1,
@@ -2473,12 +2733,45 @@ mod test {
     }
 
     #[sqlx::test]
-    async fn test_cannot_create_tables_at_sublocations(pool: PgPool) {
+    async fn test_cannot_create_staged_tables_at_sublocations_2(pool: PgPool) {
+        let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
+        let tmp_id = Uuid::now_v7();
+        let mut create_request_1 = create_request(Some("tab-1".to_string()));
+        create_request_1.stage_create = Some(true);
+        create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket"));
+        let mut create_request_2 = create_request(Some("tab-2".to_string()));
+        create_request_2.stage_create = Some(true);
+        create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket/inner"));
+        let _ = CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_1,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .unwrap();
+
+        let e = CatalogServer::create_table(
+            ns_params.clone(),
+            create_request_2,
+            DataAccess::none(),
+            ctx.clone(),
+            random_request_metadata(),
+        )
+        .await
+        .expect_err("Staged table could be created at sublocation which should not be possible");
+        assert_eq!(e.error.code, StatusCode::BAD_REQUEST, "{e:?}");
+        assert_eq!(e.error.r#type.as_str(), "LocationAlreadyTaken");
+    }
+
+    #[sqlx::test]
+    async fn test_cannot_create_tables_at_sublocations_1(pool: PgPool) {
         let (ctx, _, ns_params, base_location) = table_test_setup(pool).await;
         let tmp_id = Uuid::now_v7();
 
         let mut create_request_1 = create_request(Some("tab-1".to_string()));
-        create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket/"));
+        create_request_1.location = Some(format!("{base_location}/{tmp_id}/bucket"));
         let mut create_request_2 = create_request(Some("tab-2".to_string()));
         create_request_2.location = Some(format!("{base_location}/{tmp_id}/bucket/sublocation"));
         let _ = CatalogServer::create_table(
@@ -2523,6 +2816,7 @@ mod test {
             None,
             authz,
             TabularDeleteProfile::Hard {},
+            Some(UserId::OIDC("test-user-id".to_string())),
         )
         .await;
         let ns = crate::catalog::test::create_ns(
@@ -2579,6 +2873,7 @@ mod test {
             None,
             authz,
             TabularDeleteProfile::Hard {},
+            Some(UserId::OIDC("test-user-id".to_string())),
         )
         .await;
         let ns = crate::catalog::test::create_ns(

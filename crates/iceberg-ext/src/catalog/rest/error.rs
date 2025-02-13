@@ -55,14 +55,14 @@ impl From<ErrorModel> for IcebergErrorResponse {
 }
 
 /// JSON wrapper for all error responses (non-2xx)
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct IcebergErrorResponse {
     pub error: ErrorModel,
 }
 
 /// JSON error payload returned in a response with further details on the error
 
-#[derive(Default, Debug, TypedBuilder, Serialize, Deserialize)]
+#[derive(Default, Debug, TypedBuilder, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ErrorModel {
     /// Human-readable error message
     #[builder(setter(into))]
@@ -254,8 +254,8 @@ impl axum::response::IntoResponse for IcebergErrorResponse {
                 message,
                 r#type,
                 code,
-                stack: vec![error_id.to_string()],
                 source: None,
+                stack: vec![error_id.to_string()],
             },
         })
         .into_response();

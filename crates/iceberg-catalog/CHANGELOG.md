@@ -1,5 +1,103 @@
 # Changelog
 
+## [0.6.2](https://github.com/lakekeeper/lakekeeper/compare/v0.6.1...v0.6.2) (2025-01-30)
+
+
+### Features
+
+* Scope validation ([#790](https://github.com/lakekeeper/lakekeeper/issues/790)) ([65e664f](https://github.com/lakekeeper/lakekeeper/commit/65e664fb804fc6657dcfab655344d9bfd0224b5a))
+
+
+### Miscellaneous Chores
+
+* release 0.6.2 ([0c7e181](https://github.com/lakekeeper/lakekeeper/commit/0c7e1814eef9c039f6d05dbb3256c70caed1c36f))
+
+## [0.6.1](https://github.com/lakekeeper/lakekeeper/compare/v0.6.0...v0.6.1) (2025-01-27)
+
+
+### Features
+
+* expose cloud-events tracing publisher on cli ([#747](https://github.com/lakekeeper/lakekeeper/issues/747)) ([798e85d](https://github.com/lakekeeper/lakekeeper/commit/798e85d39c034b2351443d7b1f9983160b820ed7))
+* Register table endpoint ([#775](https://github.com/lakekeeper/lakekeeper/issues/775)) ([4b88f73](https://github.com/lakekeeper/lakekeeper/commit/4b88f730f3d54e7d905f66a0b32ca93f88e67f69))
+
+
+### Bug Fixes
+
+* clippy & pin rust version ([#758](https://github.com/lakekeeper/lakekeeper/issues/758)) ([0899d4c](https://github.com/lakekeeper/lakekeeper/commit/0899d4cf91a1a056337ee00bcba0827b2e0a9792))
+* Table locations with same prefix ([#780](https://github.com/lakekeeper/lakekeeper/issues/780)) ([39eb3d2](https://github.com/lakekeeper/lakekeeper/commit/39eb3d2a169ff41c9b644a435fa53dadd449925a))
+* **test:** use 0.3.0 for kube-auth test & fix pyiceberg aws tests ([#767](https://github.com/lakekeeper/lakekeeper/issues/767)) ([e6b7b9c](https://github.com/lakekeeper/lakekeeper/commit/e6b7b9ca23d3054c5b95aa09f2bb590ad188d2e2))
+
+
+### Performance Improvements
+
+* optimize load_table by refine SQL ([#784](https://github.com/lakekeeper/lakekeeper/issues/784)) ([2b87915](https://github.com/lakekeeper/lakekeeper/commit/2b87915b7436ed8ec752046a687140fb18fbdf3e))
+
+
+### Miscellaneous Chores
+
+* release 0.6.1 ([a17f5c4](https://github.com/lakekeeper/lakekeeper/commit/a17f5c4919bbe5797099dcbf45cf8a6becf0b3c1))
+
+## [0.6.0](https://github.com/lakekeeper/lakekeeper/compare/v0.5.2...v0.6.0) (2025-01-07)
+
+
+### Features
+
+* Check Endpoint for single permissions ([#706](https://github.com/lakekeeper/lakekeeper/issues/706)) ([6a149a6](https://github.com/lakekeeper/lakekeeper/commit/6a149a64a20728464e1a385a1a788ad9a49bfbe6))
+* Lakekeeper Open Policy Agent Bridge with trino support ([3735742](https://github.com/lakekeeper/lakekeeper/commit/3735742e5c8efb05894f02208afdc2b03e321093))
+* **tests:** run integration tests with iceberg versions: 1.5.2, 1.6.1, 1.7.1 ([3f3b5ad](https://github.com/lakekeeper/lakekeeper/commit/3f3b5ad671cae04725474dee9cfd3f2ce7e0cae7))
+* Update Lakekeeper UI to 0.4.0 ([3735742](https://github.com/lakekeeper/lakekeeper/commit/3735742e5c8efb05894f02208afdc2b03e321093))
+
+
+### Bug Fixes
+
+* credentials configs are never empty but are either null or an empty list ([3f3b5ad](https://github.com/lakekeeper/lakekeeper/commit/3f3b5ad671cae04725474dee9cfd3f2ce7e0cae7))
+* Default to purge drop for managed tables ([#712](https://github.com/lakekeeper/lakekeeper/issues/712)) ([676d995](https://github.com/lakekeeper/lakekeeper/commit/676d995c559a6ee6b08a6e030cd9eeac60931b93))
+* Enable openfga integration tests ([3735742](https://github.com/lakekeeper/lakekeeper/commit/3735742e5c8efb05894f02208afdc2b03e321093))
+* files of deleted tables not deleted for ADLS ([#715](https://github.com/lakekeeper/lakekeeper/issues/715)) ([d81677f](https://github.com/lakekeeper/lakekeeper/commit/d81677f32df5aadedd83f439afa845c454f6af9a))
+* return proper error codes for invalid writes and reads of permission tuples ([#727](https://github.com/lakekeeper/lakekeeper/issues/727)) ([96c2d5e](https://github.com/lakekeeper/lakekeeper/commit/96c2d5e0f9a5971610ced65138c5405c1a9702ad))
+* use correct list of supported endpoints ([3f3b5ad](https://github.com/lakekeeper/lakekeeper/commit/3f3b5ad671cae04725474dee9cfd3f2ce7e0cae7))
+
+## [0.5.2](https://github.com/lakekeeper/lakekeeper/compare/v0.5.1...v0.5.2) (2024-12-17)
+
+
+### Features
+
+* Support for Statistic Files ([1e4fa38](https://github.com/lakekeeper/lakekeeper/commit/1e4fa3876919bf5b926ea73f370ff62efd9081b9))
+* **tables:** load table credentials ([#675](https://github.com/lakekeeper/lakekeeper/issues/675)) ([9fd272e](https://github.com/lakekeeper/lakekeeper/commit/9fd272ee831b3347c3d4e790fcaacba6f4ded273))
+
+
+### Bug Fixes
+
+* Make BASE_URI trailing slash insensitive ([#681](https://github.com/lakekeeper/lakekeeper/issues/681)) ([4799ea7](https://github.com/lakekeeper/lakekeeper/commit/4799ea78e60e5c908547f0cf1421384da919bfe3))
+* Snapshots without schema ([1e4fa38](https://github.com/lakekeeper/lakekeeper/commit/1e4fa3876919bf5b926ea73f370ff62efd9081b9))
+
+
+### Miscellaneous Chores
+
+* release 0.5.2 ([c5774b2](https://github.com/lakekeeper/lakekeeper/commit/c5774b26183dc41e938af130005e8df9230b3b82))
+
+## [0.5.1](https://github.com/lakekeeper/lakekeeper/compare/v0.5.0...v0.5.1) (2024-12-12)
+
+
+### Features
+
+* **openapi:** document error models in openapi ([#658](https://github.com/lakekeeper/lakekeeper/issues/658)) ([2a67196](https://github.com/lakekeeper/lakekeeper/commit/2a67196a9f9844db0f846cb2e9016c4d4620b0b5))
+* undrop  ([#517](https://github.com/lakekeeper/lakekeeper/issues/517)) ([658e757](https://github.com/lakekeeper/lakekeeper/commit/658e757663cd35a87ecccb2173e9e87247239c8e))
+
+
+### Bug Fixes
+
+* allow mixed-case properties ([#660](https://github.com/lakekeeper/lakekeeper/issues/660)) ([f435573](https://github.com/lakekeeper/lakekeeper/commit/f4355732583d396822ed7bbb55cc81537153b29e))
+* potential deadlock for views through uncommitted transactions ([#638](https://github.com/lakekeeper/lakekeeper/issues/638)) ([0dda8e3](https://github.com/lakekeeper/lakekeeper/commit/0dda8e3d9bc7cdb1a36c7fc23d57c0e7e7e1389a))
+* potential deadlock in load-table ([#636](https://github.com/lakekeeper/lakekeeper/issues/636)) ([c22b0e0](https://github.com/lakekeeper/lakekeeper/commit/c22b0e00ae76ad3458c91ed860c8410446f52173))
+* remove unused relation from openfga schema ([#659](https://github.com/lakekeeper/lakekeeper/issues/659)) ([764ca5b](https://github.com/lakekeeper/lakekeeper/commit/764ca5b2667de591a4c6bc2ba798c41eb6b5c59e))
+* tokens of humans are wrongly identified as applications if "appid" claim is present ([#647](https://github.com/lakekeeper/lakekeeper/issues/647)) ([bc6b475](https://github.com/lakekeeper/lakekeeper/commit/bc6b475075354a66ae80b771ac7de3287b467841))
+
+
+### Miscellaneous Chores
+
+* release 0.5.1 ([f8aa87c](https://github.com/lakekeeper/lakekeeper/commit/f8aa87ca8b7a8074389cd43a39007b2652a46494))
+
 ## [0.5.0](https://github.com/lakekeeper/lakekeeper/compare/v0.4.3...v0.5.0) (2024-12-06)
 
 

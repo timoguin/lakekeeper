@@ -17,7 +17,7 @@
 
 Please visit [https://docs.lakekeeper.io](https://docs.lakekeeper.io) for Documentation!
 
-This is Lakekeeper: A **secure**, **fast** and **easy to use**  implementation of the [Apache Iceberg](https://iceberg.apache.org/) REST Catalog specification based on [apache/iceberg-rust](https://github.com/apache/iceberg-rust). If you have questions, feature requests or just want a chat, we are hanging around in [Discord](https://discord.gg/jkAGG8p93B)!
+This is Lakekeeper: An Apache-Licensed, **secure**, **fast** and **easy to use**  implementation of the [Apache Iceberg](https://iceberg.apache.org/) REST Catalog specification based on [apache/iceberg-rust](https://github.com/apache/iceberg-rust). If you have questions, feature requests or just want a chat, we are hanging around in [Discord](https://discord.gg/jkAGG8p93B)!
 
 <p align="center">
 <img src="https://github.com/lakekeeper/lakekeeper/raw/main/assets/Lakekeeper-Overview.png" width="500">
@@ -36,7 +36,7 @@ docker compose up
 
 Then open your browser and head to [localhost:8888](localhost:8888) to load the example Jupyter notebooks or head to [localhost:8181](localhost:8181) for the Lakekeeper UI.
 
-For more information on deployment, please check the [Getting Started Guide](docs.lakekeeper.io/getting-started/).
+For more information on deployment, please check the [Getting Started Guide](https://docs.lakekeeper.io/getting-started/).
 
 # Scope and Features
 

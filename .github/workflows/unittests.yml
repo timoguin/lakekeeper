@@ -4,12 +4,13 @@ on:
   push:
     branches:
       - main
-      - 'manual-release-*'
+      - "manual-release-*"
   pull_request:
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: 1.84
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
@@ -37,8 +38,9 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
         env:
-          RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
+          RUST_CACHE_KEY_OS: rust-${{ env.RUST_TOOLCHAIN }}-cache-ubuntu-24.04
 
       - name: Cargo format
         run: just check-format
@@ -60,8 +62,9 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
         env:
-          RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
+          RUST_CACHE_KEY_OS: rust-${{ env.RUST_TOOLCHAIN }}-cache-ubuntu-24.04
           TEST_OPENFGA: 1
           TEST_AZURE: 1
           TEST_AWS: 1
@@ -72,7 +75,7 @@ jobs:
       - name: Cargo clippy
         run: just check-clippy
         env:
-          RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
+          RUST_CACHE_KEY_OS: rust-${{ env.RUST_TOOLCHAIN }}-cache-ubuntu-24.04
           TEST_OPENFGA: 1
           TEST_AZURE: 1
           TEST_AWS: 1
@@ -92,17 +95,18 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
         env:
-          RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
+          RUST_CACHE_KEY_OS: rust-${{ env.RUST_TOOLCHAIN }}-cache-ubuntu-24.04
       - name: Regenerate management openapi
         run: just update-management-openapi
       - name: Fail on diff
-        run: git diff -I ".*version.*" -w --ignore-blank-lines --exit-code Cargo.lock openapi/
+        run: git diff -I ".*version.*" -w --ignore-blank-lines --exit-code Cargo.lock docs/docs/api/
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - name: Build TS Client
-        run: npx @hey-api/openapi-ts -i openapi/management-open-api.yaml -o src/gen/management -c @hey-api/client-fetch
+        run: npx @hey-api/openapi-ts -i docs/docs/api/management-open-api.yaml -o src/gen/management -c @hey-api/client-fetch
 
   test:
     runs-on: ubuntu-24.04
@@ -154,7 +158,10 @@ jobs:
       - name: Setup Rust toolchain and cache
         uses: actions-rust-lang/setup-rust-toolchain@v1
         env:
-          RUST_CACHE_KEY_OS: rust-cache-ubuntu-24.04
+          RUST_CACHE_KEY_OS: rust-${{ env.RUST_TOOLCHAIN }}-cache-ubuntu-24.04
+
+      - name: Setup cargo nextest
+        run: cargo install --force cargo-nextest
 
       - name: Setup cargo nextest
         run: cargo install cargo-nextest
@@ -189,7 +196,7 @@ jobs:
         run: docker run -d -p 35081:8081 openfga/openfga:v1.6 run
 
       - name: Test
-        run: cargo test --all-targets --all-features --workspace
+        run: cargo nextest run --profile ci --all-targets --all-features --workspace
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
           TEST_KV2: 1

@@ -19,34 +19,57 @@ concurrency:
 
 jobs:
   docker:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Docker info
-        run: docker info
-
-      - name: Build Docker image (amd64)
-        run: |
-          DOCKER_BUILDKIT=1 docker build -t localhost/iceberg-catalog-local:amd64 \
-          -f docker/full.Dockerfile .
-          docker save -o /tmp/iceberg-catalog-amd64.tar localhost/iceberg-catalog-local:amd64
-
-      - name: Save Docker
-        uses: actions/upload-artifact@v4
-        with:
-          name: iceberg-catalog-image
-          path: /tmp/*.tar
+    uses: ./.github/workflows/docker_build.yml
+    with:
+      platform: 'amd64'
+      dockerfile: 'docker/full.Dockerfile'
+      image_name: 'iceberg-catalog-local'
   tests:
     needs: docker
     strategy:
       fail-fast: false
       matrix:
-        names: [ openfga, pyiceberg, spark_adls, spark_aws_remote_signing, spark_aws_sts, spark_gcs, spark_minio_sts, spark_minio_remote_signing, starrocks, trino ]
+        names:
+          - pyiceberg
+          - starrocks
+          - trino
+          - trino_opa
+          - spark_openfga-1.5.2
+          - spark_openfga-1.6.1
+          - spark_openfga-1.7.1
+          - spark_kv2-1.7.1
+          - spark_adls-1.5.2
+          - spark_adls-1.6.1
+          # - spark_adls-1.7.1 adls is currently broken with 1.7.1 due to https://lists.apache.org/thread/xc0ddyjkwdl8rhp072fcydl4rondogx6
+          - spark_aws_remote_signing-1.5.2
+          - spark_aws_remote_signing-1.6.1
+          - spark_aws_remote_signing-1.7.1
+          - spark_aws_sts-1.5.2
+          - spark_aws_sts-1.6.1
+          - spark_aws_sts-1.7.1
+          - spark_gcs-1.5.2
+          - spark_gcs-1.6.1
+          - spark_gcs-1.7.1
+          - spark_minio_sts-1.5.2
+          - spark_minio_sts-1.6.1
+          - spark_minio_sts-1.7.1
+          - spark_minio_remote_signing-1.5.2
+          - spark_minio_remote_signing-1.6.1
+          - spark_minio_remote_signing-1.7.1
     uses: ./.github/workflows/integration_test_workflow.yml
     with:
         test_name: ${{ matrix.names }}
     secrets: inherit
+  integration_tests_results:
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    name: Integration tests results
+    needs: [ tests ]
+    steps:
+      - run: |
+          result="${{ needs.tests.result }}"
+          if [[ $result == "success" || $result == "skipped" ]]; then
+            exit 0
+          else
+            exit 1
+          fi

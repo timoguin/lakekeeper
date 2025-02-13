@@ -1,7 +1,7 @@
 use super::authz::TableUuid;
 use super::{
     storage::StorageProfile, NamespaceIdentUuid, ProjectIdent, RoleId, TableIdentUuid,
-    ViewIdentUuid, WarehouseIdent, WarehouseStatus,
+    TabularDetails, ViewIdentUuid, WarehouseIdent, WarehouseStatus,
 };
 pub use crate::api::iceberg::v1::{
     CreateNamespaceRequest, CreateNamespaceResponse, ListNamespacesQuery, NamespaceIdent, Result,
@@ -24,6 +24,7 @@ use iceberg_ext::configs::Location;
 
 use crate::catalog::tables::TableMetadataDiffs;
 use crate::service::authn::UserId;
+use crate::service::task_queue::TaskId;
 use iceberg::TableUpdate;
 use std::collections::{HashMap, HashSet};
 
@@ -369,6 +370,15 @@ where
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<String>;
 
+    /// Undrop a table.
+    ///
+    /// Undrops a soft-deleted table. Does not work if the table was hard-deleted.
+    /// Returns the task id of the expiration task associated with the soft-deletion.
+    async fn undrop_tabulars(
+        table_id: &[TableIdentUuid],
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+    ) -> Result<Vec<TaskId>>;
+
     async fn mark_tabular_as_deleted(
         table_id: TabularIdentUuid,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
@@ -623,9 +633,22 @@ where
         warehouse_id: WarehouseIdent,
         namespace_id: Option<NamespaceIdentUuid>, // Filter by namespace
         list_flags: ListFlags,
-        catalog_state: Self::State,
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
         pagination_query: PaginationQuery,
     ) -> Result<PaginatedMapping<TabularIdentUuid, (TabularIdentOwned, Option<DeletionDetails>)>>;
+
+    async fn load_storage_profile(
+        warehouse_id: WarehouseIdent,
+        tabular_id: TableIdentUuid,
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+    ) -> Result<(Option<SecretIdent>, StorageProfile)>;
+
+    async fn resolve_table_ident(
+        warehouse_id: WarehouseIdent,
+        table: &TableIdent,
+        list_flags: ListFlags,
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+    ) -> Result<Option<TabularDetails>>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

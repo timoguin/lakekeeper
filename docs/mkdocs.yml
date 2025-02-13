@@ -5,13 +5,19 @@ plugins:
 
 nav:
   - Concepts: concepts.md
+  - API:
+      - Catalog: api/catalog.md
+      - Management: api/management.md
   - User Guide:
       - bootstrap.md
       - storage.md
       - authentication.md
       - authorization.md
+      - opa.md
       - production.md
+      - gotchas.md
   - Configuration: configuration.md
   - Contribute:
       - developer-guide.md
       - customize.md
+

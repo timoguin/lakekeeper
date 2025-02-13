@@ -14,16 +14,18 @@ pub mod v1 {
     use std::marker::PhantomData;
 
     use crate::api::management::v1::user::{ListUsersQuery, ListUsersResponse};
+    use crate::api::management::v1::warehouse::UndropTabularsRequest;
+    use crate::api::IcebergErrorResponse;
     use crate::service::authn::UserId;
     use crate::service::{
-        authz::Authorizer, storage::S3Flavor, Actor, Catalog, CreateOrUpdateUserResponse, RoleId,
-        SecretStore, State, TabularIdentUuid,
+        authz::Authorizer, Actor, Catalog, CreateOrUpdateUserResponse, RoleId, SecretStore, State,
+        TabularIdentUuid,
     };
-    use crate::ProjectIdent;
+    use crate::{ProjectIdent, WarehouseIdent};
     use axum::extract::{Path, Query, State as AxumState};
     use axum::response::{IntoResponse, Response};
     use axum::routing::{get, post};
-    use bootstrap::{AuthZBackend, BootstrapRequest, ServerInfo, Service as _};
+    use bootstrap::{BootstrapRequest, ServerInfo, Service as _};
     use http::StatusCode;
     use iceberg_ext::catalog::rest::ErrorModel;
     use project::{
@@ -36,16 +38,14 @@ pub mod v1 {
     };
     use serde::Serialize;
     use user::{
-        CreateUserRequest, SearchUser, SearchUserRequest, SearchUserResponse, Service as _,
-        UpdateUserRequest, User, UserLastUpdatedWith, UserType,
+        CreateUserRequest, SearchUserRequest, SearchUserResponse, Service as _, UpdateUserRequest,
+        User,
     };
     use warehouse::{
-        AdlsProfile, AzCredential, CreateWarehouseRequest, CreateWarehouseResponse, GcsCredential,
-        GcsProfile, GcsServiceKey, GetWarehouseResponse, ListDeletedTabularsQuery,
-        ListWarehousesRequest, ListWarehousesResponse, RenameWarehouseRequest, S3Credential,
-        S3Profile, Service as _, StorageCredential, StorageProfile, TabularDeleteProfile,
-        UpdateWarehouseCredentialRequest, UpdateWarehouseDeleteProfileRequest,
-        UpdateWarehouseStorageRequest, WarehouseStatus,
+        CreateWarehouseRequest, CreateWarehouseResponse, GetWarehouseResponse,
+        ListDeletedTabularsQuery, ListWarehousesRequest, ListWarehousesResponse,
+        RenameWarehouseRequest, Service as _, UpdateWarehouseCredentialRequest,
+        UpdateWarehouseDeleteProfileRequest, UpdateWarehouseStorageRequest,
     };
 
     pub(crate) fn default_page_size() -> i64 {
@@ -97,6 +97,7 @@ pub mod v1 {
             rename_warehouse,
             search_role,
             search_user,
+            undrop_tabulars,
             update_role,
             update_storage_credential,
             update_storage_profile,
@@ -104,59 +105,6 @@ pub mod v1 {
             update_warehouse_delete_profile,
             whoami,
         ),
-        components(schemas(
-            AuthZBackend,
-            AzCredential,
-            AdlsProfile,
-            BootstrapRequest,
-            CreateProjectRequest,
-            CreateProjectResponse,
-            CreateRoleRequest,
-            CreateRoleRequest,
-            CreateRoleRequest,
-            CreateUserRequest,
-            CreateWarehouseRequest,
-            CreateWarehouseResponse,
-            DeletedTabularResponse,
-            DeleteKind,
-            GcsCredential,
-            GcsProfile,
-            GcsServiceKey,
-            GetProjectResponse,
-            GetWarehouseResponse,
-            ListDeletedTabularsResponse,
-            ListProjectsResponse,
-            ListRolesResponse,
-            ListUsersResponse,
-            ListWarehousesRequest,
-            ListWarehousesResponse,
-            ProjectIdent,
-            RenameProjectRequest,
-            RenameWarehouseRequest,
-            Role,
-            S3Credential,
-            S3Flavor,
-            S3Profile,
-            SearchRoleRequest,
-            SearchRoleResponse,
-            SearchUser,
-            SearchUserRequest,
-            SearchUserResponse,
-            ServerInfo,
-            StorageCredential,
-            StorageProfile,
-            TabularDeleteProfile,
-            TabularType,
-            UpdateRoleRequest,
-            UpdateUserRequest,
-            UpdateWarehouseCredentialRequest,
-            UpdateWarehouseDeleteProfileRequest,
-            UpdateWarehouseStorageRequest,
-            User,
-            UserLastUpdatedWith,
-            UserType,
-            WarehouseStatus,
-        )),
         modifiers(&SecurityAddon)
     )]
     struct ManagementApiDoc;
@@ -192,6 +140,8 @@ pub mod v1 {
         path = "/management/v1/info",
         responses(
             (status = 200, description = "Server info", body = ServerInfo),
+            (status = "4XX", body = IcebergErrorResponse),
+            (status = 500, description = "Unauthorized", body = IcebergErrorResponse)
         )
     )]
     async fn get_server_info<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -213,6 +163,8 @@ pub mod v1 {
         request_body = BootstrapRequest,
         responses(
             (status = 204, description = "Server bootstrapped successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
+            (status = 500, description = "InternalError", body = IcebergErrorResponse)
         )
     )]
     async fn bootstrap<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -235,6 +187,7 @@ pub mod v1 {
         responses(
             (status = 200, description = "User updated", body = User),
             (status = 201, description = "User created", body = User),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn create_user<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -258,6 +211,7 @@ pub mod v1 {
         request_body = SearchUserRequest,
         responses(
             (status = 200, description = "List of users", body = SearchUserResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn search_user<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -276,6 +230,7 @@ pub mod v1 {
         params(("id" = Uuid,)),
         responses(
             (status = 200, description = "User details", body = User),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn get_user<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -295,6 +250,7 @@ pub mod v1 {
         path = "/management/v1/whoami",
         responses(
             (status = 200, description = "User details", body = User),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn whoami<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -328,6 +284,7 @@ pub mod v1 {
         request_body = UpdateUserRequest,
         responses(
             (status = 200, description = "User details updated successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn update_user<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -347,6 +304,7 @@ pub mod v1 {
         params(ListUsersQuery),
         responses(
             (status = 200, description = "List of users", body = ListUsersResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn list_user<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -368,6 +326,7 @@ pub mod v1 {
         params(("id" = Uuid,)),
         responses(
             (status = 204, description = "User deleted successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn delete_user<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -388,6 +347,7 @@ pub mod v1 {
         request_body = CreateRoleRequest,
         responses(
             (status = 201, description = "Role successfully created", body = Role),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn create_role<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -409,6 +369,7 @@ pub mod v1 {
         request_body = SearchRoleRequest,
         responses(
             (status = 200, description = "List of users", body = SearchRoleResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn search_role<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -427,6 +388,7 @@ pub mod v1 {
         params(ListRolesQuery),
         responses(
             (status = 200, description = "List of roles", body = ListRolesResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn list_roles<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -447,6 +409,7 @@ pub mod v1 {
         params(("id" = Uuid,)),
         responses(
             (status = 204, description = "Role deleted successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn delete_role<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -467,6 +430,7 @@ pub mod v1 {
         params(("id" = Uuid,)),
         responses(
             (status = 200, description = "Role details", body = Role),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn get_role<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -488,6 +452,7 @@ pub mod v1 {
         request_body = UpdateRoleRequest,
         responses(
             (status = 200, description = "Role updated successfully", body = Role),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn update_role<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -513,6 +478,7 @@ pub mod v1 {
         request_body = CreateWarehouseRequest,
         responses(
             (status = 201, description = "Warehouse created successfully", body = CreateWarehouseResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn create_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -529,7 +495,8 @@ pub mod v1 {
         tag = "project",
         path = "/management/v1/project-list",
         responses(
-            (status = 200, description = "List of projects", body = ListProjectsResponse)
+            (status = 200, description = "List of projects", body = ListProjectsResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn list_projects<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -545,7 +512,8 @@ pub mod v1 {
         tag = "project",
         path = "/management/v1/project",
         responses(
-            (status = 201, description = "Project created successfully", body = CreateProjectResponse)
+            (status = 201, description = "Project created successfully", body = CreateProjectResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn create_project<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -562,7 +530,8 @@ pub mod v1 {
         tag = "project",
         path = "/management/v1/default-project",
         responses(
-            (status = 200, description = "Project details", body = GetProjectResponse)
+            (status = 200, description = "Project details", body = GetProjectResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn get_default_project<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -579,7 +548,8 @@ pub mod v1 {
         path = "/management/v1/project/{project_id}",
         params(("project_id" = Uuid,)),
         responses(
-            (status = 200, description = "Project details", body = GetProjectResponse)
+            (status = 200, description = "Project details", body = GetProjectResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn get_project_by_id<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -596,7 +566,8 @@ pub mod v1 {
         tag = "project",
         path = "/management/v1/default-project",
         responses(
-            (status = 204, description = "Project deleted successfully")
+            (status = 204, description = "Project deleted successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn delete_default_project<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -615,7 +586,8 @@ pub mod v1 {
         path = "/management/v1/project/{project_id}",
         params(("project_id" = Uuid,)),
         responses(
-            (status = 204, description = "Project deleted successfully")
+            (status = 204, description = "Project deleted successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn delete_project_by_id<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -634,7 +606,8 @@ pub mod v1 {
         tag = "project",
         path = "/management/v1/default-project/rename",
         responses(
-            (status = 200, description = "Project renamed successfully")
+            (status = 200, description = "Project renamed successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn rename_default_project<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -652,7 +625,8 @@ pub mod v1 {
         path = "/management/v1/project/{project_id}/rename",
         params(("project_id" = Uuid,)),
         responses(
-            (status = 200, description = "Project renamed successfully")
+            (status = 200, description = "Project renamed successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn rename_project_by_id<C: Catalog, A: Authorizer, S: SecretStore>(
@@ -674,7 +648,8 @@ pub mod v1 {
         path = "/management/v1/warehouse",
         params(ListWarehousesRequest),
         responses(
-            (status = 200, description = "List of warehouses", body = ListWarehousesResponse)
+            (status = 200, description = "List of warehouses", body = ListWarehousesResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn list_warehouses<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -691,7 +666,8 @@ pub mod v1 {
         tag = "warehouse",
         path = "/management/v1/warehouse/{warehouse_id}",
         responses(
-            (status = 200, description = "Warehouse details", body = GetWarehouseResponse)
+            (status = 200, description = "Warehouse details", body = GetWarehouseResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn get_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -708,7 +684,8 @@ pub mod v1 {
         tag = "warehouse",
         path = "/management/v1/warehouse/{warehouse_id}",
         responses(
-            (status = 204, description = "Warehouse deleted successfully")
+            (status = 204, description = "Warehouse deleted successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn delete_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -728,7 +705,8 @@ pub mod v1 {
         path = "/management/v1/warehouse/{warehouse_id}/rename",
         request_body = RenameWarehouseRequest,
         responses(
-            (status = 200, description = "Warehouse renamed successfully")
+            (status = 200, description = "Warehouse renamed successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn rename_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -748,7 +726,8 @@ pub mod v1 {
             path = "/management/v1/warehouse/{warehouse_id}/delete-profile",
             request_body = UpdateWarehouseDeleteProfileRequest,
             responses(
-                (status = 200, description = "Deletion Profile updated successfully")
+                (status = 200, description = "Deletion Profile updated successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
             )
         )]
     async fn update_warehouse_delete_profile<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -772,7 +751,8 @@ pub mod v1 {
         tag = "warehouse",
         path = "/management/v1/warehouse/{warehouse_id}/deactivate",
         responses(
-            (status = 200, description = "Warehouse deactivated successfully")
+            (status = 200, description = "Warehouse deactivated successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn deactivate_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -789,7 +769,8 @@ pub mod v1 {
         tag = "warehouse",
         path = "/management/v1/warehouse/{warehouse_id}/activate",
         responses(
-            (status = 200, description = "Warehouse activated successfully")
+            (status = 200, description = "Warehouse activated successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn activate_warehouse<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -807,7 +788,8 @@ pub mod v1 {
         path = "/management/v1/warehouse/{warehouse_id}/storage",
         request_body = UpdateWarehouseStorageRequest,
         responses(
-            (status = 200, description = "Storage profile updated successfully")
+            (status = 200, description = "Storage profile updated successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn update_storage_profile<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -828,7 +810,8 @@ pub mod v1 {
         path = "/management/v1/warehouse/{warehouse_id}/storage-credential",
         request_body = UpdateWarehouseCredentialRequest,
         responses(
-            (status = 200, description = "Storage credential updated successfully")
+            (status = 200, description = "Storage credential updated successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn update_storage_credential<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -855,7 +838,8 @@ pub mod v1 {
         path = "/management/v1/warehouse/{warehouse_id}/deleted-tabulars",
         params(ListDeletedTabularsQuery),
         responses(
-            (status = 200, description = "List of soft-deleted tabulars", body = ListDeletedTabularsResponse)
+            (status = 200, description = "List of soft-deleted tabulars", body = ListDeletedTabularsResponse),
+            (status = "4XX", body = IcebergErrorResponse),
         )
     )]
     async fn list_deleted_tabulars<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
@@ -872,6 +856,25 @@ pub mod v1 {
         )
         .await
         .map(Json)
+    }
+
+    #[utoipa::path(
+        post,
+        tag = "warehouse",
+        path = "/management/v1/warehouse/{warehouse_id}/deleted_tabulars/undrop",
+        responses(
+            (status = 204, description = "Tabular undropped successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
+        )
+    )]
+    async fn undrop_tabulars<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+        Path(_warehouse_id): Path<uuid::Uuid>,
+        AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
+        Extension(metadata): Extension<RequestMetadata>,
+        Json(request): Json<UndropTabularsRequest>,
+    ) -> Result<StatusCode> {
+        ApiServer::<C, A, S>::undrop_tabulars(metadata, request, api_context).await?;
+        Ok(StatusCode::NO_CONTENT)
     }
 
     #[derive(Debug, Serialize, utoipa::ToSchema)]
@@ -893,7 +896,8 @@ pub mod v1 {
         /// Type of the tabular
         pub typ: TabularType,
         /// Warehouse ID where the tabular is stored
-        pub warehouse_id: uuid::Uuid,
+        #[schema(value_type = uuid::Uuid)]
+        pub warehouse_id: WarehouseIdent,
         /// Date when the tabular was created
         pub created_at: chrono::DateTime<chrono::Utc>,
         /// Date when the tabular was deleted
@@ -942,7 +946,7 @@ pub mod v1 {
                 // Role management
                 .route("/role", get(list_roles).post(create_role))
                 .route(
-                    "/role/:id",
+                    "/role/{id}",
                     get(get_role).post(update_role).delete(delete_role),
                 )
                 .route("/search/role", post(search_role))
@@ -950,7 +954,7 @@ pub mod v1 {
                 .route("/whoami", get(whoami))
                 .route("/search/user", post(search_user))
                 .route(
-                    "/user/:user_id",
+                    "/user/{user_id}",
                     get(get_user).put(update_user).delete(delete_user),
                 )
                 .route("/user", get(list_user).post(create_user))
@@ -963,10 +967,10 @@ pub mod v1 {
                 )
                 .route("/project/rename", post(rename_default_project))
                 .route(
-                    "/project/:project_id",
+                    "/project/{project_id}",
                     get(get_project_by_id).delete(delete_project_by_id),
                 )
-                .route("/project/:project_id/rename", post(rename_project_by_id))
+                .route("/project/{project_id}/rename", post(rename_project_by_id))
                 // Create a new warehouse
                 .route("/warehouse", post(create_warehouse))
                 // List all projects
@@ -977,38 +981,42 @@ pub mod v1 {
                     get(list_warehouses),
                 )
                 .route(
-                    "/warehouse/:warehouse_id",
+                    "/warehouse/{warehouse_id}",
                     get(get_warehouse).delete(delete_warehouse),
                 )
                 // Rename warehouse
-                .route("/warehouse/:warehouse_id/rename", post(rename_warehouse))
+                .route("/warehouse/{warehouse_id}/rename", post(rename_warehouse))
                 // Deactivate warehouse
                 .route(
-                    "/warehouse/:warehouse_id/deactivate",
+                    "/warehouse/{warehouse_id}/deactivate",
                     post(deactivate_warehouse),
                 )
                 .route(
-                    "/warehouse/:warehouse_id/activate",
+                    "/warehouse/{warehouse_id}/activate",
                     post(activate_warehouse),
                 )
                 // Update storage profile and credential.
                 // The old credential is not re-used. If credentials are not provided,
                 // we assume that this endpoint does not require a secret.
                 .route(
-                    "/warehouse/:warehouse_id/storage",
+                    "/warehouse/{warehouse_id}/storage",
                     post(update_storage_profile),
                 )
                 // Update only the storage credential - keep the storage profile as is
                 .route(
-                    "/warehouse/:warehouse_id/storage-credential",
+                    "/warehouse/{warehouse_id}/storage-credential",
                     post(update_storage_credential),
                 )
                 .route(
-                    "/warehouse/:warehouse_id/deleted-tabulars",
+                    "/warehouse/{warehouse_id}/deleted-tabulars",
                     get(list_deleted_tabulars),
                 )
                 .route(
-                    "/warehouse/:warehouse_id/delete-profile",
+                    "/warehouse/{warehouse_id}/deleted_tabulars/undrop",
+                    post(undrop_tabulars),
+                )
+                .route(
+                    "/warehouse/{warehouse_id}/delete-profile",
                     post(update_warehouse_delete_profile),
                 )
                 .merge(authorizer.new_router())

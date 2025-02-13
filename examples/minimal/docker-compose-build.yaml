@@ -7,6 +7,11 @@ services:
     build:
       context: ../../
       dockerfile: docker/full.Dockerfile
+    environment:
+      - LAKEKEEPER__ALLOW_ORIGIN="*"
+    ports:
+      # metrics
+      - "1234:9000"
   migrate:
     image: localhost/iceberg-catalog-local:latest
     pull_policy: never

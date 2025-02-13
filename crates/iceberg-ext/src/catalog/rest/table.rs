@@ -4,15 +4,26 @@ use crate::spec::{Schema, SortOrder, TableMetadata, UnboundPartitionSpec};
 #[cfg(feature = "axum")]
 use super::impl_into_response;
 
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+pub struct StorageCredential {
+    pub prefix: String,
+    pub config: std::collections::HashMap<String, String>,
+}
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct LoadCredentialsResponse {
+    pub storage_credentials: Vec<StorageCredential>,
+}
+
 /// Result used when a table is successfully loaded.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct LoadTableResult {
     /// May be null if the table is staged as part of a transaction
     pub metadata_location: Option<String>,
-    #[serde(rename = "metadata")]
     pub metadata: TableMetadata,
     pub config: Option<std::collections::HashMap<String, String>>,
+    pub storage_credentials: Option<Vec<StorageCredential>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -83,3 +94,5 @@ impl_into_response!(LoadTableResult);
 impl_into_response!(ListTablesResponse);
 #[cfg(feature = "axum")]
 impl_into_response!(CommitTableResponse);
+#[cfg(feature = "axum")]
+impl_into_response!(LoadCredentialsResponse);

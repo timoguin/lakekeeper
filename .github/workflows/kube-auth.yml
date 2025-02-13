@@ -15,27 +15,11 @@ concurrency:
 
 jobs:
   docker:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Docker info
-        run: docker info
-
-      - name: Build Docker image (amd64)
-        run: |
-          DOCKER_BUILDKIT=1 docker build -t localhost/iceberg-catalog-local:amd64 \
-          -f docker/full.Dockerfile .
-          docker save -o /tmp/iceberg-catalog-amd64.tar localhost/iceberg-catalog-local:amd64
-
-      - name: Save Docker
-        uses: actions/upload-artifact@v4
-        with:
-          name: iceberg-catalog-image
-          path: /tmp/*.tar
+    uses: ./.github/workflows/docker_build.yml
+    with:
+      platform: 'amd64'
+      dockerfile: 'docker/full.Dockerfile'
+      image_name: 'iceberg-catalog-local'
   kube_auth:
     needs: docker
     runs-on: ubuntu-24.04
@@ -54,15 +38,13 @@ jobs:
         run: ls -Rlh artifacts
 
       - name: Restore Docker image
-        run:  docker load -i artifacts/iceberg-catalog-amd64.tar &&  kind load docker-image localhost/iceberg-catalog-local:amd64
+        run:  docker load -i artifacts/iceberg-catalog-local-amd64.tar &&  kind load docker-image localhost/iceberg-catalog-local:amd64
       - uses: azure/setup-helm@v4.2.0
         id: install
       - run: helm repo add lakekeeper https://lakekeeper.github.io/lakekeeper-charts/
         name: Add lakekeeper helm repo
       - name: Install lakekeeper (wait 300s)
-        run: helm install -f tests/kube-auth/values.yaml my-lakekeeper lakekeeper/lakekeeper --version 0.1.5 && sleep 300
-      - name: Apply auth role
-        run: kubectl describe pods && kubectl apply -f tests/kube-auth/auth_role.yaml
+        run: helm install -f tests/kube-auth/values.yaml my-lakekeeper lakekeeper/lakekeeper --version 0.3.0 && sleep 300
       - name: Run tests
         run: kubectl run bootstrap-test --image=curlimages/curl -it --command=true --restart=Never -- /bin/sh -c "$(cat tests/kube-auth/bootstrap.sh)"
       - name: bootstrap-logs

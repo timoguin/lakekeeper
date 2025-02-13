@@ -2,7 +2,6 @@ use super::dbutils::DBErrorHandler as _;
 use crate::api::{CatalogConfig, ErrorModel, Result};
 use crate::service::{GetProjectResponse, GetWarehouseResponse, WarehouseStatus};
 use crate::{service::storage::StorageProfile, ProjectIdent, SecretIdent, WarehouseIdent};
-use http::StatusCode;
 use sqlx::Error;
 use std::collections::HashSet;
 use std::ops::Deref;
@@ -61,7 +60,7 @@ pub(super) async fn set_warehouse_deletion_profile<
     )
     .execute(connection)
     .await
-    .map_err(|e| e.into_error_model("Error setting warehouse deletion profile".into()))?
+    .map_err(|e| e.into_error_model("Error setting warehouse deletion profile"))?
     .rows_affected();
 
     if row_count == 0 {
@@ -92,7 +91,7 @@ pub(super) async fn get_config_for_warehouse(
     Ok(storage_profile.map(|p| p.generate_catalog_config(warehouse_id)))
 }
 
-pub(crate) async fn create_warehouse<'a>(
+pub(crate) async fn create_warehouse(
     warehouse_name: String,
     project_id: ProjectIdent,
     storage_profile: StorageProfile,
@@ -132,18 +131,17 @@ pub(crate) async fn create_warehouse<'a>(
         sqlx::Error::Database(db_err) => match db_err.constraint() {
             // ToDo: Get constraint name from const
             Some("unique_warehouse_name_in_project") => ErrorModel::conflict("Warehouse with this name already exists in the project.",
-                "WarehouseNameAlreadyExists", Some(Box::new(e)))
-                ,
+                "WarehouseNameAlreadyExists", Some(Box::new(e))),
             Some("warehouse_project_id_fk") => ErrorModel::not_found("Project not found", "ProjectNotFound", Some(Box::new(e))),
-            _ => e.into_error_model("Error creating Warehouse".into()),
+            _ => e.into_error_model("Error creating Warehouse"),
         },
-        _ => e.into_error_model("Error creating Warehouse".into()),
+        _ => e.into_error_model("Error creating Warehouse"),
     })?;
 
     Ok(warehouse_id.into())
 }
 
-pub(crate) async fn rename_project<'a>(
+pub(crate) async fn rename_project(
     project_id: ProjectIdent,
     new_name: &str,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -157,7 +155,7 @@ pub(crate) async fn rename_project<'a>(
     )
     .execute(&mut **transaction)
     .await
-    .map_err(|e| e.into_error_model("Error renaming project".into()))?
+    .map_err(|e| e.into_error_model("Error renaming project"))?
     .rows_affected();
 
     if row_count == 0 {
@@ -167,7 +165,7 @@ pub(crate) async fn rename_project<'a>(
     Ok(())
 }
 
-pub(crate) async fn create_project<'a>(
+pub(crate) async fn create_project(
     project_id: ProjectIdent,
     project_name: String,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -184,7 +182,7 @@ pub(crate) async fn create_project<'a>(
     )
     .fetch_optional(&mut **transaction)
     .await
-    .map_err(|e| e.into_error_model("Error creating Project".into()))?
+    .map_err(|e| e.into_error_model("Error creating Project"))?
     else {
         return Err(ErrorModel::conflict(
             "Project with this id already exists",
@@ -197,7 +195,7 @@ pub(crate) async fn create_project<'a>(
     Ok(())
 }
 
-pub(crate) async fn get_project<'a>(
+pub(crate) async fn get_project(
     project_id: ProjectIdent,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<Option<GetProjectResponse>> {
@@ -231,7 +229,7 @@ pub(crate) async fn get_project<'a>(
     }
 }
 
-pub(crate) async fn delete_project<'a>(
+pub(crate) async fn delete_project(
     project_id: ProjectIdent,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<()> {
@@ -248,10 +246,10 @@ pub(crate) async fn delete_project<'a>(
                             Some(Box::new(e)),
                         )
                     } else {
-                        e.into_error_model("Error deleting project".into())
+                        e.into_error_model("Error deleting project")
                     }
                 }
-                _ => e.into_error_model("Error deleting project".into()),
+                _ => e.into_error_model("Error deleting project"),
             })?
             .rows_affected();
 
@@ -303,7 +301,7 @@ pub(crate) async fn list_warehouses<
     )
     .fetch_all(catalog_state)
     .await
-    .map_err(|e| e.into_error_model("Error fetching warehouses".into()))?;
+    .map_err(|e| e.into_error_model("Error fetching warehouses"))?;
 
     warehouses
         .into_iter()
@@ -336,7 +334,7 @@ pub(crate) async fn list_warehouses<
         .collect::<Result<Vec<_>>>()
 }
 
-pub(crate) async fn get_warehouse<'a>(
+pub(crate) async fn get_warehouse(
     warehouse_id: WarehouseIdent,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<Option<GetWarehouseResponse>> {
@@ -405,7 +403,7 @@ pub(crate) async fn list_projects<'e, 'c: 'e, E: sqlx::Executor<'c, Database = s
     )
     .fetch_all(connection)
     .await
-    .map_err(|e| e.into_error_model("Error fetching projects".into()))?;
+    .map_err(|e| e.into_error_model("Error fetching projects"))?;
 
     Ok(projects
         .into_iter()
@@ -416,7 +414,7 @@ pub(crate) async fn list_projects<'e, 'c: 'e, E: sqlx::Executor<'c, Database = s
         .collect())
 }
 
-pub(crate) async fn delete_warehouse<'a>(
+pub(crate) async fn delete_warehouse(
     warehouse_id: WarehouseIdent,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<()> {
@@ -435,10 +433,10 @@ pub(crate) async fn delete_warehouse<'a>(
                     Some(Box::new(e)),
                 )
             } else {
-                e.into_error_model("Error deleting warehouse".into())
+                e.into_error_model("Error deleting warehouse")
             }
         }
-        _ => e.into_error_model("Error deleting warehouse".into()),
+        _ => e.into_error_model("Error deleting warehouse"),
     })?
     .rows_affected();
 
@@ -449,7 +447,7 @@ pub(crate) async fn delete_warehouse<'a>(
     Ok(())
 }
 
-pub(crate) async fn rename_warehouse<'a>(
+pub(crate) async fn rename_warehouse(
     warehouse_id: WarehouseIdent,
     new_name: &str,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -464,7 +462,7 @@ pub(crate) async fn rename_warehouse<'a>(
     )
     .execute(&mut **transaction)
     .await
-    .map_err(|e| e.into_error_model("Error renaming warehouse".into()))?
+    .map_err(|e| e.into_error_model("Error renaming warehouse"))?
     .rows_affected();
 
     if row_count == 0 {
@@ -474,7 +472,7 @@ pub(crate) async fn rename_warehouse<'a>(
     Ok(())
 }
 
-pub(crate) async fn set_warehouse_status<'a>(
+pub(crate) async fn set_warehouse_status(
     warehouse_id: WarehouseIdent,
     status: WarehouseStatus,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -488,7 +486,7 @@ pub(crate) async fn set_warehouse_status<'a>(
     )
     .execute(&mut **transaction)
     .await
-    .map_err(|e| e.into_error_model("Error setting warehouse status".into()))?
+    .map_err(|e| e.into_error_model("Error setting warehouse status"))?
     .rows_affected();
 
     if row_count == 0 {
@@ -498,19 +496,18 @@ pub(crate) async fn set_warehouse_status<'a>(
     Ok(())
 }
 
-pub(crate) async fn update_storage_profile<'a>(
+pub(crate) async fn update_storage_profile(
     warehouse_id: WarehouseIdent,
     storage_profile: StorageProfile,
     storage_secret_id: Option<SecretIdent>,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<()> {
     let storage_profile_ser = serde_json::to_value(storage_profile).map_err(|e| {
-        ErrorModel::builder()
-            .code(StatusCode::INTERNAL_SERVER_ERROR.into())
-            .message("Error serializing storage profile".to_string())
-            .r#type("StorageProfileSerializationError".to_string())
-            .source(Some(Box::new(e)))
-            .build()
+        ErrorModel::internal(
+            "Error serializing storage profile",
+            "StorageProfileSerializationError",
+            Some(Box::new(e)),
+        )
     })?;
 
     let row_count = sqlx::query!(
@@ -526,7 +523,7 @@ pub(crate) async fn update_storage_profile<'a>(
     )
     .execute(&mut **transaction)
     .await
-    .map_err(|e| e.into_error_model("Error updating storage profile".into()))?
+    .map_err(|e| e.into_error_model("Error updating storage profile"))?
     .rows_affected();
 
     if row_count == 0 {
@@ -567,6 +564,7 @@ pub(crate) mod test {
     use crate::service::storage::S3Flavor;
     use crate::service::{Catalog as _, Transaction};
     use crate::{implementations::postgres::PostgresTransaction, service::storage::S3Profile};
+    use http::StatusCode;
 
     pub(crate) async fn initialize_warehouse(
         state: CatalogState,

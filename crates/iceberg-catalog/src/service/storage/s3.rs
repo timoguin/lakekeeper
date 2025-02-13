@@ -6,9 +6,11 @@ use crate::api::{iceberg::v1::DataAccess, CatalogConfig};
 use crate::service::storage::error::{
     CredentialsError, FileIoError, TableConfigError, UpdateError, ValidationError,
 };
-use crate::service::storage::StoragePermissions;
+use crate::service::storage::{StoragePermissions, TableConfig};
 use aws_config::{BehaviorVersion, SdkConfig};
 
+use super::StorageType;
+use crate::api::iceberg::supported_endpoints;
 use iceberg_ext::configs::table::{client, custom, s3, TableProperties};
 use iceberg_ext::configs::{self, ConfigProperty, Location};
 use serde::{Deserialize, Serialize};
@@ -16,8 +18,6 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::LazyLock;
 use veil::Redact;
-
-use super::StorageType;
 
 static S3_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
@@ -113,6 +113,12 @@ impl S3Profile {
                 "S3 Assume role ARN".to_string(),
             ));
         }
+
+        builder = builder.with_prop(
+            iceberg::io::S3_PATH_STYLE_ACCESS,
+            self.path_style_access.unwrap_or_default(),
+        );
+
         if let Some(credential) = credential {
             if let Some(session_token) = &credential.session_token() {
                 builder = builder.with_prop(iceberg::io::S3_SESSION_TOKEN, session_token);
@@ -243,6 +249,7 @@ impl S3Profile {
                 configs::table::s3::SignerUri::KEY.to_string(),
                 CONFIG.s3_signer_uri_for_warehouse(warehouse_id).to_string(),
             )]),
+            endpoints: supported_endpoints(),
         }
     }
 
@@ -272,12 +279,13 @@ impl S3Profile {
         cred: Option<&S3Credential>,
         table_location: &Location,
         storage_permissions: StoragePermissions,
-    ) -> Result<TableProperties, TableConfigError> {
+    ) -> Result<TableConfig, TableConfigError> {
         // If vended_credentials is False and remote_signing is False,
         // use remote_signing.
         let mut remote_signing = !vended_credentials || *remote_signing;
 
         let mut config = TableProperties::default();
+        let mut creds = TableProperties::default();
 
         if let Some(true) = self.path_style_access {
             config.insert(&s3::PathStyleAccess(true));
@@ -316,9 +324,12 @@ impl S3Profile {
                         "STS either needs Flavor Minio and credentials OR Flavor aws, credentials and a sts role arn.".to_string(),
                     ));
                 };
-                config.insert(&s3::AccessKeyId(access_key_id));
-                config.insert(&s3::SecretAccessKey(secret_access_key));
-                config.insert(&s3::SessionToken(session_token));
+                config.insert(&s3::AccessKeyId(access_key_id.clone()));
+                config.insert(&s3::SecretAccessKey(secret_access_key.clone()));
+                config.insert(&s3::SessionToken(session_token.clone()));
+                creds.insert(&s3::AccessKeyId(access_key_id));
+                creds.insert(&s3::SecretAccessKey(secret_access_key));
+                creds.insert(&s3::SessionToken(session_token));
             } else {
                 insert_pyiceberg_hack(&mut config);
                 remote_signing = true;
@@ -333,7 +344,7 @@ impl S3Profile {
             // config.insert("s3.signer.uri".to_string(), signer_uri.to_string());
         }
 
-        Ok(config)
+        Ok(TableConfig { creds, config })
     }
 
     async fn get_aws_sts_token(
