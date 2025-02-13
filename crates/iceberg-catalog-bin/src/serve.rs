@@ -24,10 +24,39 @@ use iceberg_catalog::service::authn::K8sVerifier;
 use iceberg_catalog::service::task_queue::TaskQueues;
 use std::sync::Arc;
 
-#[cfg(feature = "ui")]
-use crate::ui;
+use anyhow::{anyhow, Error};
 #[cfg(feature = "ui")]
 use axum::routing::get;
+use iceberg_catalog::{
+    api::router::{new_full_router, serve as service_serve, RouterArgs},
+    implementations::{
+        postgres::{
+            task_queues::{TabularExpirationQueue, TabularPurgeQueue},
+            CatalogState, PostgresCatalog, ReadWrite,
+        },
+        Secrets,
+    },
+    service::{
+        authn::{IdpVerifier, K8sVerifier},
+        authz::{
+            implementations::{get_default_authorizer_from_config, Authorizers},
+            Authorizer,
+        },
+        contract_verification::ContractVerifiers,
+        event_publisher::{
+            CloudEventBackend, CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message,
+            NatsBackend, TracingPublisher,
+        },
+        health::ServiceHealthProvider,
+        task_queue::TaskQueues,
+        Catalog, StartupValidationData,
+    },
+    SecretBackend, CONFIG,
+};
+use reqwest::Url;
+
+#[cfg(feature = "ui")]
+use crate::ui;
 
 pub(crate) async fn serve(bind_addr: std::net::SocketAddr) -> Result<(), anyhow::Error> {
     let read_pool = iceberg_catalog::implementations::postgres::get_reader_pool(
