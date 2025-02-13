@@ -102,10 +102,6 @@ pub(crate) async fn auth_middleware_fn<T: Authenticator, A: Authorizer>(
 
     if let Some(request_metadata) = request.extensions_mut().get_mut::<RequestMetadata>() {
         request_metadata.set_authentication(actor.clone(), authentication);
-    } else {
-        let mut metadata = RequestMetadata::new_unauthenticated();
-        metadata.set_authentication(actor.clone(), authentication);
-        request.extensions_mut().insert(metadata);
     }
 
     next.run(request).await
