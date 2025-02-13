@@ -18,8 +18,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 use url::Url;
 use veil::Redact;
 
-use crate::service::event_publisher::kafka::KafkaConfig;
-use crate::{service::task_queue::TaskQueueConfig, ProjectIdent, WarehouseIdent};
+use crate::{
+    service::{event_publisher::kafka::KafkaConfig, task_queue::TaskQueueConfig},
+    ProjectIdent, WarehouseIdent,
+};
 
 const DEFAULT_RESERVED_NAMESPACES: [&str; 3] = ["system", "examples", "information_schema"];
 const DEFAULT_ENCRYPTION_KEY: &str = "<This is unsafe, please set a proper key>";

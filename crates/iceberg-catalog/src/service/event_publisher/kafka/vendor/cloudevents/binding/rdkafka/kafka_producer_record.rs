@@ -8,17 +8,22 @@
 // Cloudevents SDK Rust is distributed under Apache Licence. See ./mod.rs for a copy of the lincese
 // text
 
+use cloudevents::{
+    event::SpecVersion,
+    message::{
+        BinaryDeserializer, BinarySerializer, MessageAttributeValue, Result, StructuredSerializer,
+    },
+    Event,
+};
+use rdkafka::{
+    message::{Header, OwnedHeaders, ToBytes},
+    producer::FutureRecord,
+};
+
 use crate::service::event_publisher::kafka::vendor::cloudevents::binding::{
     kafka::{header_prefix, SPEC_VERSION_HEADER},
     CLOUDEVENTS_JSON_HEADER, CONTENT_TYPE,
 };
-use cloudevents::event::SpecVersion;
-use cloudevents::message::{
-    BinaryDeserializer, BinarySerializer, MessageAttributeValue, Result, StructuredSerializer,
-};
-use cloudevents::Event;
-use rdkafka::message::{Header, OwnedHeaders, ToBytes};
-use rdkafka::producer::FutureRecord;
 
 /// This struct contains a serialized `CloudEvent` message in the Kafka shape.
 /// Implements [`StructuredSerializer`] & [`BinarySerializer`] traits.

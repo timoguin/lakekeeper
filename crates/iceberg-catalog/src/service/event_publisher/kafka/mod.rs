@@ -1,18 +1,17 @@
 pub(crate) mod vendor;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
-use crate::service::event_publisher::kafka::vendor::cloudevents::binding::rdkafka::{
-    FutureRecordExt, MessageRecord,
-};
 use async_trait::async_trait;
 use cloudevents::Event;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use veil::Redact;
 
 use super::CloudEventBackend;
+use crate::service::event_publisher::kafka::vendor::cloudevents::binding::rdkafka::{
+    FutureRecordExt, MessageRecord,
+};
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Redact)]
 pub struct KafkaConfig {

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{anyhow, Error};
 use axum::routing::get;
 use iceberg_catalog::{
@@ -17,8 +19,10 @@ use iceberg_catalog::{
         },
         contract_verification::ContractVerifiers,
         event_publisher::{
-            kafka::KafkaBackend, kafka::KafkaConfig, nats::NatsBackend, CloudEventBackend,
-            CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message, TracingPublisher,
+            kafka::{KafkaBackend, KafkaConfig},
+            nats::NatsBackend,
+            CloudEventBackend, CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message,
+            TracingPublisher,
         },
         health::ServiceHealthProvider,
         task_queue::TaskQueues,
@@ -27,7 +31,6 @@ use iceberg_catalog::{
     SecretBackend, CONFIG,
 };
 use reqwest::Url;
-use std::sync::Arc;
 
 #[cfg(feature = "ui")]
 use crate::ui;
