@@ -1,31 +1,4 @@
 use anyhow::{anyhow, Error};
-use iceberg_catalog::api::router::{new_full_router, serve as service_serve, RouterArgs};
-use iceberg_catalog::implementations::postgres::{CatalogState, PostgresCatalog, ReadWrite};
-use iceberg_catalog::implementations::Secrets;
-use iceberg_catalog::service::authz::implementations::{
-    get_default_authorizer_from_config, Authorizers,
-};
-use iceberg_catalog::service::authz::Authorizer;
-use iceberg_catalog::service::contract_verification::ContractVerifiers;
-use iceberg_catalog::service::event_publisher::{
-    kafka::KafkaBackend, kafka::KafkaConfig, nats::NatsBackend, CloudEventBackend,
-    CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message, TracingPublisher,
-};
-use iceberg_catalog::service::health::ServiceHealthProvider;
-use iceberg_catalog::service::{Catalog, StartupValidationData};
-use iceberg_catalog::{SecretBackend, CONFIG};
-use reqwest::Url;
-
-use iceberg_catalog::implementations::postgres::task_queues::{
-    TabularExpirationQueue, TabularPurgeQueue,
-};
-use iceberg_catalog::service::authn::IdpVerifier;
-use iceberg_catalog::service::authn::K8sVerifier;
-use iceberg_catalog::service::task_queue::TaskQueues;
-use std::sync::Arc;
-
-use anyhow::{anyhow, Error};
-#[cfg(feature = "ui")]
 use axum::routing::get;
 use iceberg_catalog::{
     api::router::{new_full_router, serve as service_serve, RouterArgs},
@@ -44,8 +17,8 @@ use iceberg_catalog::{
         },
         contract_verification::ContractVerifiers,
         event_publisher::{
-            CloudEventBackend, CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message,
-            NatsBackend, TracingPublisher,
+            kafka::KafkaBackend, kafka::KafkaConfig, nats::NatsBackend, CloudEventBackend,
+            CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message, TracingPublisher,
         },
         health::ServiceHealthProvider,
         task_queue::TaskQueues,
@@ -54,6 +27,7 @@ use iceberg_catalog::{
     SecretBackend, CONFIG,
 };
 use reqwest::Url;
+use std::sync::Arc;
 
 #[cfg(feature = "ui")]
 use crate::ui;
