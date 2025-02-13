@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
+#[cfg(feature = "ui")]
 use axum::routing::get;
 use iceberg_catalog::{
     api::router::{new_full_router, serve as service_serve, RouterArgs},
