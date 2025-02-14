@@ -15,6 +15,12 @@ RUN apt-get update -qq && \
     . "$NVM_DIR/nvm.sh" && nvm use v${NODE_VERSION}  && \
     . "$NVM_DIR/nvm.sh" && nvm alias default v${NODE_VERSION}  && \
     node -v && npm -v
+  DEBIAN_FRONTEND=noninteractive apt-get install -yqq cmake curl build-essential libpq-dev pkg-config libssl-dev make perl wget zip unzip --no-install-recommends && \
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash && \
+  . "$NVM_DIR/nvm.sh" && nvm install ${NODE_VERSION}  && \
+  . "$NVM_DIR/nvm.sh" && nvm use v${NODE_VERSION}  && \
+  . "$NVM_DIR/nvm.sh" && nvm alias default v${NODE_VERSION}  && \
+  node -v && npm -v
 
 ENV PATH="/root/.nvm/versions/node/v${NODE_VERSION}/bin/:${PATH}"
 
