@@ -1626,14 +1626,14 @@ paths:
 
         Example:
         - 00:16:32: warehouse created:
-            - created_at: 00:16:32, timestamp: 01:00:00, updated_at: null, 0 tables, 0 views
+            - timestamp: 01:00:00, created_at: 00:16:32, updated_at: null, 0 tables, 0 views
         - 00:30:00: table created:
-            - created_at: 00:16:32, timestamp: 01:00:00, updated_at: 00:30:00, 1 table, 0 views
+            - timestamp: 01:00:00, created_at: 00:16:32, updated_at: 00:30:00, 1 table, 0 views
         - 00:45:00: view created:
-            - created_at: 00:16:32, timestamp: 01:00:00, updated_at: 00:45:00, 1 table, 1 view
+            - timestamp: 01:00:00, created_at: 00:16:32, updated_at: 00:45:00, 1 table, 1 view
         - 01:00:36: table deleted:
-            - created_at: 01:00:36, timestamp: 02:00:00, updated_at: null, 0 tables, 1 view
-            - created_at: 00:16:32, timestamp: 01:00:00, updated_at: 00:45:00, 1 table, 1 view
+            - timestamp: 02:00:00, created_at: 01:00:36, updated_at: null, 0 tables, 1 view
+            - timestamp: 01:00:00, created_at: 00:16:32, updated_at: 00:45:00, 1 table, 1 view
       operationId: get_warehouse_statistics
       parameters:
       - name: page_token
@@ -3844,10 +3844,6 @@ components:
           type: integer
           format: int64
           description: Number of views in the warehouse.
-        updated_at:
-          type: string
-          format: date-time
-          description: Timestamp of when these statistics were last updated
         timestamp:
           type: string
           format: date-time
@@ -3857,6 +3853,10 @@ components:
             We lazily create a new statistics entry every hour, in between hours, the existing entry
             is being updated. If there's a change at `created_at` + 1 hour, a new entry is created. If
             there's no change, no new entry is created.
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of when these statistics were last updated
     WarehouseStatisticsResponse:
       type: object
       required:
