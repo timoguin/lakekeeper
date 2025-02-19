@@ -21,11 +21,11 @@ $$ LANGUAGE plpgsql;
 
 create table warehouse_statistics
 (
-    stats_id         int generated always as identity primary key,
+    stats_id         uuid primary key     default uuid_generate_v1mc(),
     number_of_views  bigint      not null,
     number_of_tables bigint      not null,
     warehouse_id     uuid        not null REFERENCES warehouse (warehouse_id) ON DELETE CASCADE,
-    valid_until      timestamptz not null default get_stats_date_default(),
+    timestamp        timestamptz not null default get_stats_date_default(),
     CONSTRAINT positive_counts
         CHECK (number_of_views >= 0 AND number_of_tables >= 0)
 );
@@ -34,7 +34,7 @@ call add_time_columns('warehouse_statistics');
 select trigger_updated_at('warehouse_statistics');
 
 CREATE UNIQUE INDEX idx_warehouse_stats_time
-    ON warehouse_statistics (warehouse_id, valid_until DESC);
+    ON warehouse_statistics (warehouse_id, timestamp DESC);
 
 -- this doesn't consider soft-deletes, soft-deletes are setting deleted_at instead of deleting the row,
 create or replace function update_counts() returns trigger as
@@ -73,7 +73,7 @@ begin
     INTO warehouse_statistics (number_of_views,
                                number_of_tables,
                                warehouse_id,
-                               valid_until)
+                               timestamp)
     SELECT number_of_views + delta_view,
            number_of_tables + delta_table,
            ws.warehouse_id,
@@ -81,9 +81,9 @@ begin
     FROM warehouse_statistics ws
              JOIN namespace n ON ws.warehouse_id = n.warehouse_id
     WHERE n.namespace_id = coalesced_namespace_id
-    ORDER BY ws.valid_until DESC
+    ORDER BY ws.timestamp DESC
     LIMIT 1
-    ON CONFLICT (warehouse_id, valid_until)
+    ON CONFLICT (warehouse_id, timestamp)
         DO UPDATE SET number_of_views  = EXCLUDED.number_of_views,
                       number_of_tables = EXCLUDED.number_of_tables;
 

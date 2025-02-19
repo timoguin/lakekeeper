@@ -69,7 +69,7 @@ mod test {
         assert_eq!(stats.stats.len(), 2);
         assert_eq!(stats.warehouse_ident, *whi);
         assert!(
-            stats.stats[0].valid_until > stats.stats[1].valid_until,
+            stats.stats[0].timestamp > stats.stats[1].timestamp,
             "{stats:?}",
         );
         assert_eq!(stats.stats.first().unwrap().number_of_tables, 2);

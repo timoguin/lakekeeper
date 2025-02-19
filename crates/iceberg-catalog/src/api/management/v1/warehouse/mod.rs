@@ -19,7 +19,7 @@ use crate::{
         iceberg::v1::{PageToken, PaginationQuery},
         management::v1::{
             role::require_project_id, ApiServer, DeletedTabularResponse,
-            ListDeletedTabularsResponse, GetWarehouseStatisticsQuery
+            GetWarehouseStatisticsQuery, ListDeletedTabularsResponse,
         },
         ApiContext, Result,
     },
@@ -243,12 +243,12 @@ pub struct WarehouseStatistics {
     /// We lazily create a new statistics entry every hour, in between hours, the existing entry
     /// is being updated. If there's a change at `created_at` + 1 hour, a new entry is created. If
     /// there's no change, no new entry is created.
-    pub valid_until: chrono::DateTime<chrono::Utc>,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "kebab-case")]
-pub struct WarehouseStatsResponse {
+pub struct WarehouseStatisticsResponse {
     /// ID of the warehouse for which the stats were collected.
     pub warehouse_ident: uuid::Uuid,
     /// Ordered list of warehouse statistics.
@@ -409,7 +409,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         query: GetWarehouseStatisticsQuery,
         context: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
-    ) -> Result<WarehouseStatsResponse> {
+    ) -> Result<WarehouseStatisticsResponse> {
         // ------------------- AuthZ -------------------
         let authorizer = context.v1_state.authz;
         authorizer

@@ -8,7 +8,7 @@ use crate::implementations::postgres::pagination::{PaginateToken, V1PaginateToke
 use crate::{
     api::{
         management::v1::warehouse::{
-            TabularDeleteProfile, WarehouseStatistics, WarehouseStatsResponse,
+            TabularDeleteProfile, WarehouseStatistics, WarehouseStatisticsResponse,
         },
         CatalogConfig, ErrorModel, Result,
     },
@@ -586,7 +586,7 @@ pub(crate) async fn get_warehouse_stats(
         page_size,
         page_token,
     }: PaginationQuery,
-) -> crate::api::Result<WarehouseStatsResponse> {
+) -> crate::api::Result<WarehouseStatisticsResponse> {
     let page_size = page_size.map_or(MAX_PAGE_SIZE, |i| i.clamp(1, MAX_PAGE_SIZE));
 
     let token = page_token
@@ -600,11 +600,11 @@ pub(crate) async fn get_warehouse_stats(
 
     let stats = sqlx::query!(
         r#"
-        SELECT number_of_views, number_of_tables, created_at, updated_at, valid_until
+        SELECT number_of_views, number_of_tables, created_at, updated_at, timestamp
         FROM warehouse_statistics
         WHERE warehouse_id = $1
-        AND (valid_until < $2 OR $2 IS NULL)
-        ORDER BY valid_until DESC
+        AND (timestamp < $2 OR $2 IS NULL)
+        ORDER BY timestamp DESC
         LIMIT $3
         "#,
         warehouse_ident.0,
@@ -620,7 +620,7 @@ pub(crate) async fn get_warehouse_stats(
 
     let next_page_token = stats.last().map(|s| {
         PaginateToken::V1(V1PaginateToken {
-            created_at: s.valid_until,
+            created_at: s.timestamp,
             id: String::new(),
         })
         .to_string()
@@ -631,11 +631,11 @@ pub(crate) async fn get_warehouse_stats(
         .map(|s| WarehouseStatistics {
             number_of_tables: s.number_of_tables,
             number_of_views: s.number_of_views,
-            valid_until: s.valid_until,
+            timestamp: s.timestamp,
             updated_at: s.updated_at.unwrap_or(s.created_at),
         })
         .collect();
-    Ok(WarehouseStatsResponse {
+    Ok(WarehouseStatisticsResponse {
         warehouse_ident: *warehouse_ident,
         stats,
         next_page_token,
@@ -941,7 +941,7 @@ pub(crate) mod test {
         for i in 0..10 {
             sqlx::query!(
                 r#"
-                INSERT INTO warehouse_statistics (number_of_views, number_of_tables, warehouse_id, valid_until)
+                INSERT INTO warehouse_statistics (number_of_views, number_of_tables, warehouse_id, timestamp)
                 VALUES ($1, $2, $3, $4)
                 "#,
                 i,

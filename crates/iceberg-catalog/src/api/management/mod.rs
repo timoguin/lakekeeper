@@ -34,7 +34,8 @@ pub mod v1 {
         CreateWarehouseRequest, CreateWarehouseResponse, GetWarehouseResponse,
         ListDeletedTabularsQuery, ListWarehousesRequest, ListWarehousesResponse,
         RenameWarehouseRequest, Service as _, UpdateWarehouseCredentialRequest,
-        UpdateWarehouseDeleteProfileRequest, UpdateWarehouseStorageRequest, WarehouseStatsResponse,
+        UpdateWarehouseDeleteProfileRequest, UpdateWarehouseStorageRequest,
+        WarehouseStatisticsResponse,
     };
 
     use crate::api::iceberg::types::PageToken;
@@ -868,21 +869,21 @@ pub mod v1 {
     ///
     /// Example:
     /// - 00:16:32: warehouse created:
-    ///     - created_at: 00:16:32, valid_until: 01:00:00, updated_at: null, 0 tables, 0 views
+    ///     - timestamp: 01:00:00, created_at: 00:16:32, updated_at: null, 0 tables, 0 views
     /// - 00:30:00: table created:
-    ///     - created_at: 00:16:32, valid_until: 01:00:00, updated_at: 00:30:00, 1 table, 0 views
+    ///     - timestamp: 01:00:00, created_at: 00:16:32, updated_at: 00:30:00, 1 table, 0 views
     /// - 00:45:00: view created:
-    ///     - created_at: 00:16:32, valid_until: 01:00:00, updated_at: 00:45:00, 1 table, 1 view
+    ///     - timestamp: 01:00:00, created_at: 00:16:32, updated_at: 00:45:00, 1 table, 1 view
     /// - 01:00:36: table deleted:
-    ///     - created_at: 01:00:36, valid_until: 02:00:00, updated_at: null, 0 tables, 1 view
-    ///     - created_at: 00:16:32, valid_until: 01:00:00, updated_at: 00:45:00, 1 table, 1 view
+    ///     - timestamp: 02:00:00, created_at: 01:00:36, updated_at: null, 0 tables, 1 view
+    ///     - timestamp: 01:00:00, created_at: 00:16:32, updated_at: 00:45:00, 1 table, 1 view
     #[utoipa::path(
         get,
         tag = "warehouse",
         path = "/management/v1/warehouse/{warehouse_id}/statistics",
         params(GetWarehouseStatisticsQuery),
         responses(
-            (status = 200, description = "Warehouse statistics", body = WarehouseStatsResponse),
+            (status = 200, description = "Warehouse statistics", body = WarehouseStatisticsResponse),
             (status = "4XX", body = IcebergErrorResponse),
         )
     )]
@@ -891,7 +892,7 @@ pub mod v1 {
         Query(query): Query<GetWarehouseStatisticsQuery>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
-    ) -> Result<Json<WarehouseStatsResponse>> {
+    ) -> Result<Json<WarehouseStatisticsResponse>> {
         ApiServer::<C, A, S>::get_warehouse_statistics(
             warehouse_id.into(),
             query,

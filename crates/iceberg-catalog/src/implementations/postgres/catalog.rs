@@ -32,7 +32,7 @@ use crate::{
         management::v1::{
             role::{ListRolesResponse, Role, SearchRoleResponse},
             user::{ListUsersResponse, SearchUserResponse, UserLastUpdatedWith, UserType},
-            warehouse::{TabularDeleteProfile, WarehouseStatsResponse},
+            warehouse::{TabularDeleteProfile, WarehouseStatisticsResponse},
         },
     },
     implementations::postgres::{
@@ -43,7 +43,7 @@ use crate::{
             view::{create_view, drop_view, list_views, load_view, rename_view, view_ident_to_id},
         },
         user::{create_or_update_user, delete_user, list_users, search_user},
-        warehouse::get_warehouse_stats
+        warehouse::get_warehouse_stats,
     },
     service::{
         authn::UserId, storage::StorageProfile, task_queue::TaskId, Catalog,
@@ -613,7 +613,7 @@ impl Catalog for super::PostgresCatalog {
         warehouse_id: WarehouseIdent,
         pagination_query: PaginationQuery,
         state: Self::State,
-    ) -> Result<WarehouseStatsResponse> {
+    ) -> Result<WarehouseStatisticsResponse> {
         get_warehouse_stats(state.read_pool(), warehouse_id, pagination_query).await
     }
 }

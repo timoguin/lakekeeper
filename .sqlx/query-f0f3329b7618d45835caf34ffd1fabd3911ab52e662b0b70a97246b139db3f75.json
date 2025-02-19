@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT number_of_views, number_of_tables, created_at, updated_at, valid_until\n        FROM warehouse_statistics\n        WHERE warehouse_id = $1\n        AND (valid_until < $2 OR $2 IS NULL)\n        ORDER BY valid_until DESC\n        LIMIT $3\n        ",
+  "query": "\n        SELECT number_of_views, number_of_tables, created_at, updated_at, timestamp\n        FROM warehouse_statistics\n        WHERE warehouse_id = $1\n        AND (timestamp < $2 OR $2 IS NULL)\n        ORDER BY timestamp DESC\n        LIMIT $3\n        ",
   "describe": {
     "columns": [
       {
@@ -25,7 +25,7 @@
       },
       {
         "ordinal": 4,
-        "name": "valid_until",
+        "name": "timestamp",
         "type_info": "Timestamptz"
       }
     ],
