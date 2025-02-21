@@ -3831,10 +3831,10 @@ components:
     WarehouseStatistics:
       type: object
       required:
+      - timestamp
       - number_of_tables
       - number_of_views
       - updated_at
-      - timestamp
       properties:
         number_of_tables:
           type: integer
