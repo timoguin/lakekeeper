@@ -232,18 +232,18 @@ impl axum::response::IntoResponse for CreateWarehouseResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WarehouseStatistics {
-    /// Number of tables in the warehouse.
-    pub number_of_tables: i64, // silly but necessary due to sqlx wanting i64, not usize
-    /// Number of views in the warehouse.
-    pub number_of_views: i64,
-    /// Timestamp of when these statistics were last updated
-    pub updated_at: chrono::DateTime<chrono::Utc>,
     /// Timestamp of when these statistics are valid until
     ///
     /// We lazily create a new statistics entry every hour, in between hours, the existing entry
     /// is being updated. If there's a change at `created_at` + 1 hour, a new entry is created. If
     /// there's no change, no new entry is created.
     pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Number of tables in the warehouse.
+    pub number_of_tables: i64, // silly but necessary due to sqlx wanting i64, not usize
+    /// Number of views in the warehouse.
+    pub number_of_views: i64,
+    /// Timestamp of when these statistics were last updated
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
