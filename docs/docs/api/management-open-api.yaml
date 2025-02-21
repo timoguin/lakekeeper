@@ -1624,7 +1624,7 @@ paths:
         being updated. If there's a change at created_at + 1 hour, a new entry is created.
         If there's been no change, no new entry is created, meaning there may be gaps.
 
-        Example (date portion of the timstamp omitted for brevity):
+        Example:
         - 00:16:32: warehouse created:
             - timestamp: 01:00:00, created_at: 00:16:32, updated_at: null, 0 tables, 0 views
         - 00:30:00: table created:
