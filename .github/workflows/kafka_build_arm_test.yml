@@ -10,10 +10,6 @@ env:
   RUST_BACKTRACE: short
   RUSTUP_MAX_RETRIES: 10
   krb5_cv_attr_constructor_destructor: yes
-  ac_cv_func_regcomp=: yes
-  ac_cv_printf_positional: yes
-  ac_cv_header_openssl_des_h: yes
-
 
 jobs:
   build-binary:
