@@ -24,5 +24,11 @@ jobs:
           target: aarch64-unknown-linux-musl
           cache: false
 
+      - name: Prepare
+        run: |
+          export DEBIAN_FRONTEND=noninteractive 
+          sudo apt-get update && sudo apt-get upgrade
+          sudo apt-get install -yqq --no-install-recommends musl-dev cmake
+
       - name: Build
         run: cargo build --all-features --release --locked --target aarch64-unknown-linux-musl
