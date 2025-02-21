@@ -62,10 +62,10 @@ create type api_endpoints as enum (
     'management-post-warehouse-deleted-tabulars-undrop1',
     'management-post-warehouse-deleted-tabulars-undrop2',
     'management-post-warehouse-delete-profile',
-    'management-get-permission',
-    'management-post-permission',
-    'management-head-permission',
-    'management-delete-permission');
+    'management-get-permissions',
+    'management-post-permissions',
+    'management-head-permissions',
+    'management-delete-permissions');
 
 
 create table endpoint_statistics

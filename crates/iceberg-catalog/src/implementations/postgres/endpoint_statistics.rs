@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use http::StatusCode;
 use sqlx::{Postgres, Transaction};
@@ -21,17 +21,17 @@ impl PostgresStatisticsSink {
     pub fn new(pool: sqlx::PgPool) -> Self {
         Self { pool }
     }
-}
 
-#[async_trait::async_trait]
-impl EndpointStatisticsSink for PostgresStatisticsSink {
-    async fn consume_endpoint_statistics(
+    async fn process_stats(
         &self,
-        stats: HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>>,
-    ) {
-        let mut conn = self.pool.begin().await.unwrap();
+        stats: Arc<HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>>>,
+    ) -> crate::api::Result<()> {
+        let mut conn = self.pool.begin().await.map_err(|e| {
+            tracing::error!("Failed to start transaction: {e}, lost stats: {stats:?}");
+            e.into_error_model("failed to start transaction")
+        })?;
 
-        for (project, endpoints) in stats {
+        for (project, endpoints) in stats.iter() {
             tracing::info!("Consuming stats for project: {project:?}, counts: {endpoints:?}",);
             for (
                 EndpointIdentifier {
@@ -43,24 +43,45 @@ impl EndpointStatisticsSink for PostgresStatisticsSink {
                 count,
             ) in endpoints
             {
-                tracing::info!("Consuming stats for endpoint: {uri:?}, count: {count:?}",);
-
                 insert_statistics(
                     &mut conn,
-                    project,
+                    *project,
                     uri,
                     status_code,
-                    count,
-                    warehouse,
-                    warehouse_name,
+                    *count,
+                    *warehouse,
+                    warehouse_name.as_deref(),
                 )
-                .await;
+                .await?;
             }
         }
-        conn.commit()
-            .await
-            .inspect_err(|e| tracing::error!("Failed to commit: {e}"))
-            .unwrap();
+        conn.commit().await.map_err(|e| {
+            tracing::error!("Failed to commit: {e}");
+            e.into_error_model("failed to commit")
+        })?;
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl EndpointStatisticsSink for PostgresStatisticsSink {
+    async fn consume_endpoint_statistics(
+        &self,
+        stats: HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>>,
+    ) -> crate::api::Result<()> {
+        let stats = Arc::new(stats);
+
+        tryhard::retry_fn(async || {
+            self.process_stats(stats.clone()).await.inspect_err(|e| {
+                tracing::error!(
+                    "Failed to consume stats: {}, will retry up to 5 times.",
+                    e.error
+                );
+            })
+        })
+        .retries(5)
+        .exponential_backoff(Duration::from_millis(125))
+        .await
     }
 
     fn sink_id(&self) -> &'static str {
@@ -71,12 +92,12 @@ impl EndpointStatisticsSink for PostgresStatisticsSink {
 async fn insert_statistics(
     conn: &mut Transaction<'_, Postgres>,
     project: Option<ProjectIdent>,
-    uri: Endpoints,
-    status_code: StatusCode,
+    uri: &Endpoints,
+    status_code: &StatusCode,
     count: i64,
     ident: Option<WarehouseIdent>,
-    warehouse_name: Option<String>,
-) {
+    warehouse_name: Option<&str>,
+) -> Result<(), crate::api::ErrorModel> {
     let _ = sqlx::query!(
                     r#"
                     WITH warehouse_id AS (SELECT CASE
@@ -113,5 +134,39 @@ async fn insert_statistics(
         tracing::error!("Failed to insert stats: {e}");
         e.into_error_model("failed to insert stats")
     })
-    .unwrap();
+    ?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use strum::IntoEnumIterator;
+
+    use crate::ProjectIdent;
+
+    #[sqlx::test]
+    async fn test_can_insert_all_variants(pool: sqlx::PgPool) {
+        let mut conn = pool.begin().await.unwrap();
+
+        let project = Some(ProjectIdent::default());
+        let status_code = http::StatusCode::OK;
+        let count = 1;
+        let ident = None;
+        let warehouse_name = None;
+        for uri in crate::api::endpoints::Endpoints::iter() {
+            super::insert_statistics(
+                &mut conn,
+                project,
+                &uri,
+                &status_code,
+                count,
+                ident,
+                warehouse_name,
+            )
+            .await
+            .unwrap();
+        }
+
+        conn.commit().await.unwrap();
+    }
 }

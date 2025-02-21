@@ -207,7 +207,13 @@ impl EndpointStatisticsTracker {
 
         for sink in &self.statistic_sinks {
             tracing::debug!("Sinking stats for '{}'", sink.sink_id());
-            sink.consume_endpoint_statistics(s.clone()).await;
+            if let Err(e) = sink.consume_endpoint_statistics(s.clone()).await {
+                tracing::error!(
+                    "Failed to consume stats for sink '{}' due to: {}",
+                    sink.sink_id(),
+                    e.error
+                );
+            };
         }
     }
 
@@ -236,7 +242,7 @@ pub trait EndpointStatisticsSink: Debug + Send + Sync + 'static {
     async fn consume_endpoint_statistics(
         &self,
         stats: HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>>,
-    );
+    ) -> crate::api::Result<()>;
 
     fn sink_id(&self) -> &'static str;
 }
