@@ -155,6 +155,8 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
             properties,
         } = &request;
 
+        tracing::debug!("Creating namespace: {:?}", namespace);
+
         validate_namespace_ident(namespace)?;
 
         properties
@@ -166,12 +168,13 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
             .reserved_namespaces
             .contains(&namespace.as_ref()[0].to_lowercase())
         {
-            return Err(ErrorModel::builder()
-                .code(StatusCode::BAD_REQUEST.into())
-                .message("Namespace is reserved for internal use.".to_owned())
-                .r#type("ReservedNamespace".to_owned())
-                .build()
-                .into());
+            tracing::debug!("Denying reserved namespace: '{}'", &namespace.as_ref()[0]);
+            return Err(ErrorModel::bad_request(
+                "Namespace is reserved for internal use.",
+                "ReservedNamespace",
+                None,
+            )
+            .into());
         }
 
         // ------------------- AUTHZ -------------------
@@ -609,13 +612,11 @@ mod tests {
             management::v1::warehouse::TabularDeleteProfile,
             ApiContext,
         },
-        catalog::{
-            test::{impl_pagination_tests, random_request_metadata},
-            CatalogServer,
-        },
+        catalog::{test::impl_pagination_tests, CatalogServer},
         implementations::postgres::{
             namespace::namespace_to_id, PostgresCatalog, PostgresTransaction, SecretsState,
         },
+        request_metadata::RequestMetadata,
         service::{
             authz::implementations::openfga::{tests::ObjectHidingMock, OpenFGAAuthorizer},
             ListNamespacesQuery, State, Transaction, UserId,
@@ -641,7 +642,7 @@ mod tests {
             None,
             authz,
             TabularDeleteProfile::Hard {},
-            Some(UserId::OIDC("test-user-id".to_string())),
+            Some(UserId::new_unchecked("oidc", "test-user-id")),
         )
         .await;
 
@@ -654,7 +655,7 @@ mod tests {
                     properties: None,
                 },
                 ctx.clone(),
-                random_request_metadata(),
+                RequestMetadata::new_unauthenticated(),
             )
             .await
             .unwrap();
@@ -699,7 +700,7 @@ mod tests {
             None,
             authz,
             TabularDeleteProfile::Hard {},
-            Some(UserId::OIDC("test-user-id".to_string())),
+            Some(UserId::new_unchecked("oidc", "test-user-id")),
         )
         .await;
         for n in 0..10 {
@@ -711,7 +712,7 @@ mod tests {
                     properties: None,
                 },
                 ctx.clone(),
-                random_request_metadata(),
+                RequestMetadata::new_unauthenticated(),
             )
             .await
             .unwrap();
@@ -726,7 +727,7 @@ mod tests {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -741,7 +742,7 @@ mod tests {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -756,7 +757,7 @@ mod tests {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -780,7 +781,7 @@ mod tests {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -808,7 +809,7 @@ mod tests {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -835,7 +836,7 @@ mod tests {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();

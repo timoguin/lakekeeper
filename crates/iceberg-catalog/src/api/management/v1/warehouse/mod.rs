@@ -3,7 +3,7 @@ mod undrop;
 use futures::FutureExt;
 use iceberg_ext::catalog::rest::ErrorModel;
 use itertools::Itertools;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::default_page_size;
@@ -18,7 +18,7 @@ use crate::{
     api::{
         iceberg::v1::{PageToken, PaginationQuery},
         management::v1::{
-            role::require_project_id, ApiServer, DeletedTabularResponse,
+            ApiServer, DeletedTabularResponse, GetWarehouseStatisticsQuery,
             ListDeletedTabularsResponse,
         },
         ApiContext, Result,
@@ -230,6 +230,33 @@ impl axum::response::IntoResponse for CreateWarehouseResponse {
     }
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WarehouseStatistics {
+    /// Timestamp of when these statistics are valid until
+    ///
+    /// We lazily create a new statistics entry every hour, in between hours, the existing entry
+    /// is being updated. If there's a change at `created_at` + 1 hour, a new entry is created. If
+    /// there's no change, no new entry is created.
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Number of tables in the warehouse.
+    pub number_of_tables: i64, // silly but necessary due to sqlx wanting i64, not usize
+    /// Number of views in the warehouse.
+    pub number_of_views: i64,
+    /// Timestamp of when these statistics were last updated
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "kebab-case")]
+pub struct WarehouseStatisticsResponse {
+    /// ID of the warehouse for which the stats were collected.
+    pub warehouse_ident: uuid::Uuid,
+    /// Ordered list of warehouse statistics.
+    pub stats: Vec<WarehouseStatistics>,
+    /// Next page token
+    pub next_page_token: Option<String>,
+}
+
 #[derive(Deserialize, Debug, ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub struct UndropTabularsRequest {
@@ -315,7 +342,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         request_metadata: RequestMetadata,
     ) -> Result<ListWarehousesResponse> {
         // ------------------- AuthZ -------------------
-        let project_id = require_project_id(request.project_id, &request_metadata)?;
+        let project_id = request_metadata.require_project_id(request.project_id)?;
 
         let authorizer = context.v1_state.authz;
         authorizer
@@ -375,6 +402,31 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         let warehouses = C::require_warehouse(warehouse_id, transaction.transaction()).await?;
         transaction.commit().await?;
         Ok(warehouses.into())
+    }
+
+    async fn get_warehouse_statistics(
+        warehouse_id: WarehouseIdent,
+        query: GetWarehouseStatisticsQuery,
+        context: ApiContext<State<A, C, S>>,
+        request_metadata: RequestMetadata,
+    ) -> Result<WarehouseStatisticsResponse> {
+        // ------------------- AuthZ -------------------
+        let authorizer = context.v1_state.authz;
+        authorizer
+            .require_warehouse_action(
+                &request_metadata,
+                warehouse_id,
+                &CatalogWarehouseAction::CanGetMetadata,
+            )
+            .await?;
+
+        // ------------------- Business Logic -------------------
+        C::get_warehouse_stats(
+            warehouse_id,
+            query.to_pagination_query(),
+            context.v1_state.catalog.clone(),
+        )
+        .await
     }
 
     async fn delete_warehouse(
@@ -909,11 +961,9 @@ mod test {
             },
             ApiContext,
         },
-        catalog::{
-            test::{impl_pagination_tests, random_request_metadata},
-            CatalogServer,
-        },
+        catalog::{test::impl_pagination_tests, CatalogServer},
         implementations::postgres::{PostgresCatalog, SecretsState},
+        request_metadata::RequestMetadata,
         service::{
             authz::implementations::openfga::{tests::ObjectHidingMock, OpenFGAAuthorizer},
             State, UserId,
@@ -942,7 +992,7 @@ mod test {
             TabularDeleteProfile::Soft {
                 expiration_seconds: chrono::Duration::seconds(10),
             },
-            Some(UserId::OIDC("test-user-id".to_string())),
+            Some(UserId::new_unchecked("oidc", "test-user-id")),
         )
         .await;
         let ns = crate::catalog::test::create_ns(
@@ -968,7 +1018,7 @@ mod test {
                     vended_credentials: true,
                     remote_signing: false,
                 },
-                random_request_metadata(),
+                RequestMetadata::new_unauthenticated(),
             )
             .await
             .unwrap();
@@ -985,7 +1035,7 @@ mod test {
                     purge_requested: None,
                 },
                 ctx.clone(),
-                random_request_metadata(),
+                RequestMetadata::new_unauthenticated(),
             )
             .await
             .unwrap();
@@ -1024,7 +1074,7 @@ mod test {
             TabularDeleteProfile::Soft {
                 expiration_seconds: chrono::Duration::seconds(10),
             },
-            Some(UserId::OIDC("test-user-id".to_string())),
+            Some(UserId::new_unchecked("oidc", "test-user-id")),
         )
         .await;
         let ns = crate::catalog::test::create_ns(
@@ -1050,7 +1100,7 @@ mod test {
                     vended_credentials: true,
                     remote_signing: false,
                 },
-                random_request_metadata(),
+                RequestMetadata::new_unauthenticated(),
             )
             .await
             .unwrap();
@@ -1066,7 +1116,7 @@ mod test {
                     purge_requested: None,
                 },
                 ctx.clone(),
-                random_request_metadata(),
+                RequestMetadata::new_unauthenticated(),
             )
             .await
             .unwrap();
@@ -1081,7 +1131,7 @@ mod test {
                 page_token: None,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -1096,7 +1146,7 @@ mod test {
                 page_token: None,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -1111,7 +1161,7 @@ mod test {
                 page_token: all.next_page_token,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -1126,7 +1176,7 @@ mod test {
                 page_token: None,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -1151,7 +1201,7 @@ mod test {
                 page_token: first_six.next_page_token,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -1184,7 +1234,7 @@ mod test {
                 page_token: None,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -1210,7 +1260,7 @@ mod test {
                 page_token: page.next_page_token,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();

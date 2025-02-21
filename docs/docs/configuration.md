@@ -2,19 +2,23 @@
 
 Lakekeeper is configured via environment variables. Settings listed in this page are shared between all projects and warehouses. Previous to Lakekeeper Version `0.5.0` please prefix all environment variables with `ICEBERG_REST__` instead of `LAKEKEEPER__`.
 
-For most deployments, we recommend to set at least the following variables: `LAKEKEEPER__BASE_URI`, `LAKEKEEPER__PG_DATABASE_URL_READ`, `LAKEKEEPER__PG_DATABASE_URL_WRITE`, `LAKEKEEPER__PG_ENCRYPTION_KEY`.
+For most deployments, we recommend to set at least the following variables: `LAKEKEEPER__PG_DATABASE_URL_READ`, `LAKEKEEPER__PG_DATABASE_URL_WRITE`, `LAKEKEEPER__PG_ENCRYPTION_KEY`.
+
+## Routing and Base-URL
+
+Some Lakekeeper endspoints return links pointing at Lakekeeper itself. By default, these links are generated using the `x-forwarded-for`, `x-forwarded-proto` and `x-forwarded-port` headers, if these are not present, the `host` header is used. If these heuristics are not working for you, you may set the `LAKEKEEPER_BASE_URI` environment variable to the base-URL where Lakekeeper is externally reachable. This may be necessary if Lakekeeper runs behind a reverse proxy or load balancer, and you cannot set the headers accordingly. In general, we recommend relying on the headers.
 
 ### General
 
-| Variable                                         | Example                                | Description |
-|--------------------------------------------------|----------------------------------------|-----|
-| <nobr>`LAKEKEEPER__BASE_URI`</nobr>              | <nobr>`https://example.com:8181`<nobr> | Base URL where the catalog is externally reachable. Default: `https://localhost:8181` |
+| Variable                                         | Example                                | Description                                                                                                                                                                                                                                                               |
+|--------------------------------------------------|----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <nobr>`LAKEKEEPER__BASE_URI`</nobr>              | <nobr>`https://example.com:8181`<nobr> | Optional base-URL where the catalog is externally reachable. Default: `None`. See [Routing and Base-URL](#routing-and-base-url).                                                                                                                                          |
 | <nobr>`LAKEKEEPER__ENABLE_DEFAULT_PROJECT`<nobr> | `true`                                 | If `true`, the NIL Project ID ("00000000-0000-0000-0000-000000000000") is used as a default if the user does not specify a project when connecting. This option is enabled by default, which we recommend for all single-project (single-tenant) setups. Default: `true`. |
-| `LAKEKEEPER__RESERVED_NAMESPACES`                | `system,examples,information_schema`   | Reserved Namespaces that cannot be created via the REST interface |
-| `LAKEKEEPER__METRICS_PORT`                       | `9000`                                 | Port where the Prometheus metrics endpoint is reachable. Default: `9000` |
-| `LAKEKEEPER__LISTEN_PORT`                        | `8181`                                 | Port the Lakekeeper listens on. Default: `8181` |
-| `LAKEKEEPER__SECRET_BACKEND`                     | `postgres`                             | The secret backend to use. If `kv2` (Hashicorp KV Version 2) is chosen, you need to provide [additional parameters](#vault-kv-version-2) Default: `postgres`, one-of: [`postgres`, `kv2`] |
-| `LAKEKEEPER__ALLOW_ORIGIN`                       | `*`                                    | A comma separated list of allowed origins for CORS. |
+| `LAKEKEEPER__RESERVED_NAMESPACES`                | `system,examples,information_schema`   | Reserved Namespaces that cannot be created via the REST interface                                                                                                                                                                                                         |
+| `LAKEKEEPER__METRICS_PORT`                       | `9000`                                 | Port where the Prometheus metrics endpoint is reachable. Default: `9000`                                                                                                                                                                                                  |
+| `LAKEKEEPER__LISTEN_PORT`                        | `8181`                                 | Port the Lakekeeper listens on. Default: `8181`                                                                                                                                                                                                                           |
+| `LAKEKEEPER__SECRET_BACKEND`                     | `postgres`                             | The secret backend to use. If `kv2` (Hashicorp KV Version 2) is chosen, you need to provide [additional parameters](#vault-kv-version-2) Default: `postgres`, one-of: [`postgres`, `kv2`]                                                                                 |
+| `LAKEKEEPER__ALLOW_ORIGIN`                       | `*`                                    | A comma separated list of allowed origins for CORS.                                                                                                                                                                                                                       |
 
 
 ### Persistence Store
@@ -57,11 +61,11 @@ Configuration parameters if a Vault KV version 2 (i.e. Hashicorp Vault) compatib
 
 Lakekeeper uses task queues internally to remove soft-deleted tabulars and purge tabular files. The following global configuration options are available:
 
-| Variable                                  | Example | Description            |
-|-------------------------------------------|---------|------------------------|
-| `LAKEKEEPER__QUEUE_CONFIG__MAX_RETRIES`   | 5       | Number of retries before a task is considered failed  Default: 5 |
-| `LAKEKEEPER__QUEUE_CONFIG__MAX_AGE`       | 3600    | Amount of seconds before a task is considered stale and could be picked up by another worker. Default: 3600 |
-| `LAKEKEEPER__QUEUE_CONFIG__POLL_INTERVAL` | 10      | Amount of seconds between polling for new tasks. Default: 10 |
+| Variable                                  | Example                   | Description                                                                                                                                                                                                          |
+|-------------------------------------------|---------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LAKEKEEPER__QUEUE_CONFIG__MAX_RETRIES`   | 5                         | Number of retries before a task is considered failed  Default: 5                                                                                                                                                     |
+| `LAKEKEEPER__QUEUE_CONFIG__MAX_AGE`       | 3600                      | Amount of seconds before a task is considered stale and could be picked up by another worker. Default: 3600                                                                                                          |
+| `LAKEKEEPER__QUEUE_CONFIG__POLL_INTERVAL` | 3600ms/30s/30(deprecated) | Interval between polling for new tasks. Default: 10s. Supported units: ms (milliseconds) and s (seconds), leaving the unit out is deprecated, it'll default to seconds but is due to be removed in a future release. |
 
 ### Nats
 
@@ -106,6 +110,7 @@ Please check the [Authentication Guide](./authentication.md) for more details.
 | `LAKEKEEPER__OPENID_ADDITIONAL_ISSUERS`        | `https://sts.windows.net/<Tenant>/`          | A comma separated list of additional issuers to trust. The issuer defined in the `issuer` field of the `.well-known/openid-configuration` is always trusted. `LAKEKEEPER__OPENID_ADDITIONAL_ISSUERS` has no effect if `LAKEKEEPER__OPENID_PROVIDER_URI` is not set. |
 | `LAKEKEEPER__ENABLE_KUBERNETES_AUTHENTICATION` | true                                         | If true, kubernetes service accounts can authenticate to Lakekeeper. This option is compatible with `LAKEKEEPER__OPENID_PROVIDER_URI` - multiple IdPs (OIDC and Kubernetes) can be enabled simultaneously. |
 | `LAKEKEEPER__OPENID_SCOPE`                     | `lakekeeper`                                 | Specify a scope that must be present in provided tokens received from the openid provider. |
+| `LAKEKEEPER__OPENID_SUBJECT_CLAIM`             | `sub` or `oid`                               | Specify the field in the user's claims that is used to identify a User. By default Lakekeeper uses the `oid` field if present, otherwise the `sub` field is used. We strongly recommend setting this configuration explicitly in production deployments. Entra-ID users want to use the `oid` claim, users from all other IdPs most likely want to use the `sub` claim. |
 
 ### Authorization
 Authorization is only effective if [Authentication](#authentication) is enabled. Authorization must not be enabled after Lakekeeper has been bootstrapped! Please create a new Lakekeeper instance, bootstrap it with authorization enabled, and migrate your tables.

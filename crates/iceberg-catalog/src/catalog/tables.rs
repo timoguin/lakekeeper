@@ -315,7 +315,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 prefix: prefix.map(Prefix::into_string).unwrap_or_default(),
                 num_events: 1,
                 sequence_number: 0,
-                trace_id: request_metadata.request_id,
+                trace_id: request_metadata.request_id(),
             },
             body,
             "createTable",
@@ -419,7 +419,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 prefix: prefix.map(Prefix::into_string).unwrap_or_default(),
                 num_events: 1,
                 sequence_number: 0,
-                trace_id: request_metadata.request_id,
+                trace_id: request_metadata.request_id(),
             },
             maybe_body_to_json(&request),
             "registerTable",
@@ -746,7 +746,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                     .unwrap_or_default(),
                 num_events: 1,
                 sequence_number: 0,
-                trace_id: request_metadata.request_id,
+                trace_id: request_metadata.request_id(),
             },
             serde_json::Value::Null,
             "dropTable",
@@ -872,7 +872,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
                 prefix: prefix.map(Prefix::into_string).unwrap_or_default(),
                 num_events: 1,
                 sequence_number: 0,
-                trace_id: request_metadata.request_id,
+                trace_id: request_metadata.request_id(),
             },
             body,
             "renameTable",
@@ -1224,7 +1224,7 @@ async fn commit_tables_internal<C: Catalog, A: Authorizer + Clone, S: SecretStor
                     .unwrap_or_default(),
                 num_events: number_of_events,
                 sequence_number: event_sequence_number,
-                trace_id: request_metadata.request_id,
+                trace_id: request_metadata.request_id(),
             },
             body,
             "updateTable",
@@ -1783,14 +1783,14 @@ pub(crate) fn create_table_request_into_table_metadata(
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use std::{collections::HashMap, str::FromStr};
 
     use http::StatusCode;
     use iceberg::{
         spec::{
             NestedField, Operation, PrimitiveType, Schema, Snapshot, SnapshotReference,
-            SnapshotRetention, Summary, Transform, Type, UnboundPartitionField,
+            SnapshotRetention, Summary, TableMetadata, Transform, Type, UnboundPartitionField,
             UnboundPartitionSpec, MAIN_BRANCH, PROPERTY_METADATA_PREVIOUS_VERSIONS_MAX,
         },
         TableIdent,
@@ -1817,12 +1817,9 @@ mod test {
             management::v1::warehouse::TabularDeleteProfile,
             ApiContext,
         },
-        catalog::{
-            tables::validate_table_properties,
-            test::{impl_pagination_tests, random_request_metadata},
-            CatalogServer,
-        },
+        catalog::{tables::validate_table_properties, test::impl_pagination_tests, CatalogServer},
         implementations::postgres::{PostgresCatalog, SecretsState},
+        request_metadata::RequestMetadata,
         service::{
             authz::{
                 implementations::openfga::{tests::ObjectHidingMock, OpenFGAAuthorizer},
@@ -1877,7 +1874,7 @@ mod test {
         assert!(count.is_none());
     }
 
-    fn create_request(table_name: Option<String>) -> CreateTableRequest {
+    pub(crate) fn create_request(table_name: Option<String>) -> CreateTableRequest {
         CreateTableRequest {
             name: table_name.unwrap_or("my_table".to_string()),
             location: None,
@@ -1941,7 +1938,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap()
@@ -1960,11 +1957,11 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
-        assert_eq!(tab.metadata, table_metadata.metadata);
+        assert_table_metadata_are_equal(&table_metadata.metadata, &tab.metadata);
     }
 
     fn schema() -> Schema {
@@ -1976,6 +1973,76 @@ mod test {
             ])
             .build()
             .unwrap()
+    }
+
+    fn assert_table_metadata_are_equal(expected: &TableMetadata, actual: &TableMetadata) {
+        assert_eq!(actual.location(), expected.location());
+        assert_eq!(actual.properties(), expected.properties());
+        assert_eq!(
+            actual
+                .snapshots()
+                .sorted_by_key(|s| s.snapshot_id())
+                .collect_vec(),
+            expected
+                .snapshots()
+                .sorted_by_key(|s| s.snapshot_id())
+                .collect_vec()
+        );
+        assert_eq!(
+            actual
+                .partition_specs_iter()
+                .sorted_by_key(|ps| ps.spec_id())
+                .collect_vec(),
+            expected
+                .partition_specs_iter()
+                .sorted_by_key(|ps| ps.spec_id())
+                .collect_vec()
+        );
+        assert_eq!(
+            actual
+                .partition_statistics_iter()
+                .sorted_by_key(|s| (s.snapshot_id, &s.statistics_path))
+                .collect_vec(),
+            expected
+                .partition_statistics_iter()
+                .sorted_by_key(|s| (s.snapshot_id, &s.statistics_path))
+                .collect_vec()
+        );
+        assert_eq!(
+            actual
+                .sort_orders_iter()
+                .sorted_by_key(|s| s.order_id)
+                .collect_vec(),
+            expected
+                .sort_orders_iter()
+                .sorted_by_key(|s| s.order_id)
+                .collect_vec()
+        );
+        assert_eq!(
+            actual
+                .statistics_iter()
+                .sorted_by_key(|s| (s.snapshot_id, &s.statistics_path))
+                .collect_vec(),
+            expected
+                .statistics_iter()
+                .sorted_by_key(|s| (s.snapshot_id, &s.statistics_path))
+                .collect_vec()
+        );
+        assert_eq!(actual.history(), expected.history());
+        assert_eq!(actual.current_schema_id(), expected.current_schema_id());
+        assert_eq!(actual.current_snapshot_id(), expected.current_snapshot_id());
+        assert_eq!(
+            actual.default_partition_spec(),
+            expected.default_partition_spec()
+        );
+        assert_eq!(actual.default_sort_order(), expected.default_sort_order());
+        assert_eq!(actual.format_version(), expected.format_version());
+        assert_eq!(actual.last_column_id(), expected.last_column_id());
+        assert_eq!(
+            actual.last_sequence_number(),
+            expected.last_sequence_number()
+        );
+        assert_eq!(actual.last_partition_id(), expected.last_partition_id());
     }
 
     #[sqlx::test]
@@ -2030,7 +2097,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2045,12 +2112,12 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
 
-        assert_eq!(tab.metadata, table_metadata.metadata);
+        assert_table_metadata_are_equal(&table_metadata.metadata, &tab.metadata);
     }
 
     #[sqlx::test]
@@ -2087,7 +2154,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap()
@@ -2106,11 +2173,11 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
-        assert_eq!(tab.metadata, table_metadata.metadata);
+        assert_table_metadata_are_equal(&table_metadata.metadata, &tab.metadata);
     }
 
     #[sqlx::test]
@@ -2171,7 +2238,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2186,7 +2253,7 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2220,7 +2287,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2232,11 +2299,11 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
-        assert_eq!(tab.metadata, builder.metadata);
+        assert_table_metadata_are_equal(&builder.metadata, &tab.metadata);
 
         let builder = builder
             .metadata
@@ -2259,7 +2326,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap()
@@ -2274,12 +2341,12 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
 
-        assert_eq!(tab.metadata, builder.metadata);
+        assert_table_metadata_are_equal(&builder.metadata, &tab.metadata);
 
         let builder = committed
             .new_metadata
@@ -2302,7 +2369,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap()
@@ -2317,12 +2384,12 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
 
-        assert_eq!(tab.metadata, builder.metadata);
+        assert_table_metadata_are_equal(&builder.metadata, &tab.metadata);
     }
 
     #[sqlx::test]
@@ -2383,7 +2450,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2395,7 +2462,7 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2445,7 +2512,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2457,7 +2524,7 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2502,7 +2569,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2514,7 +2581,7 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2540,7 +2607,7 @@ mod test {
                 }],
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2552,7 +2619,7 @@ mod test {
             },
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2568,7 +2635,7 @@ mod test {
                 .sorted_by_key(|s| s.snapshot_id())
                 .collect_vec()
         );
-        assert_eq!(tab.metadata, builder.metadata);
+        assert_table_metadata_are_equal(&builder.metadata, &tab.metadata);
     }
 
     async fn commit_test_setup(
@@ -2588,7 +2655,7 @@ mod test {
                 remote_signing: false,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2641,7 +2708,7 @@ mod test {
             create_request_1,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2651,7 +2718,7 @@ mod test {
             create_request_2,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2671,7 +2738,7 @@ mod test {
             create_request_1,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2681,7 +2748,7 @@ mod test {
             create_request_2,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2701,7 +2768,7 @@ mod test {
             create_request_1,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2711,7 +2778,7 @@ mod test {
             create_request_2,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .expect_err("Table was created at same location which should not be possible");
@@ -2734,7 +2801,7 @@ mod test {
             create_request_1,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2744,7 +2811,7 @@ mod test {
             create_request_2,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .expect_err("Staged table could be created at sublocation which should not be possible");
@@ -2767,7 +2834,7 @@ mod test {
             create_request_1,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2777,7 +2844,7 @@ mod test {
             create_request_2,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .expect_err("Staged table could be created at sublocation which should not be possible");
@@ -2799,7 +2866,7 @@ mod test {
             create_request_1,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2809,7 +2876,7 @@ mod test {
             create_request_2,
             DataAccess::none(),
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .expect_err("Staged table could be created at sublocation which should not be possible");
@@ -2836,7 +2903,7 @@ mod test {
             None,
             authz,
             TabularDeleteProfile::Hard {},
-            Some(UserId::OIDC("test-user-id".to_string())),
+            Some(UserId::new_unchecked("oidc", "test-user-id")),
         )
         .await;
         let ns = crate::catalog::test::create_ns(
@@ -2857,7 +2924,7 @@ mod test {
                 create_request,
                 DataAccess::none(),
                 ctx.clone(),
-                random_request_metadata(),
+                RequestMetadata::new_unauthenticated(),
             )
             .await
             .unwrap();
@@ -2893,7 +2960,7 @@ mod test {
             None,
             authz,
             TabularDeleteProfile::Hard {},
-            Some(UserId::OIDC("test-user-id".to_string())),
+            Some(UserId::new_unchecked("oidc", "test-user-id")),
         )
         .await;
         let ns = crate::catalog::test::create_ns(
@@ -2916,7 +2983,7 @@ mod test {
                     remote_signing: false,
                 },
                 ctx.clone(),
-                random_request_metadata(),
+                RequestMetadata::new_unauthenticated(),
             )
             .await
             .unwrap();
@@ -2931,7 +2998,7 @@ mod test {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2946,7 +3013,7 @@ mod test {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2961,7 +3028,7 @@ mod test {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -2977,7 +3044,7 @@ mod test {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -3002,7 +3069,7 @@ mod test {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -3035,7 +3102,7 @@ mod test {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
@@ -3061,7 +3128,7 @@ mod test {
                 return_uuids: true,
             },
             ctx.clone(),
-            random_request_metadata(),
+            RequestMetadata::new_unauthenticated(),
         )
         .await
         .unwrap();
