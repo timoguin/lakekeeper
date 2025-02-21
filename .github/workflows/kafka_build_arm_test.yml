@@ -1,0 +1,28 @@
+name: kafka_build_arm_test
+
+on:
+  push:
+    branches:
+      - "ga/kafka"
+  workflow_dispatch:
+
+env:
+  RUST_BACKTRACE: short
+  RUSTUP_MAX_RETRIES: 10
+
+jobs:
+  build-binary:
+    name: Build Binary
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: aarch64-unknown-linux-musl
+          cache: false
+
+      - name: Build
+        run: cargo build --all-features --release --locked --target aarch64-unknown-linux-musl
