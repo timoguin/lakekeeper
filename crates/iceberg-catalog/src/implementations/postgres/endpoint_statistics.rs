@@ -7,16 +7,16 @@ use uuid::Uuid;
 use crate::{
     api::endpoints::Endpoints,
     implementations::postgres::dbutils::DBErrorHandler,
-    service::stats::endpoint::{EndpointIdentifier, StatsSink},
+    service::endpoint_statistics::{EndpointIdentifier, EndpointStatisticsSink},
     ProjectIdent, WarehouseIdent,
 };
 
 #[derive(Debug)]
-pub struct PostgresStatsSink {
+pub struct PostgresStatisticsSink {
     pool: sqlx::PgPool,
 }
 
-impl PostgresStatsSink {
+impl PostgresStatisticsSink {
     #[must_use]
     pub fn new(pool: sqlx::PgPool) -> Self {
         Self { pool }
@@ -24,8 +24,8 @@ impl PostgresStatsSink {
 }
 
 #[async_trait::async_trait]
-impl StatsSink for PostgresStatsSink {
-    async fn consume_endpoint_stats(
+impl EndpointStatisticsSink for PostgresStatisticsSink {
+    async fn consume_endpoint_statistics(
         &self,
         stats: HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>>,
     ) {
@@ -45,7 +45,7 @@ impl StatsSink for PostgresStatsSink {
             {
                 tracing::info!("Consuming stats for endpoint: {uri:?}, count: {count:?}",);
 
-                insert_stats(
+                insert_statistics(
                     &mut conn,
                     project,
                     uri,
@@ -62,9 +62,13 @@ impl StatsSink for PostgresStatsSink {
             .inspect_err(|e| tracing::error!("Failed to commit: {e}"))
             .unwrap();
     }
+
+    fn sink_id(&self) -> &'static str {
+        "postgres"
+    }
 }
 
-async fn insert_stats(
+async fn insert_statistics(
     conn: &mut Transaction<'_, Postgres>,
     project: Option<ProjectIdent>,
     uri: Endpoints,
@@ -73,7 +77,6 @@ async fn insert_stats(
     ident: Option<WarehouseIdent>,
     warehouse_name: Option<String>,
 ) {
-    tracing::debug!("Inserting stats for project: {project:?}, uri: {uri:?}, status_code: {status_code:?}, count: {count:?}",);
     let _ = sqlx::query!(
                     r#"
                     WITH warehouse_id AS (SELECT CASE
@@ -82,13 +85,13 @@ async fn insert_stats(
                                  ELSE $2::uuid
                                  END AS warehouse_id)
                     INSERT
-                    INTO endpoint_stats (project_id, warehouse_id, matched_path, status_code, count)
+                    INTO endpoint_statistics (project_id, warehouse_id, matched_path, status_code, count)
                     SELECT $1,
                            (SELECT warehouse_id from warehouse_id),
                            $4,
                            $5,
                            COALESCE((SELECT count
-                                     FROM endpoint_stats
+                                     FROM endpoint_statistics
                                      WHERE project_id = $1
                                        AND warehouse_id = (select warehouse_id from warehouse_id)
                                        AND matched_path = $4
@@ -106,7 +109,6 @@ async fn insert_stats(
     )
     .execute(&mut **conn)
     .await
-    .inspect(|r| tracing::debug!("Inserted stats: {r:?}"))
     .map_err(|e| {
         tracing::error!("Failed to insert stats: {e}");
         e.into_error_model("failed to insert stats")

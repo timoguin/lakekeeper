@@ -5,7 +5,6 @@ use std::{
     fmt::Debug,
     str::FromStr,
     sync::{atomic::AtomicI64, Arc},
-    time::Duration,
 };
 
 use axum::{
@@ -18,64 +17,72 @@ use uuid::Uuid;
 
 use crate::{
     api::endpoints::Endpoints, request_metadata::RequestMetadata, ProjectIdent, WarehouseIdent,
+    CONFIG,
 };
 
-#[derive(Debug, Clone)]
-pub struct TrackerTx(tokio::sync::mpsc::Sender<Message>);
-
-impl TrackerTx {
-    #[must_use]
-    pub fn new(tx: tokio::sync::mpsc::Sender<Message>) -> Self {
-        Self(tx)
-    }
-}
-
-// TODO: We're aggregating endpoint statistics per warehouse, which means we'll have to somehow
-//       extract the warehouse id from the request. That's no fun
-pub(crate) async fn stats_middleware_fn(
-    State(tracker): State<TrackerTx>,
+/// Middleware for tracking endpoint statistics.
+///
+/// This middleware forwards information about the called endpoint to the receiver of
+/// `EndpointStatisticsTrackerTx`.
+pub(crate) async fn endpoint_statistics_middleware_fn(
+    State(tracker): State<EndpointStatisticsTrackerTx>,
     Path(path_params): Path<HashMap<String, String>>,
     Query(query_params): Query<HashMap<String, String>>,
     request: Request,
     next: Next,
 ) -> Response {
-    let rm = request
-        .extensions()
-        .get::<RequestMetadata>()
-        .unwrap()
-        .clone();
+    let request_metadata = request.extensions().get::<RequestMetadata>().cloned();
 
     let response = next.run(request).await;
-    tracker
-        .0
-        .send(Message::EndpointCalled {
-            request_metadata: rm,
-            response_status: response.status(),
-            path_params,
-            query_params,
-        })
-        .await
-        .unwrap();
+
+    if let Some(request_metadata) = request_metadata {
+        if let Err(e) = tracker
+            .0
+            .send(EndpointStatisticsMessage::EndpointCalled {
+                request_metadata,
+                response_status: response.status(),
+                path_params,
+                query_params,
+            })
+            .await
+        {
+            tracing::error!("Failed to send endpoint statistics message: {}", e);
+        };
+    } else {
+        tracing::error!(?path_params, "No request metadata found.");
+    }
 
     response
 }
 
+/// Sender for the endpoint statistics tracker.
+#[derive(Debug, Clone)]
+pub struct EndpointStatisticsTrackerTx(tokio::sync::mpsc::Sender<EndpointStatisticsMessage>);
+
+impl EndpointStatisticsTrackerTx {
+    #[must_use]
+    pub fn new(tx: tokio::sync::mpsc::Sender<EndpointStatisticsMessage>) -> Self {
+        Self(tx)
+    }
+}
+
 #[derive(Debug)]
-pub enum Message {
+pub enum EndpointStatisticsMessage {
     EndpointCalled {
         request_metadata: RequestMetadata,
         response_status: StatusCode,
         path_params: HashMap<String, String>,
         query_params: HashMap<String, String>,
     },
+    Shutdown,
 }
 
 #[derive(Debug, Default)]
-pub struct ProjectStats {
+pub struct ProjectStatistics {
     stats: HashMap<EndpointIdentifier, AtomicI64>,
 }
 
-impl ProjectStats {
+impl ProjectStatistics {
     #[must_use]
     pub fn into_consumable(self) -> HashMap<EndpointIdentifier, i64> {
         self.stats
@@ -95,42 +102,41 @@ pub struct EndpointIdentifier {
 }
 
 #[derive(Debug)]
-pub struct Tracker {
-    rcv: tokio::sync::mpsc::Receiver<Message>,
-    endpoint_stats: HashMap<Option<ProjectIdent>, ProjectStats>,
-    stat_sinks: Vec<Arc<dyn StatsSink>>,
+pub struct EndpointStatisticsTracker {
+    rcv: tokio::sync::mpsc::Receiver<EndpointStatisticsMessage>,
+    endpoint_statistics: HashMap<Option<ProjectIdent>, ProjectStatistics>,
+    statistic_sinks: Vec<Arc<dyn EndpointStatisticsSink>>,
 }
 
-impl Tracker {
+impl EndpointStatisticsTracker {
     #[must_use]
     pub fn new(
-        rcv: tokio::sync::mpsc::Receiver<Message>,
-        stat_sinks: Vec<Arc<dyn StatsSink>>,
+        rcv: tokio::sync::mpsc::Receiver<EndpointStatisticsMessage>,
+        stat_sinks: Vec<Arc<dyn EndpointStatisticsSink>>,
     ) -> Self {
         Self {
             rcv,
-            endpoint_stats: HashMap::new(),
-            stat_sinks,
+            endpoint_statistics: HashMap::new(),
+            statistic_sinks: stat_sinks,
         }
     }
 
-    async fn recv_with_timeout(&mut self) -> Option<Message> {
+    async fn recv_with_timeout(&mut self) -> Option<EndpointStatisticsMessage> {
         tokio::select! {
             msg = self.rcv.recv() => msg,
-            () = tokio::time::sleep(Duration::from_secs(15)) => None,
+            () = tokio::time::sleep(CONFIG.endpoint_stat_flush_interval) => None,
         }
     }
 
     pub async fn run(mut self) {
         let mut last_update = tokio::time::Instant::now();
         loop {
-            tracing::debug!(
-                "Checking if we should consume stats, elapsed: {}",
-                last_update.elapsed().as_millis()
-            );
-            if last_update.elapsed() > Duration::from_secs(15) {
-                tracing::debug!("Consuming stats");
-                self.consume_stats().await;
+            if last_update.elapsed() > CONFIG.endpoint_stat_flush_interval {
+                tracing::debug!(
+                    "Flushing stats after: {}ms",
+                    last_update.elapsed().as_millis()
+                );
+                self.flush_storage().await;
                 last_update = tokio::time::Instant::now();
             }
 
@@ -138,28 +144,18 @@ impl Tracker {
                 tracing::debug!("No message received, continuing.");
                 continue;
             };
+
             tracing::debug!("Received message: {:?}", msg);
+
             match msg {
-                Message::EndpointCalled {
+                EndpointStatisticsMessage::EndpointCalled {
                     request_metadata,
                     response_status,
                     path_params,
                     query_params,
                 } => {
-                    let warehouse = dbg!(&path_params)
-                        .get("warehouse_id")
-                        .map(|s| WarehouseIdent::from_str(s.as_str()))
-                        .transpose()
-                        .ok()
-                        .flatten()
-                        .or(path_params
-                            .get("prefix")
-                            .map(|s| Uuid::from_str(s.as_str()))
-                            .transpose()
-                            .inspect_err(|e| tracing::debug!("Could not parse prefix: {}", e))
-                            .ok()
-                            .flatten()
-                            .map(WarehouseIdent::from));
+                    let warehouse = Self::maybe_get_warehouse_ident(&path_params);
+
                     let Some(mp) = request_metadata.matched_path() else {
                         tracing::error!("No path matched.");
                         continue;
@@ -176,7 +172,7 @@ impl Tracker {
                         continue;
                     };
 
-                    self.endpoint_stats
+                    self.endpoint_statistics
                         .entry(request_metadata.preferred_project_id())
                         .or_default()
                         .stats
@@ -189,31 +185,58 @@ impl Tracker {
                         .or_insert_with(|| AtomicI64::new(0))
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
+                EndpointStatisticsMessage::Shutdown => {
+                    tracing::info!(
+                        "Received shutdown message, flushing sinks before shutting down."
+                    );
+                    self.flush_storage().await;
+                    break;
+                }
             }
         }
     }
 
-    async fn consume_stats(&mut self) {
+    async fn flush_storage(&mut self) {
         let mut stats = HashMap::new();
-        std::mem::swap(&mut stats, &mut self.endpoint_stats);
-        tracing::debug!("Consuming stats: {:?}", stats);
+        std::mem::swap(&mut stats, &mut self.endpoint_statistics);
+
         let s: HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>> = stats
             .into_iter()
             .map(|(k, v)| (k, v.into_consumable()))
             .collect();
-        tracing::debug!("Converted stats: {:?}", s);
-        for sink in &self.stat_sinks {
-            tracing::debug!("Sinking stats");
-            sink.consume_endpoint_stats(s.clone()).await;
+
+        for sink in &self.statistic_sinks {
+            tracing::debug!("Sinking stats for '{}'", sink.sink_id());
+            sink.consume_endpoint_statistics(s.clone()).await;
         }
+    }
+
+    fn maybe_get_warehouse_ident(path_params: &HashMap<String, String>) -> Option<WarehouseIdent> {
+        path_params
+            .get("warehouse_id")
+            .map(|s| WarehouseIdent::from_str(s.as_str()))
+            .transpose()
+            .inspect_err(|e| tracing::debug!("Could not parse warehouse: {}", e.error))
+            .ok()
+            .flatten()
+            .or(path_params
+                .get("prefix")
+                .map(|s| Uuid::from_str(s.as_str()))
+                .transpose()
+                .inspect_err(|e| tracing::debug!("Could not parse prefix: {}", e))
+                .ok()
+                .flatten()
+                .map(WarehouseIdent::from))
     }
 }
 
 // E.g. postgres consumer which populates some postgres tables
 #[async_trait::async_trait]
-pub trait StatsSink: Debug + Send + Sync + 'static {
-    async fn consume_endpoint_stats(
+pub trait EndpointStatisticsSink: Debug + Send + Sync + 'static {
+    async fn consume_endpoint_statistics(
         &self,
         stats: HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>>,
     );
+
+    fn sink_id(&self) -> &'static str;
 }

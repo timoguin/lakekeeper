@@ -68,21 +68,21 @@ create type api_endpoints as enum (
     'management-delete-permission');
 
 
-create table endpoint_stats
+create table endpoint_statistics
 (
-    endpoint_stats_id int generated always as identity primary key,
-    warehouse_id      uuid references warehouse (warehouse_id) on delete cascade,
+    endpoint_statistics_id int generated always as identity primary key,
+    warehouse_id           uuid references warehouse (warehouse_id) on delete cascade,
     --  warehouse_name text collate "case_insensitive" references warehouse (warehouse_name) on update cascade on delete cascade,
-    project_id        uuid references project (project_id) on delete cascade,
-    matched_path      api_endpoints not null,
-    status_code       int           not null,
-    count             bigint        not null default 0,
+    project_id             uuid references project (project_id) on delete cascade,
+    matched_path           api_endpoints not null,
+    status_code            int           not null,
+    count                  bigint        not null default 0,
     -- we keep stats in hourly intervals, every hour we create a new row,
-    valid_until       timestamptz   not null default get_stats_date_default() + interval '1 hour',
+    valid_until            timestamptz   not null default get_stats_date_default() + interval '1 hour',
     unique nulls not distinct (project_id, warehouse_id, matched_path, status_code, valid_until)
 );
 
 
 
-select trigger_updated_at('endpoint_stats');
-call add_time_columns('endpoint_stats');
+select trigger_updated_at('endpoint_statistics');
+call add_time_columns('endpoint_statistics');
