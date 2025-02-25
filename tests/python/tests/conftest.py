@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     s3_region: Optional[str] = None
     s3_path_style_access: Optional[str] = None
     s3_sts_mode: Optional[str] = None
+    s3_allow_alternative_protocols: Optional[bool] = None
     azure_client_id: Optional[Secret] = None
     azure_client_secret: Optional[Secret] = None
     azure_tenant_id: Optional[Secret] = None
@@ -122,6 +123,10 @@ def storage_config(request) -> dict:
         if settings.s3_region is None:
             pytest.skip("LAKEKEEPER_TEST__S3_REGION is not set")
 
+        extra_config = {}
+        if settings.s3_allow_alternative_protocols:
+            extra_config["allow-alternative-protocols"] = True
+
         return {
             "storage-profile": {
                 "type": "s3",
@@ -131,6 +136,7 @@ def storage_config(request) -> dict:
                 "endpoint": settings.s3_endpoint,
                 "flavor": "minio",
                 "sts-enabled": request.param["sts-enabled"],
+                **extra_config,
             },
             "storage-credential": {
                 "type": "s3",
@@ -490,6 +496,7 @@ def spark(warehouse: Warehouse, storage_config):
         f"org.apache.iceberg:iceberg-azure-bundle:{settings.spark_iceberg_version},"
         f"org.apache.iceberg:iceberg-gcp-bundle:{settings.spark_iceberg_version}"
     )
+
     # random 5 char string
     catalog_name = warehouse.normalized_catalog_name
     configuration = {

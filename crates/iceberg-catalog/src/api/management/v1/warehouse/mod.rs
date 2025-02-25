@@ -5,6 +5,7 @@ use iceberg_ext::catalog::rest::ErrorModel;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use super::default_page_size;
 pub use crate::service::{
@@ -27,12 +28,13 @@ use crate::{
     request_metadata::RequestMetadata,
     service::{
         authz::{Authorizer, CatalogProjectAction, CatalogWarehouseAction},
+        event_publisher::EventMetadata,
         secrets::SecretStore,
         task_queue::TaskFilter,
         Catalog, ListFlags, NamespaceIdentUuid, State, TableIdentUuid, TabularIdentUuid,
         Transaction,
     },
-    ProjectIdent, WarehouseIdent, DEFAULT_PROJECT_ID,
+    ProjectId, WarehouseIdent, DEFAULT_PROJECT_ID,
 };
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -73,7 +75,7 @@ pub struct CreateWarehouseRequest {
     /// Project ID in which to create the warehouse.
     /// If no default project is set for this server, this field is required.
     #[schema(value_type=Option<uuid::Uuid>)]
-    pub project_id: Option<ProjectIdent>,
+    pub project_id: Option<ProjectId>,
     /// Storage profile to use for the warehouse.
     pub storage_profile: StorageProfile,
     /// Optional storage credential to use for the warehouse.
@@ -156,7 +158,7 @@ pub struct UpdateWarehouseStorageRequest {
     pub storage_credential: Option<StorageCredential>,
 }
 
-#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct ListWarehousesRequest {
     /// Optional filter to return only warehouses
@@ -169,7 +171,7 @@ pub struct ListWarehousesRequest {
     /// Setting a warehouse is required.
     #[serde(default)]
     #[param(value_type=Option::<uuid::Uuid>)]
-    pub project_id: Option<ProjectIdent>,
+    pub project_id: Option<ProjectId>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, ToSchema)]
@@ -599,9 +601,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
 
         let mut transaction = C::Transaction::begin_write(context.v1_state.catalog).await?;
         let warehouse = C::require_warehouse(warehouse_id, transaction.transaction()).await?;
-        warehouse
-            .storage_profile
-            .can_be_updated_with(&storage_profile)?;
+        let storage_profile = warehouse.storage_profile.update_with(storage_profile)?;
         let old_secret_id = warehouse.storage_secret_id;
 
         let secret_id = if let Some(storage_credential) = storage_credential {
@@ -711,11 +711,22 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
     }
 
     async fn undrop_tabulars(
+        warehouse_id: WarehouseIdent,
         request_metadata: RequestMetadata,
         request: UndropTabularsRequest,
         context: ApiContext<State<A, C, S>>,
     ) -> Result<()> {
         // ------------------- AuthZ -------------------
+        context
+            .v1_state
+            .authz
+            .require_warehouse_action(
+                &request_metadata,
+                warehouse_id,
+                &CatalogWarehouseAction::CanUse,
+            )
+            .await?;
+
         undrop::require_undrop_permissions(&request, &context.v1_state.authz, &request_metadata)
             .await?;
 
@@ -727,15 +738,42 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             .into_iter()
             .map(|i| TableIdentUuid::from(*i))
             .collect::<Vec<_>>();
-        let tasks_to_cancel = C::undrop_tabulars(&tabs, transaction.transaction()).await?;
+        let undrop_tabular_responses =
+            C::undrop_tabulars(&tabs, warehouse_id, transaction.transaction()).await?;
         context
             .v1_state
             .queues
-            .cancel_tabular_expiration(TaskFilter::TaskIds(tasks_to_cancel))
+            .cancel_tabular_expiration(TaskFilter::TaskIds(
+                undrop_tabular_responses
+                    .iter()
+                    .map(|r| r.task_id.clone())
+                    .collect(),
+            ))
             .await?;
         transaction.commit().await?;
 
-        // TODO: emit event
+        let num_tabulars = tabs.len();
+        for (i, utr) in undrop_tabular_responses.iter().enumerate() {
+            let _ = context
+                .v1_state
+                .publisher
+                .publish(
+                    Uuid::now_v7(),
+                    "undropTabulars",
+                    serde_json::Value::Null,
+                    EventMetadata {
+                        tabular_id: TabularIdentUuid::from(utr.table_ident),
+                        warehouse_id,
+                        name: utr.name.clone(),
+                        namespace: utr.namespace.to_url_string(),
+                        prefix: warehouse_id.0.into(),
+                        num_events: num_tabulars,
+                        sequence_number: i,
+                        trace_id: request_metadata.request_id(),
+                    },
+                )
+                .await;
+        }
 
         Ok(())
     }

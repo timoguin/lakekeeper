@@ -52,7 +52,7 @@ pub mod v1 {
             authn::UserId, authz::Authorizer, Actor, Catalog, CreateOrUpdateUserResponse, RoleId,
             SecretStore, State, TabularIdentUuid,
         },
-        ProjectIdent, WarehouseIdent,
+        ProjectId, WarehouseIdent,
     };
 
     pub(crate) fn default_page_size() -> i64 {
@@ -561,7 +561,7 @@ pub mod v1 {
         )
     )]
     async fn get_project_by_id<C: Catalog, A: Authorizer, S: SecretStore>(
-        Path(project_id): Path<ProjectIdent>,
+        Path(project_id): Path<ProjectId>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
     ) -> Result<GetProjectResponse> {
@@ -599,7 +599,7 @@ pub mod v1 {
         )
     )]
     async fn delete_project_by_id<C: Catalog, A: Authorizer, S: SecretStore>(
-        Path(project_id): Path<ProjectIdent>,
+        Path(project_id): Path<ProjectId>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
     ) -> Result<(StatusCode, ())> {
@@ -638,7 +638,7 @@ pub mod v1 {
         )
     )]
     async fn rename_project_by_id<C: Catalog, A: Authorizer, S: SecretStore>(
-        Path(project_id): Path<ProjectIdent>,
+        Path(project_id): Path<ProjectId>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<RenameProjectRequest>,
@@ -941,12 +941,18 @@ pub mod v1 {
         )
     )]
     async fn undrop_tabulars<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
-        Path(_warehouse_id): Path<uuid::Uuid>,
+        Path(warehouse_id): Path<uuid::Uuid>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
         Json(request): Json<UndropTabularsRequest>,
     ) -> Result<StatusCode> {
-        ApiServer::<C, A, S>::undrop_tabulars(metadata, request, api_context).await?;
+        ApiServer::<C, A, S>::undrop_tabulars(
+            WarehouseIdent::from(warehouse_id),
+            metadata,
+            request,
+            api_context,
+        )
+        .await?;
         Ok(StatusCode::NO_CONTENT)
     }
 

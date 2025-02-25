@@ -119,7 +119,9 @@ pub(crate) async fn serve(bind_addr: std::net::SocketAddr) -> Result<(), anyhow:
         )?),
     );
 
-    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
+    let listener = tokio::net::TcpListener::bind(bind_addr)
+        .await
+        .map_err(|e| anyhow!(e).context(format!("Failed to bind to address: {bind_addr}")))?;
 
     match authorizer {
         Authorizers::AllowAll(a) => {
@@ -302,7 +304,13 @@ async fn serve_inner<A: Authorizer, N: Authenticator + 'static>(
     };
 
     let (layer, metrics_future) =
-        iceberg_catalog::metrics::get_axum_layer_and_install_recorder(CONFIG.metrics_port)?;
+        iceberg_catalog::metrics::get_axum_layer_and_install_recorder(CONFIG.metrics_port)
+            .map_err(|e| {
+                anyhow!(e).context(format!(
+                    "Failed to start metrics server on port: {}",
+                    CONFIG.metrics_port
+                ))
+            })?;
 
     let router = new_full_router::<PostgresCatalog, _, Secrets, _>(RouterArgs {
         authenticator: authenticator.clone(),
