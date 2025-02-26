@@ -64,6 +64,13 @@ impl EndpointStatisticsTrackerTx {
     pub fn new(tx: tokio::sync::mpsc::Sender<EndpointStatisticsMessage>) -> Self {
         Self(tx)
     }
+
+    pub async fn send(
+        &self,
+        msg: EndpointStatisticsMessage,
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<EndpointStatisticsMessage>> {
+        self.0.send(msg).await
+    }
 }
 
 #[derive(Debug)]

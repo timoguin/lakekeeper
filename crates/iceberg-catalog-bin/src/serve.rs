@@ -18,10 +18,10 @@ use iceberg_catalog::{
             Authorizer,
         },
         contract_verification::ContractVerifiers,
-        endpoint_statistics::EndpointStatisticsTracker,
+        endpoint_statistics::{EndpointStatisticsMessage, EndpointStatisticsTracker},
         event_publisher::{
-            CloudEventBackend, CloudEventsPublisher, CloudEventsPublisherBackgroundTask, Message,
-            NatsBackend, TracingPublisher,
+            CloudEventBackend, CloudEventsMessage, CloudEventsPublisher,
+            CloudEventsPublisherBackgroundTask, NatsBackend, TracingPublisher,
         },
         health::ServiceHealthProvider,
         task_queue::TaskQueues,
@@ -300,7 +300,7 @@ async fn serve_inner<A: Authorizer, N: Authenticator + 'static>(
         ))],
     );
 
-    let tracker_tx = EndpointStatisticsTrackerTx::new(endpoint_statistics_tx);
+    let endpoint_statistics_tracker_tx = EndpointStatisticsTrackerTx::new(endpoint_statistics_tx);
 
     let router = new_full_router::<PostgresCatalog, _, Secrets, _>(RouterArgs {
         authenticator: authenticator.clone(),
@@ -313,7 +313,7 @@ async fn serve_inner<A: Authorizer, N: Authenticator + 'static>(
         service_health_provider: health_provider,
         cors_origins: CONFIG.allow_origin.as_deref(),
         metrics_layer: Some(layer),
-        endpoint_statistics_tracker_tx: tracker_tx,
+        endpoint_statistics_tracker_tx: endpoint_statistics_tracker_tx.clone(),
     })?;
 
     #[cfg(feature = "ui")]
@@ -349,7 +349,10 @@ async fn serve_inner<A: Authorizer, N: Authenticator + 'static>(
     );
 
     tracing::debug!("Sending shutdown signal to event publisher.");
-    cloud_events_tx.send(Message::Shutdown).await?;
+    endpoint_statistics_tracker_tx
+        .send(EndpointStatisticsMessage::Shutdown)
+        .await?;
+    cloud_events_tx.send(CloudEventsMessage::Shutdown).await?;
     publisher_handle.await?;
 
     Ok(())

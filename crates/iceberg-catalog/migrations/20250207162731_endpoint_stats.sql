@@ -5,6 +5,7 @@ create type api_endpoints as enum (
     'catalog-get-namespaces',
     'catalog-post-namespaces',
     'catalog-get-namespace',
+    'catalog-head-namespace',
     'catalog-post-namespace',
     'catalog-delete-namespace',
     'catalog-post-namespace-properties',
@@ -72,7 +73,6 @@ create table endpoint_statistics
 (
     endpoint_statistics_id int generated always as identity primary key,
     warehouse_id           uuid references warehouse (warehouse_id) on delete cascade,
-    --  warehouse_name text collate "case_insensitive" references warehouse (warehouse_name) on update cascade on delete cascade,
     project_id             uuid references project (project_id) on delete cascade,
     matched_path           api_endpoints not null,
     status_code            int           not null,
