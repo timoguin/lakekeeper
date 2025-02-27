@@ -2,6 +2,7 @@ use iceberg_ext::catalog::rest::ErrorModel;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::service::endpoint_statistics::EndpointIdentifier;
 pub use crate::service::{
     storage::{
         AdlsProfile, AzCredential, GcsCredential, GcsProfile, GcsServiceKey, S3Credential,
@@ -20,7 +21,7 @@ use crate::{
         secrets::SecretStore,
         Catalog, State, Transaction,
     },
-    ProjectIdent,
+    ProjectIdent, WarehouseIdent,
 };
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -230,6 +231,52 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                 .collect(),
         })
     }
+
+    async fn get_endpoint_statistics(
+        context: ApiContext<State<A, C, S>>,
+    ) -> Result<EndpointStatisticsResponse> {
+        todo!()
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct EndpointStatistic {
+    pub count: i64,
+    pub http_string: String,
+    pub status_code: u16,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct EndpointStatisticsResponse {
+    pub timestamps: Vec<chrono::DateTime<chrono::Utc>>,
+    pub stats: Vec<Vec<EndpointStatistic>>,
+    pub previous_page_token: Option<String>,
+    pub next_page_token: Option<String>,
+}
+
+pub enum RangeSpecifier {
+    Range {
+        start: chrono::DateTime<chrono::Utc>,
+        interval: Option<chrono::Duration>,
+    },
+}
+
+#[derive(Deserialize)]
+pub struct GetEndpointStatisticsRequest {
+    pub project_id: Option<ProjectIdent>,
+    pub warehouse: WarehouseFilter,
+    pub status_codes: Option<Vec<u16>>,
+    pub start: Option<chrono::DateTime<chrono::Utc>>,
+    pub interval: Option<chrono::Duration>,
+}
+
+#[derive(Deserialize)]
+pub enum WarehouseFilter {
+    Ident(WarehouseIdent),
+    Unmapped,
+    All,
 }
 
 impl axum::response::IntoResponse for ListProjectsResponse {

@@ -5,6 +5,7 @@ use std::{
     fmt::Debug,
     str::FromStr,
     sync::{atomic::AtomicI64, Arc},
+    time::Duration,
 };
 
 use axum::{
@@ -17,7 +18,6 @@ use uuid::Uuid;
 
 use crate::{
     api::endpoints::Endpoints, request_metadata::RequestMetadata, ProjectIdent, WarehouseIdent,
-    CONFIG,
 };
 
 /// Middleware for tracking endpoint statistics.
@@ -113,6 +113,7 @@ pub struct EndpointStatisticsTracker {
     rcv: tokio::sync::mpsc::Receiver<EndpointStatisticsMessage>,
     endpoint_statistics: HashMap<Option<ProjectIdent>, ProjectStatistics>,
     statistic_sinks: Vec<Arc<dyn EndpointStatisticsSink>>,
+    flush_interval: Duration,
 }
 
 impl EndpointStatisticsTracker {
@@ -120,25 +121,27 @@ impl EndpointStatisticsTracker {
     pub fn new(
         rcv: tokio::sync::mpsc::Receiver<EndpointStatisticsMessage>,
         stat_sinks: Vec<Arc<dyn EndpointStatisticsSink>>,
+        flush_interval: Duration,
     ) -> Self {
         Self {
             rcv,
             endpoint_statistics: HashMap::new(),
             statistic_sinks: stat_sinks,
+            flush_interval,
         }
     }
 
     async fn recv_with_timeout(&mut self) -> Option<EndpointStatisticsMessage> {
         tokio::select! {
             msg = self.rcv.recv() => msg,
-            () = tokio::time::sleep(CONFIG.endpoint_stat_flush_interval) => None,
+            () = tokio::time::sleep(self.flush_interval) => None,
         }
     }
 
     pub async fn run(mut self) {
         let mut last_update = tokio::time::Instant::now();
         loop {
-            if last_update.elapsed() > CONFIG.endpoint_stat_flush_interval {
+            if last_update.elapsed() > self.flush_interval {
                 tracing::debug!(
                     "Flushing stats after: {}ms",
                     last_update.elapsed().as_millis()
@@ -163,18 +166,17 @@ impl EndpointStatisticsTracker {
                 } => {
                     let warehouse = Self::maybe_get_warehouse_ident(&path_params);
 
-                    let Some(mp) = request_metadata.matched_path() else {
+                    let Some(matched_path) = request_metadata.matched_path() else {
                         tracing::error!("No path matched.");
                         continue;
                     };
 
                     let Some(uri) = Endpoints::from_method_and_matched_path(
                         request_metadata.request_method(),
-                        mp.as_str(),
+                        matched_path,
                     ) else {
                         tracing::error!(
-                            "Could not parse endpoint from matched path: '{}'.",
-                            mp.as_str()
+                            "Could not parse endpoint from matched path: '{matched_path}'.",
                         );
                         continue;
                     };

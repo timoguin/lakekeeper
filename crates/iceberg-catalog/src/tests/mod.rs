@@ -1,3 +1,4 @@
+mod endpoint_stats;
 mod stats;
 
 use std::sync::Arc;

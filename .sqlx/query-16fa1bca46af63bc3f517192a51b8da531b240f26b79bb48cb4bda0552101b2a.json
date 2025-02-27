@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                    WITH warehouse_id AS (SELECT CASE\n                                 WHEN $2::uuid IS NULL\n                                     THEN (SELECT warehouse_id FROM warehouse WHERE warehouse_name = $3)\n                                 ELSE $2::uuid\n                                 END AS warehouse_id)\n                    INSERT\n                    INTO endpoint_statistics (project_id, warehouse_id, matched_path, status_code, count)\n                    SELECT $1,\n                           (SELECT warehouse_id from warehouse_id),\n                           $4,\n                           $5,\n                           COALESCE((SELECT count\n                                     FROM endpoint_statistics\n                                     WHERE project_id = $1\n                                       AND warehouse_id = (select warehouse_id from warehouse_id)\n                                       AND matched_path = $4\n                                       AND status_code = $5\n                                       AND valid_until = get_stats_date_default()), 0) + $6\n                    ON CONFLICT (project_id, warehouse_id, matched_path, status_code, valid_until)\n                        DO UPDATE SET count = EXCLUDED.count\n                    ",
+  "query": "\n                    WITH warehouse_id AS (SELECT CASE\n                                 WHEN $2::uuid IS NULL\n                                     THEN (SELECT warehouse_id FROM warehouse WHERE warehouse_name = $3)\n                                 ELSE (SELECT warehouse_id FROM warehouse where warehouse.warehouse_id = $2::uuid)\n                                 END AS warehouse_id)\n                    INSERT\n                    INTO endpoint_statistics (project_id, warehouse_id, matched_path, status_code, count)\n                    SELECT $1,\n                           (SELECT warehouse_id from warehouse_id),\n                           $4,\n                           $5,\n                           COALESCE((SELECT count\n                                     FROM endpoint_statistics\n                                     WHERE project_id = $1\n                                       AND warehouse_id = (select warehouse_id from warehouse_id)\n                                       AND matched_path = $4\n                                       AND status_code = $5\n                                       AND timestamp = get_stats_date_default()), 0) + $6\n                    ON CONFLICT (project_id, warehouse_id, matched_path, status_code, timestamp)\n                        DO UPDATE SET count = EXCLUDED.count\n                    ",
   "describe": {
     "columns": [],
     "parameters": {
@@ -91,5 +91,5 @@
     },
     "nullable": []
   },
-  "hash": "ce9ef25c50b8b9a3b13ea1cecfc58324dfac2b89dd295e91faac01df92fd6d88"
+  "hash": "16fa1bca46af63bc3f517192a51b8da531b240f26b79bb48cb4bda0552101b2a"
 }

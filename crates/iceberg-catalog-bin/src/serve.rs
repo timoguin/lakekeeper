@@ -298,6 +298,7 @@ async fn serve_inner<A: Authorizer, N: Authenticator + 'static>(
         vec![Arc::new(PostgresStatisticsSink::new(
             catalog_state.write_pool(),
         ))],
+        CONFIG.endpoint_stat_flush_interval,
     );
 
     let endpoint_statistics_tracker_tx = EndpointStatisticsTrackerTx::new(endpoint_statistics_tx);

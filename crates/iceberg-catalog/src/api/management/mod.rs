@@ -38,6 +38,7 @@ pub mod v1 {
         WarehouseStatisticsResponse,
     };
 
+    use crate::api::management::v1::project::EndpointStatisticsResponse;
     use crate::{
         api::{
             iceberg::{types::PageToken, v1::PaginationQuery},
@@ -893,6 +894,22 @@ pub mod v1 {
         Extension(metadata): Extension<RequestMetadata>,
     ) -> Result<Json<WarehouseStatisticsResponse>> {
         ApiServer::<C, A, S>::get_warehouse_statistics(
+            warehouse_id.into(),
+            query,
+            api_context,
+            metadata,
+        )
+        .await
+        .map(Json)
+    }
+
+    async fn get_endpoint_statistics<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+        Path(warehouse_id): Path<uuid::Uuid>,
+        Query(query): Query<()>,
+        AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
+        Extension(metadata): Extension<RequestMetadata>,
+    ) -> Result<Json<EndpointStatisticsResponse>> {
+        ApiServer::<C, A, S>::get_endpoint_statistics(
             warehouse_id.into(),
             query,
             api_context,

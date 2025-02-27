@@ -71,15 +71,15 @@ create type api_endpoints as enum (
 
 create table endpoint_statistics
 (
-    endpoint_statistics_id int generated always as identity primary key,
-    warehouse_id           uuid references warehouse (warehouse_id) on delete cascade,
+    endpoint_statistics_id uuid primary key       default uuid_generate_v1mc(),
+    warehouse_id           uuid          references warehouse (warehouse_id) on delete set null,
     project_id             uuid references project (project_id) on delete cascade,
     matched_path           api_endpoints not null,
     status_code            int           not null,
     count                  bigint        not null default 0,
     -- we keep stats in hourly intervals, every hour we create a new row,
-    valid_until            timestamptz   not null default get_stats_date_default() + interval '1 hour',
-    unique nulls not distinct (project_id, warehouse_id, matched_path, status_code, valid_until)
+    timestamp              timestamptz   not null default get_stats_date_default() + interval '1 hour',
+    unique nulls not distinct (project_id, warehouse_id, matched_path, status_code, timestamp)
 );
 
 

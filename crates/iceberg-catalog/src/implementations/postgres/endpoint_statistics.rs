@@ -1,9 +1,13 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
-
+use chrono::Utc;
 use http::StatusCode;
-use sqlx::{Postgres, Transaction};
+use itertools::izip;
+use sqlx::{PgPool, Postgres, Transaction};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use uuid::Uuid;
 
+use crate::api::management::v1::project::{
+    EndpointStatistic, EndpointStatisticsResponse, WarehouseFilter,
+};
 use crate::{
     api::endpoints::Endpoints,
     implementations::postgres::dbutils::DBErrorHandler,
@@ -89,6 +93,87 @@ impl EndpointStatisticsSink for PostgresStatisticsSink {
     }
 }
 
+async fn list_statistics(
+    conn: &PgPool,
+    project: Option<ProjectIdent>,
+    warehouse_filter: WarehouseFilter,
+    status_codes: &[StatusCode],
+    interval: Option<chrono::Duration>,
+    end: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<EndpointStatisticsResponse, crate::api::ErrorModel> {
+    let end = end.unwrap_or(Utc::now());
+    let start = end - interval.unwrap_or_else(|| chrono::Duration::days(1));
+
+    let get_all = matches!(warehouse_filter, WarehouseFilter::All);
+    let warehouse_filter = match warehouse_filter {
+        WarehouseFilter::Ident(ident) => Some(*ident),
+        _ => None,
+    };
+
+    let row = sqlx::query!(
+        r#"
+        SELECT timestamp,
+               array_agg(matched_path) as "matched_path!: Vec<Endpoints>",
+               array_agg(status_code) as "status_code!",
+               array_agg(count) as "count!",
+               array_agg(created_at) as "created_at!",
+               array_agg(updated_at) as "updated_at!"
+        FROM endpoint_statistics
+        WHERE project_id = $1
+            AND (warehouse_id = $2 OR $3)
+            AND status_code = ANY($4)
+            AND timestamp >= $5
+            AND timestamp <= $6
+        group by timestamp
+        order by timestamp desc
+        "#,
+        project.map(|p| *p),
+        warehouse_filter,
+        get_all,
+        &status_codes.iter().map(|s| i32::from(s.as_u16())).collect(),
+        start,
+        end,
+    )
+    .fetch_all(conn)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to list stats: {e}");
+        e.into_error_model("failed to list stats")
+    })?;
+
+    let (timestamps, stats): (Vec<_>, Vec<_>) = row
+        .into_iter()
+        .map(|r| {
+            let row_stats: Vec<_> = izip!(
+                &r.matched_path,
+                &r.status_code,
+                &r.count,
+                &r.created_at,
+                &r.updated_at
+            )
+            .map(
+                |(uri, status_code, count, created_at, updated_at)| EndpointStatistic {
+                    count: *count,
+                    http_string: uri.to_http_string().to_string(),
+                    status_code: *status_code as u16,
+                    created_at: *created_at,
+                    updated_at: *updated_at,
+                },
+            )
+            .collect();
+
+            (r.timestamp, row_stats)
+        })
+        .unzip();
+
+    Ok(EndpointStatisticsResponse {
+        timestamps,
+        stats,
+        previous_page_token: None,
+        next_page_token: None,
+    })
+}
+
 async fn insert_statistics(
     conn: &mut Transaction<'_, Postgres>,
     project: Option<ProjectIdent>,
@@ -103,7 +188,7 @@ async fn insert_statistics(
                     WITH warehouse_id AS (SELECT CASE
                                  WHEN $2::uuid IS NULL
                                      THEN (SELECT warehouse_id FROM warehouse WHERE warehouse_name = $3)
-                                 ELSE $2::uuid
+                                 ELSE (SELECT warehouse_id FROM warehouse where warehouse.warehouse_id = $2::uuid)
                                  END AS warehouse_id)
                     INSERT
                     INTO endpoint_statistics (project_id, warehouse_id, matched_path, status_code, count)
@@ -117,8 +202,8 @@ async fn insert_statistics(
                                        AND warehouse_id = (select warehouse_id from warehouse_id)
                                        AND matched_path = $4
                                        AND status_code = $5
-                                       AND valid_until = get_stats_date_default()), 0) + $6
-                    ON CONFLICT (project_id, warehouse_id, matched_path, status_code, valid_until)
+                                       AND timestamp = get_stats_date_default()), 0) + $6
+                    ON CONFLICT (project_id, warehouse_id, matched_path, status_code, timestamp)
                         DO UPDATE SET count = EXCLUDED.count
                     "#,
         project.map(|p| *p),
