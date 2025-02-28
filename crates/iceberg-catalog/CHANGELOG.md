@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.7.2](https://github.com/lakekeeper/lakekeeper/compare/v0.7.1...v0.7.2) (2025-02-27)
+
+
+### Bug Fixes
+
+* Authenticator order (OIDC before K8s), add K8s Authenticator Audiences ([#864](https://github.com/lakekeeper/lakekeeper/issues/864)) ([b894ba5](https://github.com/lakekeeper/lakekeeper/commit/b894ba564b7629bf5ec42e7e7e961cd833bd6de2))
+
+
+### Miscellaneous Chores
+
+* release 0.7.2 ([b4c77ac](https://github.com/lakekeeper/lakekeeper/commit/b4c77ac57ed1b463f4a89a10e380da7b9d7960f3))
+
+## [0.7.1](https://github.com/lakekeeper/lakekeeper/compare/v0.7.0...v0.7.1) (2025-02-26)
+
+
+### Features
+
+* Re-Export RequestMetadata under `api` ([#850](https://github.com/lakekeeper/lakekeeper/issues/850)) ([5a22149](https://github.com/lakekeeper/lakekeeper/commit/5a22149db3cae055701a3dc0f35f747030e2e605))
+
+
+### Bug Fixes
+
+* Client Credential Authentication for OpenFGA, allow to configure Scopes ([#863](https://github.com/lakekeeper/lakekeeper/issues/863)) ([720053b](https://github.com/lakekeeper/lakekeeper/commit/720053b35b798f01acbba4be5c99d4e671be13fa))
+* more logging in validate warehouse ([#860](https://github.com/lakekeeper/lakekeeper/issues/860)) ([efc9eda](https://github.com/lakekeeper/lakekeeper/commit/efc9eda9f0bf7f2c3d16f451eb3a0402dcb320a0))
+
+
+### Miscellaneous Chores
+
+* release 0.7.1 ([05938cd](https://github.com/lakekeeper/lakekeeper/commit/05938cd499e15ea648c58de05ef1b866d6395036))
+
 ## [0.7.0](https://github.com/lakekeeper/lakekeeper/compare/v0.6.2...v0.7.0) (2025-02-24)
 
 

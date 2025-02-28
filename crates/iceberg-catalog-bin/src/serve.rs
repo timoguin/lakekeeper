@@ -163,13 +163,17 @@ async fn serve_with_authn<A: Authorizer>(
         Some(
             limes::kubernetes::KubernetesAuthenticator::try_new_with_default_client(
                 Some(K8S_IDP_ID),
-                vec![], // All audiences accepted
+                CONFIG
+                    .kubernetes_authentication_audience
+                    .clone()
+                    .unwrap_or_default(),
             )
             .await
-            .inspect_err(|e| tracing::info!("Failed to create K8s authorizer: {e}"))
+            .inspect_err(|e| tracing::error!("Failed to create K8s authorizer: {e}"))
             .inspect(|v| tracing::info!("K8s authorizer created {:?}", v))?,
         )
     } else {
+        tracing::info!("Running without Kubernetes authentication.");
         None
     };
 
@@ -181,27 +185,34 @@ async fn serve_with_authn<A: Authorizer>(
         .await?
         .set_idp_id(OIDC_IDP_ID);
         if let Some(aud) = &CONFIG.openid_audience {
+            tracing::debug!("Setting accepted audiences: {aud:?}");
             authenticator = authenticator.set_accepted_audiences(aud.clone());
         }
         if let Some(iss) = &CONFIG.openid_additional_issuers {
+            tracing::debug!("Setting openid_additional_issuers: {iss:?}");
             authenticator = authenticator.add_additional_issuers(iss.clone());
         }
         if let Some(scope) = &CONFIG.openid_scope {
+            tracing::debug!("Setting openid_scope: {}", scope);
             authenticator = authenticator.set_scope(scope.clone());
         }
         if let Some(subject_claim) = &CONFIG.openid_subject_claim {
+            tracing::debug!("Setting openid_subject_claim: {}", subject_claim);
             authenticator = authenticator.with_subject_claim(subject_claim.clone());
         } else {
             // "oid" should be used for entra-id, as the `sub` is different between applications.
             // We prefer oid here by default as no other IdP sets this field (that we know of) and
             // we can provide an out-of-the-box experience for users.
-            // Nevertheless we document this behavior in the docs and recommend as part of the
+            // Nevertheless, we document this behavior in the docs and recommend as part of the
             // `production` checklist to set the claim explicitly.
+            tracing::debug!("Defaulting openid_subject_claim to: oid, sub");
             authenticator =
                 authenticator.with_subject_claims(vec!["oid".to_string(), "sub".to_string()]);
         }
+        tracing::info!("Running with OIDC authentication.");
         Some(authenticator)
     } else {
+        tracing::info!("Running without OIDC authentication.");
         None
     };
 
@@ -214,8 +225,8 @@ async fn serve_with_authn<A: Authorizer>(
     match (authn_k8s, authn_oidc) {
         (Some(k8s), Some(oidc)) => {
             let authenticator = limes::AuthenticatorChain::<AuthenticatorEnum>::builder()
-                .add_authenticator(k8s)
                 .add_authenticator(oidc)
+                .add_authenticator(k8s)
                 .build();
             serve_inner(
                 authorizer,
