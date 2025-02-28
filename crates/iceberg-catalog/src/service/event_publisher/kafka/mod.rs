@@ -63,8 +63,14 @@ impl CloudEventBackend for KafkaBackend {
             .await;
 
         match delivery_status {
-            Ok((partition, offset)) => {
-                tracing::debug!("CloudEvents event sent via kafka to topic: {} and partition: {} with offset: {}", &self.topic, partition, offset);
+            Ok(delivery_status) => {
+                tracing::debug!(
+                    "CloudEvents event sent via kafka to topic: {}, partition: {}, offset: {}, timestamp: {:?}",
+                    &self.topic,
+                    delivery_status.partition,
+                    delivery_status.offset,
+                    delivery_status.timestamp,
+                );
                 Ok(())
             }
             Err((e, _)) => Err(anyhow::anyhow!(e)),
