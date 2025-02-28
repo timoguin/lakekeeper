@@ -47,6 +47,7 @@ create type api_endpoints as enum (
     'management-delete-default-project',
     'management-post-rename-project',
     'management-get-project-id',
+    'management-get-endpoint-statistics',
     'management-delete-project-id',
     'management-post-warehouse',
     'management-get-warehouse',

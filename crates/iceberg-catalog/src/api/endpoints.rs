@@ -41,6 +41,7 @@ pub enum Endpoints {
     CatalogPostViewsRename,
     // Management
     ManagementGetInfo,
+    ManagementGetEndpointStatistics,
     ManagementPostBootstrap,
     ManagementPostRole,
     ManagementGetRole,
@@ -206,6 +207,7 @@ impl Endpoints {
             }
             Endpoints::CatalogPostViewsRename => "POST /catalog/v1/{prefix}/views/rename",
             Endpoints::ManagementGetInfo => "GET /management/v1/info",
+            Endpoints::ManagementGetEndpointStatistics => "GET /management/v1/endpoint-statistics",
             Endpoints::ManagementPostBootstrap => "POST /management/v1/bootstrap",
             Endpoints::ManagementPostRole => "POST /management/v1/role",
             Endpoints::ManagementGetRole => "GET /management/v1/role",
