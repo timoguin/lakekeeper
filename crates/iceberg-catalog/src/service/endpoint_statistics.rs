@@ -65,6 +65,10 @@ impl EndpointStatisticsTrackerTx {
         Self(tx)
     }
 
+    /// Send a message to the endpoint statistics tracker.
+    ///
+    /// # Errors
+    /// If the receiver has been dropped.
     pub async fn send(
         &self,
         msg: EndpointStatisticsMessage,
@@ -131,13 +135,6 @@ impl EndpointStatisticsTracker {
         }
     }
 
-    async fn recv_with_timeout(&mut self) -> Option<EndpointStatisticsMessage> {
-        tokio::select! {
-            msg = self.rcv.recv() => msg,
-            () = tokio::time::sleep(self.flush_interval) => None,
-        }
-    }
-
     pub async fn run(mut self) {
         let mut last_update = tokio::time::Instant::now();
         loop {
@@ -150,9 +147,15 @@ impl EndpointStatisticsTracker {
                 last_update = tokio::time::Instant::now();
             }
 
-            let Some(msg) = self.recv_with_timeout().await else {
+            let Ok(msg) = tokio::time::timeout(self.flush_interval, self.rcv.recv()).await else {
                 tracing::debug!("No message received, continuing.");
                 continue;
+            };
+
+            let Some(msg) = msg else {
+                tracing::info!("Channel closed, shutting down.");
+                self.close().await;
+                break;
             };
 
             tracing::debug!("Received message: {:?}", msg);
@@ -182,6 +185,10 @@ impl EndpointStatisticsTracker {
                     };
 
                     self.endpoint_statistics
+                        // TODO: this project-id is optional. This makes the whole column nullable
+                        //       which then in turn messes with our listing endpoint. We should
+                        //       decide if we want to fail on this, silently ignore the calls or
+                        //       make it required. Maybe there should always be a default project?
                         .entry(request_metadata.preferred_project_id())
                         .or_default()
                         .stats
@@ -198,11 +205,16 @@ impl EndpointStatisticsTracker {
                     tracing::info!(
                         "Received shutdown message, flushing sinks before shutting down."
                     );
-                    self.flush_storage().await;
+                    self.close().await;
                     break;
                 }
             }
         }
+    }
+
+    async fn close(mut self) {
+        self.rcv.close();
+        self.flush_storage().await;
     }
 
     async fn flush_storage(&mut self) {

@@ -1,8 +1,8 @@
 use iceberg_ext::catalog::rest::ErrorModel;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
-use crate::service::endpoint_statistics::EndpointIdentifier;
 pub use crate::service::{
     storage::{
         AdlsProfile, AzCredential, GcsCredential, GcsProfile, GcsServiceKey, S3Credential,
@@ -21,7 +21,7 @@ use crate::{
         secrets::SecretStore,
         Catalog, State, Transaction,
     },
-    ProjectIdent, WarehouseIdent,
+    ProjectIdent,
 };
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -234,21 +234,43 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
 
     async fn get_endpoint_statistics(
         context: ApiContext<State<A, C, S>>,
+        request: GetEndpointStatisticsRequest,
+        request_metadata: RequestMetadata,
     ) -> Result<EndpointStatisticsResponse> {
-        todo!()
+        let authorizer = context.v1_state.authz;
+        let project_id = request_metadata.require_project_id(None)?;
+        authorizer
+            .require_project_action(
+                &request_metadata,
+                project_id,
+                &CatalogProjectAction::CanGetMetadata,
+            )
+            .await?;
+
+        C::get_endpoint_statistics(
+            project_id,
+            request.warehouse,
+            request.end.unwrap_or(chrono::Utc::now()),
+            request
+                .interval
+                .unwrap_or_else(|| chrono::Duration::days(1)),
+            request.status_codes.as_deref(),
+            context.v1_state.catalog,
+        )
+        .await
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug, ToSchema)]
 pub struct EndpointStatistic {
     pub count: i64,
     pub http_string: String,
     pub status_code: u16,
     pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug, ToSchema)]
 pub struct EndpointStatisticsResponse {
     pub timestamps: Vec<chrono::DateTime<chrono::Utc>>,
     pub stats: Vec<Vec<EndpointStatistic>>,
@@ -256,6 +278,7 @@ pub struct EndpointStatisticsResponse {
     pub next_page_token: Option<String>,
 }
 
+#[derive(Debug)]
 pub enum RangeSpecifier {
     Range {
         start: chrono::DateTime<chrono::Utc>,
@@ -263,18 +286,17 @@ pub enum RangeSpecifier {
     },
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema, Debug)]
 pub struct GetEndpointStatisticsRequest {
-    pub project_id: Option<ProjectIdent>,
     pub warehouse: WarehouseFilter,
     pub status_codes: Option<Vec<u16>>,
-    pub start: Option<chrono::DateTime<chrono::Utc>>,
+    pub end: Option<chrono::DateTime<chrono::Utc>>,
     pub interval: Option<chrono::Duration>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema, Debug)]
 pub enum WarehouseFilter {
-    Ident(WarehouseIdent),
+    Ident(Uuid),
     Unmapped,
     All,
 }

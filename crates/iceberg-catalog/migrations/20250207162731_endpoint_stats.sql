@@ -73,7 +73,7 @@ create table endpoint_statistics
 (
     endpoint_statistics_id uuid primary key       default uuid_generate_v1mc(),
     warehouse_id           uuid          references warehouse (warehouse_id) on delete set null,
-    project_id             uuid references project (project_id) on delete cascade,
+    project_id             uuid          not null references project (project_id) on delete cascade,
     matched_path           api_endpoints not null,
     status_code            int           not null,
     count                  bigint        not null default 0,

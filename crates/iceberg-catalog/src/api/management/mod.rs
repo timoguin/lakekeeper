@@ -38,11 +38,11 @@ pub mod v1 {
         WarehouseStatisticsResponse,
     };
 
-    use crate::api::management::v1::project::EndpointStatisticsResponse;
     use crate::{
         api::{
             iceberg::{types::PageToken, v1::PaginationQuery},
             management::v1::{
+                project::{EndpointStatisticsResponse, GetEndpointStatisticsRequest},
                 user::{ListUsersQuery, ListUsersResponse},
                 warehouse::UndropTabularsRequest,
             },
@@ -90,6 +90,7 @@ pub mod v1 {
             delete_user,
             delete_warehouse,
             get_default_project,
+            get_endpoint_statistics,
             get_project_by_id,
             get_role,
             get_server_info,
@@ -903,20 +904,25 @@ pub mod v1 {
         .map(Json)
     }
 
+    /// Get endpoint statistics
+    #[utoipa::path(
+        get,
+        tag = "project",
+        path = "/management/v1/endpoint-statistics",
+        request_body = GetEndpointStatisticsRequest,
+        responses(
+            (status = 200, description = "Endpoint statistics", body = EndpointStatisticsResponse),
+            (status = "4XX", body = IcebergErrorResponse),
+        )
+    )]
     async fn get_endpoint_statistics<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
-        Path(warehouse_id): Path<uuid::Uuid>,
-        Query(query): Query<()>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
         Extension(metadata): Extension<RequestMetadata>,
+        Json(query): Json<GetEndpointStatisticsRequest>,
     ) -> Result<Json<EndpointStatisticsResponse>> {
-        ApiServer::<C, A, S>::get_endpoint_statistics(
-            warehouse_id.into(),
-            query,
-            api_context,
-            metadata,
-        )
-        .await
-        .map(Json)
+        ApiServer::<C, A, S>::get_endpoint_statistics(api_context, query, metadata)
+            .await
+            .map(Json)
     }
 
     /// List soft-deleted tabulars
@@ -1039,6 +1045,7 @@ pub mod v1 {
                 // Server
                 .route("/info", get(get_server_info))
                 .route("/bootstrap", post(bootstrap))
+                .route("/endpoint-statistics", get(get_endpoint_statistics))
                 // Role management
                 .route("/role", get(list_roles).post(create_role))
                 .route(

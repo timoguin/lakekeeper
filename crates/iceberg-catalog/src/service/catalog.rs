@@ -22,6 +22,7 @@ use crate::{
     api::{
         iceberg::v1::{PaginatedMapping, PaginationQuery},
         management::v1::{
+            project::{EndpointStatisticsResponse, WarehouseFilter},
             role::{ListRolesResponse, Role, SearchRoleResponse},
             user::{ListUsersResponse, SearchUserResponse, User, UserLastUpdatedWith, UserType},
             warehouse::{TabularDeleteProfile, WarehouseStatisticsResponse},
@@ -516,6 +517,19 @@ where
         project_ids: Option<HashSet<ProjectIdent>>,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
     ) -> Result<Vec<GetProjectResponse>>;
+
+    /// Get endpoint statistics for the project
+    ///
+    /// We'll return statistics for the time-frame end - interval until end.
+    /// If status_codes is None, return all status codes.
+    async fn get_endpoint_statistics(
+        project_id: ProjectIdent,
+        warehouse_id: WarehouseFilter,
+        end: chrono::DateTime<chrono::Utc>,
+        interval: chrono::Duration,
+        status_codes: Option<&[u16]>,
+        catalog_state: Self::State,
+    ) -> Result<EndpointStatisticsResponse>;
 
     /// Return a list of all warehouse in a project
     async fn list_warehouses(

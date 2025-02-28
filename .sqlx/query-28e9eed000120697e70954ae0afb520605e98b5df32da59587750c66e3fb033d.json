@@ -1,0 +1,140 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT timestamp,\n               array_agg(matched_path) as \"matched_path!: Vec<Endpoints>\",\n               array_agg(status_code) as \"status_code!\",\n               array_agg(count) as \"count!\",\n               array_agg(created_at) as \"created_at!\",\n               array_agg(updated_at) as \"updated_at!: Vec<Option<chrono::DateTime<Utc>>>\"\n        FROM endpoint_statistics\n        WHERE project_id = $1\n            AND (warehouse_id = $2 OR $3)\n            AND (status_code = ANY($4) OR $4 IS NULL)\n            AND timestamp >= $5\n            AND timestamp <= $6\n        group by timestamp\n        order by timestamp desc\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "timestamp",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 1,
+        "name": "matched_path!: Vec<Endpoints>",
+        "type_info": {
+          "Custom": {
+            "name": "api_endpoints[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "api_endpoints",
+                  "kind": {
+                    "Enum": [
+                      "catalog-post-aws-s3-sign",
+                      "catalog-post-prefix-aws-s3-sign",
+                      "catalog-get-config",
+                      "catalog-get-namespaces",
+                      "catalog-post-namespaces",
+                      "catalog-get-namespace",
+                      "catalog-head-namespace",
+                      "catalog-post-namespace",
+                      "catalog-delete-namespace",
+                      "catalog-post-namespace-properties",
+                      "catalog-get-namespace-tables",
+                      "catalog-post-namespace-tables",
+                      "catalog-get-namespace-table",
+                      "catalog-post-namespace-table",
+                      "catalog-delete-namespace-table",
+                      "catalog-head-namespace-table",
+                      "catalog-get-namespace-table-credentials",
+                      "catalog-post-tables-rename",
+                      "catalog-post-namespace-register",
+                      "catalog-post-namespace-table-metrics",
+                      "catalog-post-transactions-commit",
+                      "catalog-post-namespace-views",
+                      "catalog-get-namespace-views",
+                      "catalog-get-namespace-view",
+                      "catalog-post-namespace-view",
+                      "catalog-delete-namespace-view",
+                      "catalog-head-namespace-view",
+                      "catalog-post-views-rename",
+                      "management-get-info",
+                      "management-post-bootstrap",
+                      "management-post-role",
+                      "management-get-role",
+                      "management-post-role-id",
+                      "management-get-role-id",
+                      "management-delete-role-id",
+                      "management-post-search-role",
+                      "management-get-whoami",
+                      "management-post-search-user",
+                      "management-post-user-id",
+                      "management-get-user-id",
+                      "management-delete-user-id",
+                      "management-post-user",
+                      "management-get-user",
+                      "management-post-project",
+                      "management-get-default-project",
+                      "management-delete-default-project",
+                      "management-post-rename-project",
+                      "management-get-project-id",
+                      "management-delete-project-id",
+                      "management-post-warehouse",
+                      "management-get-warehouse",
+                      "management-get-project-list",
+                      "management-get-warehouse-id",
+                      "management-delete-warehouse-id",
+                      "management-post-warehouse-rename",
+                      "management-post-warehouse-deactivate",
+                      "management-post-warehouse-activate",
+                      "management-post-warehouse-storage",
+                      "management-post-warehouse-storage-credential",
+                      "management-get-warehouse-statistics",
+                      "management-get-warehouse-deleted-tabulars",
+                      "management-post-warehouse-deleted-tabulars-undrop1",
+                      "management-post-warehouse-deleted-tabulars-undrop2",
+                      "management-post-warehouse-delete-profile",
+                      "management-get-permissions",
+                      "management-post-permissions",
+                      "management-head-permissions",
+                      "management-delete-permissions"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "status_code!",
+        "type_info": "Int4Array"
+      },
+      {
+        "ordinal": 3,
+        "name": "count!",
+        "type_info": "Int8Array"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at!",
+        "type_info": "TimestamptzArray"
+      },
+      {
+        "ordinal": 5,
+        "name": "updated_at!: Vec<Option<chrono::DateTime<Utc>>>",
+        "type_info": "TimestamptzArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Int4Array",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "28e9eed000120697e70954ae0afb520605e98b5df32da59587750c66e3fb033d"
+}
