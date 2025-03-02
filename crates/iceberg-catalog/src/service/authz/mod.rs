@@ -230,30 +230,36 @@ where
 
     /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
     /// Return Err for internal errors.
-    async fn is_allowed_namespace_action(
+    async fn is_allowed_namespace_action<A>(
         &self,
         metadata: &RequestMetadata,
         namespace_id: NamespaceIdentUuid,
-        action: impl From<&CatalogNamespaceAction> + std::fmt::Display + Send,
-    ) -> Result<bool>;
+        action: A,
+    ) -> Result<bool>
+    where
+        A: From<CatalogNamespaceAction> + std::fmt::Display + Send + 'static;
 
     /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
     /// Return Err for internal errors.
-    async fn is_allowed_table_action(
+    async fn is_allowed_table_action<A>(
         &self,
         metadata: &RequestMetadata,
         table_id: TableIdentUuid,
-        action: impl From<&CatalogTableAction> + std::fmt::Display + Send,
-    ) -> Result<bool>;
+        action: A,
+    ) -> Result<bool>
+    where
+        A: From<CatalogTableAction> + std::fmt::Display + Send + 'static;
 
     /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
     /// Return Err for internal errors.
-    async fn is_allowed_view_action(
+    async fn is_allowed_view_action<A>(
         &self,
         metadata: &RequestMetadata,
         view_id: ViewIdentUuid,
-        action: impl From<&CatalogViewAction> + std::fmt::Display + Send,
-    ) -> Result<bool>;
+        action: A,
+    ) -> Result<bool>
+    where
+        A: From<CatalogViewAction> + std::fmt::Display + Send + 'static;
 
     /// Hook that is called when a user is deleted.
     async fn delete_user(&self, metadata: &RequestMetadata, user_id: UserId) -> Result<()>;
@@ -465,7 +471,7 @@ where
         // Ok(None): Namespace does not exist.
         // Ok(Some(namespace_id)): Namespace exists.
         namespace_id: Result<Option<NamespaceIdentUuid>>,
-        action: impl From<&CatalogNamespaceAction> + std::fmt::Display + Send,
+        action: impl From<CatalogNamespaceAction> + std::fmt::Display + Send + 'static,
     ) -> Result<NamespaceIdentUuid> {
         // It is important to throw the same error if the namespace does not exist (None) or if the action is not allowed,
         // to avoid leaking information about the existence of the namespace.
@@ -497,7 +503,7 @@ where
         &self,
         metadata: &RequestMetadata,
         table_id: Result<Option<T>>,
-        action: impl From<&CatalogTableAction> + std::fmt::Display + Send,
+        action: impl From<CatalogTableAction> + std::fmt::Display + Send + 'static,
     ) -> Result<T> {
         let actor = metadata.actor();
         let msg = format!("Table action {action} forbidden for {actor}");
@@ -527,7 +533,7 @@ where
         &self,
         metadata: &RequestMetadata,
         view_id: Result<Option<ViewIdentUuid>>,
-        action: impl From<&CatalogViewAction> + std::fmt::Display + Send,
+        action: impl From<CatalogViewAction> + std::fmt::Display + Send + 'static,
     ) -> Result<ViewIdentUuid> {
         let actor = metadata.actor();
         let msg = format!("View action {action} forbidden for {actor}");
@@ -556,6 +562,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::service::health::Health;
+
     use super::*;
 
     #[test]
@@ -565,4 +573,227 @@ mod tests {
             "can_create_table"
         );
     }
+
+    mockall::mock! {
+        pub AuthorizerMock {
+
+        }
+        impl Clone for AuthorizerMock {
+            fn clone(&self) -> Self;
+        }
+        #[async_trait::async_trait]
+        impl HealthExt for AuthorizerMock {
+            async fn health(&self) -> Vec<Health>;
+            async fn update_health(&self);
+        }
+        #[async_trait::async_trait]
+        impl Authorizer for AuthorizerMock {
+            fn api_doc() -> utoipa::openapi::OpenApi;
+            fn new_router<C: Catalog, S: SecretStore>(&self) -> Router<ApiContext<State<Self, C, S>>>;
+
+            async fn check_actor(&self, _actor: &Actor) -> Result<()> ;
+
+            async fn can_bootstrap(&self, _metadata: &RequestMetadata) -> Result<()>;
+
+            async fn bootstrap(&self, _metadata: &RequestMetadata, _is_operator: bool) -> Result<()>;
+
+            async fn list_projects(&self, _metadata: &RequestMetadata) -> Result<ListProjectsResponse>;
+
+            async fn can_search_users(&self, _metadata: &RequestMetadata) -> Result<bool>;
+
+            async fn is_allowed_user_action(
+                &self,
+                _metadata: &RequestMetadata,
+                _user_id: &UserId,
+                _action: &CatalogUserAction,
+            ) -> Result<bool>;
+
+            async fn is_allowed_role_action(
+                &self,
+                _metadata: &RequestMetadata,
+                _role_id: RoleId,
+                _action: &CatalogRoleAction,
+            ) -> Result<bool>;
+
+            async fn is_allowed_server_action(
+                &self,
+                _metadata: &RequestMetadata,
+                _action: &CatalogServerAction,
+            ) -> Result<bool>;
+
+            async fn is_allowed_project_action(
+                &self,
+                _metadata: &RequestMetadata,
+                _project_id: ProjectId,
+                _action: &CatalogProjectAction,
+            ) -> Result<bool>;
+
+            async fn is_allowed_warehouse_action(
+                &self,
+                _metadata: &RequestMetadata,
+                _warehouse_id: WarehouseIdent,
+                _action: &CatalogWarehouseAction,
+            ) -> Result<bool>;
+            async fn is_allowed_namespace_action<A>(
+                &self,
+                metadata: &RequestMetadata,
+                namespace_id: NamespaceIdentUuid,
+                action: A,
+            ) -> Result<bool>
+            where
+                A: From<CatalogNamespaceAction> + std::fmt::Display + Send  + 'static;
+
+            async fn is_allowed_table_action<A>(
+                &self,
+                metadata: &RequestMetadata,
+                table_id: TableIdentUuid,
+                action: A,
+            ) -> Result<bool>
+            where
+                A: From<CatalogTableAction> + std::fmt::Display + Send+ 'static;
+
+            async fn is_allowed_view_action<A>(
+                &self,
+                metadata: &RequestMetadata,
+                view_id: ViewIdentUuid,
+                action: A,
+            ) -> Result<bool>
+            where
+                A: From<CatalogViewAction> + std::fmt::Display + Send+ 'static;
+
+            async fn delete_user(&self, _metadata: &RequestMetadata, _user_id: UserId) -> Result<()>;
+
+            async fn create_role(
+                &self,
+                _metadata: &RequestMetadata,
+                _role_id: RoleId,
+                _parent_project_id: ProjectId,
+            ) -> Result<()>;
+
+            async fn delete_role(&self, _metadata: &RequestMetadata, _role_id: RoleId) -> Result<()>;
+
+            async fn create_project(
+                &self,
+                _metadata: &RequestMetadata,
+                _project_id: ProjectId,
+            ) -> Result<()>;
+
+            async fn delete_project(
+                &self,
+                _metadata: &RequestMetadata,
+                _project_id: ProjectId,
+            ) -> Result<()>;
+
+            async fn create_warehouse(
+                &self,
+                _metadata: &RequestMetadata,
+                _warehouse_id: WarehouseIdent,
+                _parent_project_id: ProjectId,
+            ) -> Result<()>;
+
+            async fn delete_warehouse(
+                &self,
+                _metadata: &RequestMetadata,
+                _warehouse_id: WarehouseIdent,
+            ) -> Result<()>;
+
+            async fn create_namespace(
+                &self,
+                _metadata: &RequestMetadata,
+                _namespace_id: NamespaceIdentUuid,
+                _parent: NamespaceParent,
+            ) -> Result<()>;
+
+            async fn delete_namespace(
+                &self,
+                _metadata: &RequestMetadata,
+                _namespace_id: NamespaceIdentUuid,
+            ) -> Result<()>;
+
+            async fn create_table(
+                &self,
+                _metadata: &RequestMetadata,
+                _table_id: TableIdentUuid,
+                _parent: NamespaceIdentUuid,
+            ) -> Result<()>;
+
+            async fn delete_table(&self, _table_id: TableIdentUuid) -> Result<()>;
+
+            async fn create_view(
+                &self,
+                _metadata: &RequestMetadata,
+                _view_id: ViewIdentUuid,
+                _parent: NamespaceIdentUuid,
+            ) -> Result<()>;
+
+            async fn delete_view(&self, _view_id: ViewIdentUuid) -> Result<()>;
+        }
+    }
+
+    // pub(crate) struct HidingAuthorizer {
+    //     pub(crate) hidden: Arc<RwLock<HashSet<String>>>,
+    // }
+
+    // /// A mock for the `OpenFGA` client that allows to hide objects.
+    // /// This is useful to test the behavior of the authorizer when objects are hidden.
+    // ///
+    // /// Create via `ObjectHidingMock::new()`, use `ObjectHidingMock::to_authorizer` to create an authorizer.
+    // /// Hide objects via `ObjectHidingMock::hide`. Objects that have been hidden will return `allowed: false`
+    // /// for any check request.
+    // pub(crate) struct ObjectHidingMock {
+    //     pub hidden: Arc<RwLock<HashSet<String>>>,
+    //     pub mock: Arc<MockClient>,
+    // }
+
+    // impl ObjectHidingMock {
+    //     pub(crate) fn new() -> Self {
+    //         let hidden: Arc<RwLock<HashSet<String>>> = Arc::default();
+    //         let hidden_clone = hidden.clone();
+    //         let mut mock = MockClient::default();
+    //         mock.expect_check().returning(move |r| {
+    //             let hidden = hidden_clone.clone();
+    //             let hidden = hidden.read().unwrap();
+
+    //             if hidden.contains(&r.tuple_key.unwrap().object) {
+    //                 return Ok(openfga_rs::tonic::Response::new(CheckResponse {
+    //                     allowed: false,
+    //                     resolution: String::new(),
+    //                 }));
+    //             }
+
+    //             Ok(openfga_rs::tonic::Response::new(CheckResponse {
+    //                 allowed: true,
+    //                 resolution: String::new(),
+    //             }))
+    //         });
+    //         mock.expect_read().returning(|_| {
+    //             Ok(openfga_rs::tonic::Response::new(ReadResponse {
+    //                 tuples: vec![],
+    //                 continuation_token: String::new(),
+    //             }))
+    //         });
+    //         mock.expect_write()
+    //             .returning(|_| Ok(openfga_rs::tonic::Response::new(WriteResponse {})));
+
+    //         Self {
+    //             hidden,
+    //             mock: Arc::new(mock),
+    //         }
+    //     }
+
+    //     #[cfg(test)]
+    //     pub(crate) fn hide(&self, object: &str) {
+    //         self.hidden.write().unwrap().insert(object.to_string());
+    //     }
+
+    //     #[cfg(test)]
+    //     pub(crate) fn to_authorizer(&self) -> OpenFGAAuthorizer {
+    //         OpenFGAAuthorizer {
+    //             client: self.mock.clone(),
+    //             store_id: "test_store".to_string(),
+    //             authorization_model_id: "test_model".to_string(),
+    //             health: Arc::default(),
+    //         }
+    //     }
+    // }
 }

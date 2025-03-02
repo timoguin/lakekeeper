@@ -833,12 +833,12 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                             TabularIdentUuid::View(id) => authorizer.is_allowed_view_action(
                                 &request_metadata,
                                 (*id).into(),
-                                &crate::service::authz::CatalogViewAction::CanIncludeInList,
+                                crate::service::authz::CatalogViewAction::CanIncludeInList,
                             ),
                             TabularIdentUuid::Table(id) => authorizer.is_allowed_table_action(
                                 &request_metadata,
                                 (*id).into(),
-                                &crate::service::authz::CatalogTableAction::CanIncludeInList,
+                                crate::service::authz::CatalogTableAction::CanIncludeInList,
                             ),
                         }))
                         .await?

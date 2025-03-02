@@ -109,30 +109,39 @@ impl Authorizer for AllowAllAuthorizer {
         Ok(true)
     }
 
-    async fn is_allowed_namespace_action(
+    async fn is_allowed_namespace_action<A>(
         &self,
         _metadata: &RequestMetadata,
         _namespace_id: NamespaceIdentUuid,
-        _action: impl From<&CatalogNamespaceAction> + std::fmt::Display + Send,
-    ) -> Result<bool> {
+        _action: A,
+    ) -> Result<bool>
+    where
+        A: From<CatalogNamespaceAction> + std::fmt::Display + Send + 'static,
+    {
         Ok(true)
     }
 
-    async fn is_allowed_table_action(
+    async fn is_allowed_table_action<A>(
         &self,
         _metadata: &RequestMetadata,
         _table_id: TableIdentUuid,
-        _action: impl From<&CatalogTableAction> + std::fmt::Display + Send,
-    ) -> Result<bool> {
+        _action: A,
+    ) -> Result<bool>
+    where
+        A: From<CatalogTableAction> + std::fmt::Display + Send + 'static,
+    {
         Ok(true)
     }
 
-    async fn is_allowed_view_action(
+    async fn is_allowed_view_action<A>(
         &self,
         _metadata: &RequestMetadata,
         _view_id: ViewIdentUuid,
-        _action: impl From<&CatalogViewAction> + std::fmt::Display + Send,
-    ) -> Result<bool> {
+        _action: A,
+    ) -> Result<bool>
+    where
+        A: From<CatalogViewAction> + std::fmt::Display + Send + 'static,
+    {
         Ok(true)
     }
 

@@ -8,6 +8,7 @@ use crate::{
 
 pub(super) mod allow_all;
 
+#[cfg(feature = "authz-openfga")]
 pub mod openfga;
 
 /// Get the default authorizer from the configuration
