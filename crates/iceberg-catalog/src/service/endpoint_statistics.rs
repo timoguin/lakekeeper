@@ -115,7 +115,7 @@ pub struct EndpointIdentifier {
 #[derive(Debug)]
 pub struct EndpointStatisticsTracker {
     rcv: tokio::sync::mpsc::Receiver<EndpointStatisticsMessage>,
-    endpoint_statistics: HashMap<Option<ProjectIdent>, ProjectStatistics>,
+    endpoint_statistics: HashMap<ProjectIdent, ProjectStatistics>,
     statistic_sinks: Vec<Arc<dyn EndpointStatisticsSink>>,
     flush_interval: Duration,
 }
@@ -183,13 +183,15 @@ impl EndpointStatisticsTracker {
                         );
                         continue;
                     };
+                    let Some(project) = request_metadata.preferred_project_id() else {
+                        tracing::debug!("No project specified, request not counted.");
+                        continue;
+                    };
 
+                    // TODO: we should probably make sure the project-id actually exists. Else, we'll
+                    //       run into foreign-key issues upon inserting.
                     self.endpoint_statistics
-                        // TODO: this project-id is optional. This makes the whole column nullable
-                        //       which then in turn messes with our listing endpoint. We should
-                        //       decide if we want to fail on this, silently ignore the calls or
-                        //       make it required. Maybe there should always be a default project?
-                        .entry(request_metadata.preferred_project_id())
+                        .entry(project)
                         .or_default()
                         .stats
                         .entry(EndpointIdentifier {
@@ -221,7 +223,7 @@ impl EndpointStatisticsTracker {
         let mut stats = HashMap::new();
         std::mem::swap(&mut stats, &mut self.endpoint_statistics);
 
-        let s: HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>> = stats
+        let s: HashMap<ProjectIdent, HashMap<EndpointIdentifier, i64>> = stats
             .into_iter()
             .map(|(k, v)| (k, v.into_consumable()))
             .collect();
@@ -262,7 +264,7 @@ impl EndpointStatisticsTracker {
 pub trait EndpointStatisticsSink: Debug + Send + Sync + 'static {
     async fn consume_endpoint_statistics(
         &self,
-        stats: HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>>,
+        stats: HashMap<ProjectIdent, HashMap<EndpointIdentifier, i64>>,
     ) -> crate::api::Result<()>;
 
     fn sink_id(&self) -> &'static str;

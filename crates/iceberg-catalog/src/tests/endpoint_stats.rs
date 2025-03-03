@@ -5,15 +5,13 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
 use crate::{
-    api::{
-        management::v1::warehouse::{CreateWarehouseResponse, TabularDeleteProfile},
-        ApiContext,
-    },
+    api::{management::v1::warehouse::TabularDeleteProfile, ApiContext},
     implementations::postgres::{PostgresCatalog, PostgresStatisticsSink, SecretsState},
     service::{
         authz::AllowAllAuthorizer, endpoint_statistics::EndpointStatisticsTracker,
         task_queue::TaskQueueConfig, EndpointStatisticsTrackerTx, State, UserId,
     },
+    tests::TestWarehouseResponse,
 };
 
 mod test {
@@ -121,7 +119,7 @@ mod test {
 struct StatsSetup {
     ctx: ApiContext<State<AllowAllAuthorizer, PostgresCatalog, SecretsState>>,
     tracker_handle: tokio::task::JoinHandle<()>,
-    warehouse: CreateWarehouseResponse,
+    warehouse: TestWarehouseResponse,
     tx: EndpointStatisticsTrackerTx,
 }
 

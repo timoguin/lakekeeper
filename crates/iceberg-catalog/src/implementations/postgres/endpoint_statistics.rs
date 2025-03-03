@@ -27,7 +27,7 @@ impl PostgresStatisticsSink {
 
     async fn process_stats(
         &self,
-        stats: Arc<HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>>>,
+        stats: Arc<HashMap<ProjectIdent, HashMap<EndpointIdentifier, i64>>>,
     ) -> crate::api::Result<()> {
         let mut conn = self.pool.begin().await.map_err(|e| {
             tracing::error!("Failed to start transaction: {e}, lost stats: {stats:?}");
@@ -109,7 +109,7 @@ impl PostgresStatisticsSink {
                             ) t
                             ON CONFLICT (project_id, warehouse_id, matched_path, status_code, timestamp)
                                 DO UPDATE SET count = endpoint_statistics.count + EXCLUDED.count"#,
-                project.map(|p| *p),
+                **project,
                 warehouses.as_slice() as _,
                 &uris as _,
                 &status_codes,
@@ -131,7 +131,7 @@ impl PostgresStatisticsSink {
 impl EndpointStatisticsSink for PostgresStatisticsSink {
     async fn consume_endpoint_statistics(
         &self,
-        stats: HashMap<Option<ProjectIdent>, HashMap<EndpointIdentifier, i64>>,
+        stats: HashMap<ProjectIdent, HashMap<EndpointIdentifier, i64>>,
     ) -> crate::api::Result<()> {
         let stats = Arc::new(stats);
 
@@ -192,11 +192,14 @@ pub(crate) async fn list_statistics(
                array_agg(matched_path) as "matched_path!: Vec<Endpoints>",
                array_agg(status_code) as "status_code!",
                array_agg(count) as "count!",
-               array_agg(created_at) as "created_at!",
-               array_agg(updated_at) as "updated_at!: Vec<Option<chrono::DateTime<Utc>>>"
-        FROM endpoint_statistics
-        WHERE project_id = $1
-            AND (warehouse_id = $2 OR $3)
+               array_agg(es.warehouse_id) as "warehouse_id!",
+               array_agg(warehouse_name) as "warehouse_name!",
+               array_agg(es.created_at) as "created_at!",
+               array_agg(es.updated_at) as "updated_at!: Vec<Option<chrono::DateTime<Utc>>>"
+        FROM endpoint_statistics es
+        JOIN warehouse w ON es.warehouse_id = w.warehouse_id
+        WHERE es.project_id = $1
+            AND (es.warehouse_id = $2 OR $3)
             AND (status_code = ANY($4) OR $4 IS NULL)
             AND timestamp >= $5
             AND timestamp <= $6
@@ -225,17 +228,29 @@ pub(crate) async fn list_statistics(
                 r.matched_path,
                 r.status_code,
                 r.count,
+                r.warehouse_id,
+                r.warehouse_name,
                 r.created_at,
                 r.updated_at
             )
             .map(
-                |(uri, status_code, count, created_at, updated_at)| EndpointStatistic {
+                |(
+                    uri,
+                    status_code,
+                    count,
+                    warehouse_id,
+                    warehouse_name,
+                    created_at,
+                    updated_at,
+                )| EndpointStatistic {
                     count,
                     http_string: uri.to_http_string().to_string(),
                     status_code: status_code
                         .clamp(i32::from(u16::MIN), i32::from(u16::MAX))
                         .try_into()
                         .expect("status code is valid since we just clamped it"),
+                    warehouse_id,
+                    warehouse_name,
                     created_at,
                     updated_at,
                 },
@@ -260,18 +275,33 @@ mod test {
 
     use strum::IntoEnumIterator;
 
-    use crate::implementations::postgres::PostgresStatisticsSink;
+    use crate::{
+        api::management::v1::warehouse::TabularDeleteProfile,
+        implementations::postgres::PostgresStatisticsSink, service::authz::AllowAllAuthorizer,
+        DEFAULT_PROJECT_ID,
+    };
 
     #[sqlx::test]
     async fn test_can_insert_all_variants(pool: sqlx::PgPool) {
         let conn = pool.begin().await.unwrap();
+        let (_api, warehouse) = crate::tests::setup(
+            pool.clone(),
+            crate::tests::test_io_profile(),
+            None,
+            AllowAllAuthorizer,
+            TabularDeleteProfile::Hard {},
+            None,
+            None,
+        )
+        .await;
+
         let sink = PostgresStatisticsSink::new(pool);
 
-        let project = None;
+        let project = DEFAULT_PROJECT_ID.unwrap();
         let status_code = http::StatusCode::OK;
         let count = 1;
         let ident = None;
-        let warehouse_name = None;
+        let warehouse_name = Some(warehouse.warehouse_name);
         let mut stats = HashMap::default();
         stats.insert(project, HashMap::default());
         let s = stats.get_mut(&project).unwrap();

@@ -266,6 +266,8 @@ pub struct EndpointStatistic {
     pub count: i64,
     pub http_string: String,
     pub status_code: u16,
+    pub warehouse_id: Uuid,
+    pub warehouse_name: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
