@@ -9,7 +9,7 @@ use super::{OpenFGAError, OpenFGAResult, AUTH_CONFIG};
 const MODEL_PREFIX: &str = "collaboration";
 
 pub(super) static ACTIVE_MODEL_VERSION: LazyLock<AuthorizationModelVersion> =
-    LazyLock::new(|| AuthorizationModelVersion::new(2, 1));
+    LazyLock::new(|| AuthorizationModelVersion::new(2, 1)); // <- Change this for every change in the model
 
 fn get_model_manager(
     client: &BasicOpenFgaServiceClient,
@@ -22,11 +22,14 @@ fn get_model_manager(
     )
     .add_model(
         serde_json::from_str(include_str!(
+            // Change this for backward compatible changes.
+            // For non-backward compatible changes that require tuple migrations, add another `add_model` call.
             "../../../../../../../authz/openfga/v2.1/schema.json"
         ))
+        // Change also the model version in this string:
         .expect("Model v2.1 is a valid AuthorizationModel in JSON format."),
         AuthorizationModelVersion::new(2, 1),
-        // No tuple migration needed
+        // For major version upgrades, this is where tuple migrations go.
         None::<MigrationFn<_>>,
         None::<MigrationFn<_>>,
     )
