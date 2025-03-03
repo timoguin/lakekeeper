@@ -69,7 +69,7 @@ impl Authorizer for AllowAllAuthorizer {
         &self,
         _metadata: &RequestMetadata,
         _user_id: &UserId,
-        _action: &CatalogUserAction,
+        _action: CatalogUserAction,
     ) -> Result<bool> {
         Ok(true)
     }
@@ -78,7 +78,7 @@ impl Authorizer for AllowAllAuthorizer {
         &self,
         _metadata: &RequestMetadata,
         _role_id: RoleId,
-        _action: &CatalogRoleAction,
+        _action: CatalogRoleAction,
     ) -> Result<bool> {
         Ok(true)
     }
@@ -86,7 +86,7 @@ impl Authorizer for AllowAllAuthorizer {
     async fn is_allowed_server_action(
         &self,
         _metadata: &RequestMetadata,
-        _action: &CatalogServerAction,
+        _action: CatalogServerAction,
     ) -> Result<bool> {
         Ok(true)
     }
@@ -95,7 +95,7 @@ impl Authorizer for AllowAllAuthorizer {
         &self,
         _metadata: &RequestMetadata,
         _project_id: ProjectId,
-        _action: &CatalogProjectAction,
+        _action: CatalogProjectAction,
     ) -> Result<bool> {
         Ok(true)
     }
@@ -104,7 +104,7 @@ impl Authorizer for AllowAllAuthorizer {
         &self,
         _metadata: &RequestMetadata,
         _warehouse_id: WarehouseIdent,
-        _action: &CatalogWarehouseAction,
+        _action: CatalogWarehouseAction,
     ) -> Result<bool> {
         Ok(true)
     }
@@ -116,7 +116,7 @@ impl Authorizer for AllowAllAuthorizer {
         _action: A,
     ) -> Result<bool>
     where
-        A: From<CatalogNamespaceAction> + std::fmt::Display + Send + 'static,
+        A: From<CatalogNamespaceAction> + std::fmt::Display + Send,
     {
         Ok(true)
     }
@@ -128,7 +128,7 @@ impl Authorizer for AllowAllAuthorizer {
         _action: A,
     ) -> Result<bool>
     where
-        A: From<CatalogTableAction> + std::fmt::Display + Send + 'static,
+        A: From<CatalogTableAction> + std::fmt::Display + Send,
     {
         Ok(true)
     }
@@ -140,7 +140,7 @@ impl Authorizer for AllowAllAuthorizer {
         _action: A,
     ) -> Result<bool>
     where
-        A: From<CatalogViewAction> + std::fmt::Display + Send + 'static,
+        A: From<CatalogViewAction> + std::fmt::Display + Send,
     {
         Ok(true)
     }

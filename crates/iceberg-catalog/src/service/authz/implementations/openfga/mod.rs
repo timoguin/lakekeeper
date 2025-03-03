@@ -1,28 +1,15 @@
-use std::{
-    collections::HashSet,
-    fmt,
-    fmt::{Debug, Formatter},
-    sync::Arc,
-};
+use std::{collections::HashSet, fmt::Debug, sync::Arc};
 
-use async_stream::{__private::AsyncStream, stream};
-use async_trait::async_trait;
 use axum::Router;
-use futures::{pin_mut, StreamExt};
 use openfga_client::{
     client::{
-        CheckRequest, CheckRequestTupleKey, CheckResponse, ConsistencyPreference,
-        ListObjectsRequest, ListObjectsResponse, OpenFgaServiceClient, ReadRequest,
-        ReadRequestTupleKey, ReadResponse, Tuple, TupleKey, TupleKeyWithoutCondition, WriteRequest,
-        WriteRequestDeletes, WriteRequestWrites, WriteResponse,
+        CheckRequestTupleKey, ReadRequestTupleKey, ReadResponse, Tuple, TupleKey,
+        TupleKeyWithoutCondition,
     },
-    tonic::{
-        Response, Status, {self},
-    },
+    tonic,
 };
 
 use crate::{
-    catalog::DEFAULT_PAGE_SIZE,
     request_metadata::RequestMetadata,
     service::{
         authn::Actor,
@@ -46,16 +33,16 @@ mod migration;
 mod models;
 mod relations;
 
-pub(crate) use client::new_client_from_config;
+pub(crate) use client::{new_authorizer_from_config, new_client_from_config};
 pub use client::{
-    new_authorizer_from_config, BearerOpenFGAAuthorizer, ClientCredentialsOpenFGAAuthorizer,
-    UnauthenticatedOpenFGAAuthorizer,
+    BearerOpenFGAAuthorizer, ClientCredentialsOpenFGAAuthorizer, UnauthenticatedOpenFGAAuthorizer,
 };
 use entities::{OpenFgaEntity, ParseOpenFgaEntity as _};
 pub(crate) use error::{OpenFGAError, OpenFGAResult};
 use iceberg_ext::catalog::rest::IcebergErrorResponse;
 pub(crate) use migration::migrate;
-pub(crate) use models::{ModelVersion, OpenFgaType, RoleAssignee};
+pub(crate) use models::{OpenFgaType, RoleAssignee};
+use openfga_client::client::BasicOpenFgaClient;
 use relations::{
     NamespaceRelation, ProjectRelation, RoleRelation, ServerRelation, TableRelation, ViewRelation,
     WarehouseRelation,
@@ -75,7 +62,6 @@ use crate::{
         Catalog, RoleId, SecretStore, State, ViewIdentUuid,
     },
 };
-use openfga_client::client::BasicOpenFgaClient;
 
 const MAX_TUPLES_PER_WRITE: i32 = 100;
 
@@ -203,7 +189,7 @@ impl Authorizer for OpenFGAAuthorizer {
         &self,
         metadata: &RequestMetadata,
         role_id: RoleId,
-        action: &CatalogRoleAction,
+        action: CatalogRoleAction,
     ) -> Result<bool> {
         self.check(CheckRequestTupleKey {
             user: metadata.actor().to_openfga(),
@@ -218,7 +204,7 @@ impl Authorizer for OpenFGAAuthorizer {
         &self,
         metadata: &RequestMetadata,
         user_id: &UserId,
-        action: &CatalogUserAction,
+        action: CatalogUserAction,
     ) -> Result<bool> {
         let actor = metadata.actor();
 
@@ -267,7 +253,7 @@ impl Authorizer for OpenFGAAuthorizer {
     async fn is_allowed_server_action(
         &self,
         metadata: &RequestMetadata,
-        action: &CatalogServerAction,
+        action: CatalogServerAction,
     ) -> Result<bool> {
         self.check(CheckRequestTupleKey {
             user: metadata.actor().to_openfga(),
@@ -282,7 +268,7 @@ impl Authorizer for OpenFGAAuthorizer {
         &self,
         metadata: &RequestMetadata,
         project_id: ProjectId,
-        action: &CatalogProjectAction,
+        action: CatalogProjectAction,
     ) -> Result<bool> {
         self.check(CheckRequestTupleKey {
             user: metadata.actor().to_openfga(),
@@ -297,7 +283,7 @@ impl Authorizer for OpenFGAAuthorizer {
         &self,
         metadata: &RequestMetadata,
         warehouse_id: WarehouseIdent,
-        action: &CatalogWarehouseAction,
+        action: CatalogWarehouseAction,
     ) -> Result<bool> {
         self.check(CheckRequestTupleKey {
             user: metadata.actor().to_openfga(),
@@ -315,7 +301,7 @@ impl Authorizer for OpenFGAAuthorizer {
         action: A,
     ) -> Result<bool>
     where
-        A: From<CatalogNamespaceAction> + std::fmt::Display + Send + 'static,
+        A: From<CatalogNamespaceAction> + std::fmt::Display + Send,
     {
         self.check(CheckRequestTupleKey {
             user: metadata.actor().to_openfga(),
@@ -333,7 +319,7 @@ impl Authorizer for OpenFGAAuthorizer {
         action: A,
     ) -> Result<bool>
     where
-        A: From<CatalogTableAction> + std::fmt::Display + Send + 'static,
+        A: From<CatalogTableAction> + std::fmt::Display + Send,
     {
         self.check(CheckRequestTupleKey {
             user: metadata.actor().to_openfga(),
@@ -351,7 +337,7 @@ impl Authorizer for OpenFGAAuthorizer {
         action: A,
     ) -> Result<bool>
     where
-        A: From<CatalogViewAction> + std::fmt::Display + Send + 'static,
+        A: From<CatalogViewAction> + std::fmt::Display + Send,
     {
         self.check(CheckRequestTupleKey {
             user: metadata.actor().to_openfga(),
@@ -818,14 +804,12 @@ impl OpenFGAAuthorizer {
     async fn delete_all_relations(&self, object: &impl OpenFgaEntity) -> Result<()> {
         let object_openfga = object.to_openfga();
         let (own_relations, user_relations) = futures::join!(
-            self.client.delete_relations_to_object(&object_openfga),
+            self.delete_own_relations(object),
             self.delete_user_relations(object)
         );
-        own_relations
-            .inspect_err(|e| tracing::error!("Failed to delete relations to {object_openfga}: {e}"))
-            .map_err(OpenFGAError::from)?;
+        own_relations?;
         user_relations.inspect_err(|e| {
-            tracing::error!("Failed to delete user relations for {object_openfga}: {e:?}")
+            tracing::error!("Failed to delete user relations for {object_openfga}: {e:?}");
         })
     }
 
@@ -887,6 +871,16 @@ impl OpenFGAAuthorizer {
         Ok(())
     }
 
+    async fn delete_own_relations(&self, object: &impl OpenFgaEntity) -> Result<()> {
+        let object_openfga = object.to_openfga();
+        self.client
+            .delete_relations_to_object(&object_openfga)
+            .await
+            .inspect_err(|e| tracing::error!("Failed to delete relations to {object_openfga}: {e}"))
+            .map_err(OpenFGAError::from)
+            .map_err(Into::into)
+    }
+
     /// A convenience wrapper around `client.list_objects`
     async fn list_objects(
         &self,
@@ -914,19 +908,12 @@ fn suffixes_for_user(user: &FgaType) -> Vec<String> {
 #[cfg(test)]
 #[allow(dead_code)]
 pub(crate) mod tests {
-    use std::{
-        collections::HashSet,
-        sync::{Arc, RwLock},
-    };
-
     use needs_env_var::needs_env_var;
-    use openfga_client::client::{CheckResponse, ReadResponse, WriteResponse};
-
-    use crate::service::authz::implementations::openfga::OpenFGAAuthorizer;
 
     #[needs_env_var(TEST_OPENFGA = 1)]
     mod openfga {
         use http::StatusCode;
+        use openfga_client::client::ConsistencyPreference;
 
         use super::super::*;
         use crate::service::{authz::implementations::openfga::client::new_authorizer, RoleId};
@@ -934,14 +921,12 @@ pub(crate) mod tests {
         const TEST_CONSISTENCY: ConsistencyPreference = ConsistencyPreference::HigherConsistency;
 
         async fn new_authorizer_in_empty_store() -> OpenFGAAuthorizer {
-            let mut client = new_client_from_config()
+            let client = new_client_from_config()
                 .await
                 .expect("Failed to create OpenFGA client");
 
             let store_name = format!("test_store_{}", uuid::Uuid::now_v7());
-            migrate(&mut client, Some(store_name.clone()))
-                .await
-                .unwrap();
+            migrate(&client, Some(store_name.clone())).await.unwrap();
 
             new_authorizer(client, Some(store_name)).await.unwrap()
         }

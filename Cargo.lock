@@ -4107,7 +4107,7 @@ dependencies = [
 [[package]]
 name = "openfga-client"
 version = "0.1.1"
-source = "git+https://github.com/vakamo-labs/openfga-client.git?rev=9642db188a80dfc91442420de95ba1a15c614def#9642db188a80dfc91442420de95ba1a15c614def"
+source = "git+https://github.com/vakamo-labs/openfga-client.git?rev=7976355da968f3d4f077a97176a798f53ddf7997#7976355da968f3d4f077a97176a798f53ddf7997"
 dependencies = [
  "async-stream",
  "futures",

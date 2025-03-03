@@ -10,6 +10,8 @@ pub(crate) type OpenFGAResult<T> = Result<T, OpenFGAError>;
 pub(crate) enum OpenFGAError {
     #[error("OpenFGA client error: {0}")]
     ClientError(#[source] OpenFGAClientError),
+    #[error("Active authorization model with version {0} not found in OpenFGA. Make sure to run migration first!")]
+    ActiveAuthModelNotFound(String),
     // #[error("Authorization Model ID failed: {reason}")]
     // AuthorizationModelIdFailed { reason: String },
     // #[error("Client Credential refresh failed")]
@@ -31,26 +33,26 @@ pub(crate) enum OpenFGAError {
     // },
     #[error("Unexpected entity for type {type:?}: {value}")]
     UnexpectedEntity { r#type: Vec<FgaType>, value: String },
-    // #[error("Unknown type: {0}")]
-    // UnknownType(String),
-    // #[error("Invalid entity string: `{0}`")]
-    // InvalidEntity(String),
+    #[error("Unknown OpenFGA type: {0}")]
+    UnknownType(String),
+    #[error("Invalid OpenFGA entity string: `{0}`")]
+    InvalidEntity(String),
     // #[error("Unknown model version currently applied")]
     // UnknownModelVersionApplied(u64),
     // #[error("Too many writes and deletes in single Authorization transaction (actual) {actual} > {max} (max)")]
     // TooManyWrites { actual: i32, max: i32 },
     #[error("Project ID could not be inferred from request. Please the x-project-id header.")]
     NoProjectId,
-    // #[error("Authentication required")]
-    // AuthenticationRequired,
-    // #[error("Unauthorized for action `{relation}` on `{object}` for `{user}`")]
-    // Unauthorized {
-    //     user: String,
-    //     relation: String,
-    //     object: String,
-    // },
-    // #[error("Cannot assign {0} to itself")]
-    // SelfAssignment(String),
+    #[error("Authentication required")]
+    AuthenticationRequired,
+    #[error("Unauthorized for action `{relation}` on `{object}` for `{user}`")]
+    Unauthorized {
+        user: String,
+        relation: String,
+        object: String,
+    },
+    #[error("Cannot assign {0} to itself")]
+    SelfAssignment(String),
 }
 
 impl OpenFGAError {
@@ -72,12 +74,15 @@ impl From<OpenFGAError> for ErrorModel {
             e @ OpenFGAError::NoProjectId => {
                 ErrorModel::bad_request(err_msg, "NoProjectId", Some(Box::new(e)))
             }
-            // e @ OpenFGAError::AuthenticationRequired => {
-            //     ErrorModel::unauthorized(err_msg, "AuthenticationRequired", Some(Box::new(e)))
-            // }
-            // e @ OpenFGAError::Unauthorized { .. } => {
-            //     ErrorModel::unauthorized(err_msg, "Unauthorized", Some(Box::new(e)))
-            // }
+            e @ OpenFGAError::AuthenticationRequired => {
+                ErrorModel::unauthorized(err_msg, "AuthenticationRequired", Some(Box::new(e)))
+            }
+            e @ OpenFGAError::Unauthorized { .. } => {
+                ErrorModel::unauthorized(err_msg, "Unauthorized", Some(Box::new(e)))
+            }
+            e @ OpenFGAError::SelfAssignment { .. } => {
+                ErrorModel::bad_request(err_msg, "SelfAssignment", Some(Box::new(e)))
+            }
             OpenFGAError::ClientError(client_error) => {
                 let tonic_msg = match &client_error {
                     OpenFGAClientError::RequestFailed(status) => Some(status.message().to_string()),
@@ -115,12 +120,13 @@ impl From<OpenFGAError> for ErrorModel {
             }
             e @ OpenFGAError::UnexpectedEntity { .. } => {
                 ErrorModel::internal(err_msg, "UnexpectedEntity", Some(Box::new(e)))
-            } // _ => ErrorModel::new(
-              //     err.to_string(),
-              //     "AuthorizationError",
-              //     StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-              //     Some(Box::new(err)),
-              // ),
+            }
+            _ => ErrorModel::new(
+                err.to_string(),
+                "AuthorizationError",
+                StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                Some(Box::new(err)),
+            ),
         }
     }
 }
