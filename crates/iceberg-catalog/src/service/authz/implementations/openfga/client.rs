@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 
-use openfga_client::client::{BasicOpenFgaClient, BasicOpenFgaServiceClient};
+use openfga_client::client::{
+    BasicOpenFgaClient, BasicOpenFgaServiceClient, ConsistencyPreference,
+};
 use tokio::sync::RwLock;
 
 use super::{OpenFGAAuthorizer, OpenFGAError, OpenFGAResult, AUTH_CONFIG};
@@ -61,7 +63,9 @@ pub(crate) async fn new_client_from_config() -> OpenFGAResult<BasicOpenFgaServic
 /// - Active Authorization model not found
 pub(crate) async fn new_authorizer_from_config() -> OpenFGAResult<Authorizers> {
     let client = new_client_from_config().await?;
-    Ok(Authorizers::OpenFGA(new_authorizer(client, None).await?))
+    Ok(Authorizers::OpenFGA(
+        new_authorizer(client, None, ConsistencyPreference::MinimizeLatency).await?,
+    ))
 }
 
 /// Create a new `OpenFGA` authorizer with the given client.
@@ -75,6 +79,7 @@ pub(crate) async fn new_authorizer_from_config() -> OpenFGAResult<Authorizers> {
 pub(crate) async fn new_authorizer(
     mut client: BasicOpenFgaServiceClient,
     store_name: Option<String>,
+    consistency: ConsistencyPreference,
 ) -> OpenFGAResult<OpenFGAAuthorizer> {
     let store_name = store_name.unwrap_or(AUTH_CONFIG.store_name.clone());
     let auth_model_id = get_active_auth_model_id(&mut client, Some(store_name.clone())).await?;
@@ -84,7 +89,8 @@ pub(crate) async fn new_authorizer(
         .ok_or_else(|| OpenFGAError::StoreNotFound(store_name.clone()))?;
 
     let service_client = new_client_from_config().await?;
-    let client = BasicOpenFgaClient::new(service_client, &store.id, &auth_model_id);
+    let client = BasicOpenFgaClient::new(service_client, &store.id, &auth_model_id)
+        .set_consistency(consistency);
 
     Ok(OpenFGAAuthorizer {
         client,

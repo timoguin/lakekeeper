@@ -41,6 +41,8 @@ mod tests {
 
     #[needs_env_var(TEST_OPENFGA = 1)]
     mod openfga {
+        use openfga_client::client::ConsistencyPreference;
+
         use super::super::*;
         use crate::service::authz::implementations::openfga::{
             client::new_authorizer, migrate, new_client_from_config,
@@ -53,9 +55,13 @@ mod tests {
             let store_name = format!("test_store_{}", uuid::Uuid::now_v7());
             migrate(&client, Some(store_name.clone())).await.unwrap();
 
-            let authorizer = new_authorizer(client.clone(), Some(store_name))
-                .await
-                .unwrap();
+            let authorizer = new_authorizer(
+                client.clone(),
+                Some(store_name),
+                ConsistencyPreference::HigherConsistency,
+            )
+            .await
+            .unwrap();
 
             authorizer.update_health().await;
             let health = authorizer.health().await;

@@ -83,6 +83,7 @@ pub(crate) async fn migrate(
 #[allow(dead_code)]
 pub(crate) mod tests {
     use needs_env_var::needs_env_var;
+    use openfga_client::client::ConsistencyPreference;
 
     use super::{
         super::{client::new_authorizer, OpenFGAAuthorizer},
@@ -97,9 +98,13 @@ pub(crate) mod tests {
         let store_name = format!("test_store_{}", uuid::Uuid::now_v7());
         migrate(&client, Some(store_name.clone())).await.unwrap();
 
-        let authorizer = new_authorizer(client.clone(), Some(store_name))
-            .await
-            .unwrap();
+        let authorizer = new_authorizer(
+            client.clone(),
+            Some(store_name),
+            ConsistencyPreference::HigherConsistency,
+        )
+        .await
+        .unwrap();
 
         (client, authorizer)
     }

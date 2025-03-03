@@ -928,7 +928,9 @@ pub(crate) mod tests {
             let store_name = format!("test_store_{}", uuid::Uuid::now_v7());
             migrate(&client, Some(store_name.clone())).await.unwrap();
 
-            new_authorizer(client, Some(store_name)).await.unwrap()
+            new_authorizer(client, Some(store_name), TEST_CONSISTENCY)
+                .await
+                .unwrap()
         }
 
         #[tokio::test]
