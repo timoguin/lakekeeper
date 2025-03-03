@@ -12,35 +12,14 @@ pub(crate) enum OpenFGAError {
     ClientError(#[source] OpenFGAClientError),
     #[error("Active authorization model with version {0} not found in OpenFGA. Make sure to run migration first!")]
     ActiveAuthModelNotFound(String),
-    // #[error("Authorization Model ID failed: {reason}")]
-    // AuthorizationModelIdFailed { reason: String },
-    // #[error("Client Credential refresh failed")]
-    // ClientCredentialFailed(#[from] middle::Error),
-    // #[error("Connection to OpenFGA failed")]
-    // ConnectionFailed(#[from] tonic::transport::Error),
-    // #[error("Request to Authorization system failed")]
-    // RequestFailed(tonic::Status),
-    // #[error("Invalid Bearer Token for OpenFGA: {0}")]
-    // InvalidBearerToken(InvalidMetadataValue),
-    // #[error("Store not found: {store}")]
-    // StoreNotFound { store: String },
-    // #[error("Too many authorization models in database. Max allowed pages: {0}")]
-    // TooManyAuthorizationModels(u32),
-    // #[error("Too many pages")]
-    // TooManyPages {
-    //     max_pages: u32,
-    //     tuple: ReadRequestTupleKey,
-    // },
+    #[error("OpenFGA Store not found: {0}. Make sure to run migration first!")]
+    StoreNotFound(String),
     #[error("Unexpected entity for type {type:?}: {value}")]
     UnexpectedEntity { r#type: Vec<FgaType>, value: String },
     #[error("Unknown OpenFGA type: {0}")]
     UnknownType(String),
     #[error("Invalid OpenFGA entity string: `{0}`")]
     InvalidEntity(String),
-    // #[error("Unknown model version currently applied")]
-    // UnknownModelVersionApplied(u64),
-    // #[error("Too many writes and deletes in single Authorization transaction (actual) {actual} > {max} (max)")]
-    // TooManyWrites { actual: i32, max: i32 },
     #[error("Project ID could not be inferred from request. Please the x-project-id header.")]
     NoProjectId,
     #[error("Authentication required")]

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use openfga_client::client::{BasicOpenFgaClient, BasicOpenFgaServiceClient};
 use tokio::sync::RwLock;
 
-use super::{OpenFGAAuthorizer, OpenFGAResult, AUTH_CONFIG};
+use super::{OpenFGAAuthorizer, OpenFGAError, OpenFGAResult, AUTH_CONFIG};
 use crate::{
     service::authz::implementations::{openfga::migration::get_active_auth_model_id, Authorizers},
     OpenFGAAuth,
@@ -72,8 +72,6 @@ pub(crate) async fn new_authorizer_from_config() -> OpenFGAResult<Authorizers> {
 /// - Active Authorization model not found
 /// - Server connection fails
 ///
-/// # Panics
-/// - If the store is deleted during the runtime of this function
 pub(crate) async fn new_authorizer(
     mut client: BasicOpenFgaServiceClient,
     store_name: Option<String>,
@@ -83,7 +81,7 @@ pub(crate) async fn new_authorizer(
     let store = client
         .get_store_by_name(&store_name)
         .await?
-        .unwrap_or_else(|| panic!("OpenFGA store with name {store_name} exists"));
+        .ok_or_else(|| OpenFGAError::StoreNotFound(store_name.clone()))?;
 
     let service_client = new_client_from_config().await?;
     let client = BasicOpenFgaClient::new(service_client, &store.id, &auth_model_id);
