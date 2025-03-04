@@ -77,19 +77,19 @@ pub(crate) async fn new_authorizer_from_config() -> OpenFGAResult<Authorizers> {
 /// - Server connection fails
 ///
 pub(crate) async fn new_authorizer(
-    mut client: BasicOpenFgaServiceClient,
+    mut service_client: BasicOpenFgaServiceClient,
     store_name: Option<String>,
     consistency: ConsistencyPreference,
 ) -> OpenFGAResult<OpenFGAAuthorizer> {
     let store_name = store_name.unwrap_or(AUTH_CONFIG.store_name.clone());
-    let auth_model_id = get_active_auth_model_id(&mut client, Some(store_name.clone())).await?;
-    eprintln!("auth_model_id: {:?}", auth_model_id);
-    let store = client
+    let auth_model_id =
+        get_active_auth_model_id(&mut service_client, Some(store_name.clone())).await?;
+    let store = service_client
         .get_store_by_name(&store_name)
         .await?
         .ok_or_else(|| OpenFGAError::StoreNotFound(store_name.clone()))?;
+    eprintln!("store: {:?}", store.id);
 
-    let service_client = new_client_from_config().await?;
     let client = BasicOpenFgaClient::new(service_client, &store.id, &auth_model_id)
         .set_consistency(consistency);
 

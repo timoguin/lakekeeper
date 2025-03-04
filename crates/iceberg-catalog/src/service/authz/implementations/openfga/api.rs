@@ -1660,8 +1660,7 @@ mod tests {
                     .unwrap();
             assert!(
                 relations.is_empty(),
-                "Expected no relations, found: {:?}",
-                relations
+                "Expected no relations, found: {relations:?}",
             );
 
             let user_id = UserId::new_unchecked("oidc", &Uuid::now_v7().to_string());
