@@ -97,7 +97,6 @@ pub(crate) mod tests {
 
         let test_uuid = uuid::Uuid::now_v7();
         let store_name = format!("test_store_{test_uuid}");
-        eprintln!("Test store name: {store_name}");
         migrate(&client, Some(store_name.clone())).await.unwrap();
 
         let authorizer = new_authorizer(
