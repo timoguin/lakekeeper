@@ -1,9 +1,7 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
-
-use chrono::Utc;
-use itertools::{izip, Itertools};
-use sqlx::PgPool;
-
+use crate::api::management::v1::project::RangeSpecifier;
+use crate::implementations::postgres::pagination::{
+    PaginateToken, RoundTrippableDuration, V1PaginateToken,
+};
 use crate::{
     api::{
         endpoints::Endpoints,
@@ -13,6 +11,11 @@ use crate::{
     service::endpoint_statistics::{EndpointIdentifier, EndpointStatisticsSink},
     ProjectId,
 };
+use chrono::Utc;
+use iceberg_ext::catalog::rest::ErrorModel;
+use itertools::{izip, Itertools};
+use sqlx::PgPool;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 #[derive(Debug)]
 pub struct PostgresStatisticsSink {
@@ -159,14 +162,22 @@ impl EndpointStatisticsSink for PostgresStatisticsSink {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn list_statistics(
     project: ProjectId,
     warehouse_filter: WarehouseFilter,
     status_codes: Option<&[u16]>,
-    interval: chrono::Duration,
-    end: chrono::DateTime<Utc>,
+    range_specifier: RangeSpecifier,
     conn: &PgPool,
 ) -> crate::api::Result<EndpointStatisticsResponse> {
+    let (end, interval) = match range_specifier {
+        RangeSpecifier::Range {
+            end_of_range,
+            interval,
+        } => (end_of_range, interval),
+        RangeSpecifier::PageToken { token } => parse_token(token.as_str())?,
+    };
+
     let start = end - interval;
 
     let get_all = matches!(warehouse_filter, WarehouseFilter::All);
@@ -244,7 +255,7 @@ pub(crate) async fn list_statistics(
                     updated_at,
                 )| EndpointStatistic {
                     count,
-                    http_string: uri.to_http_string().to_string(),
+                    http_route: uri.as_http_route().to_string(),
                     status_code: status_code
                         .clamp(i32::from(u16::MIN), i32::from(u16::MAX))
                         .try_into()
@@ -261,12 +272,75 @@ pub(crate) async fn list_statistics(
         })
         .unzip();
 
+    let previous_page_token = Some(
+        PaginateToken::V1(V1PaginateToken {
+            created_at: start,
+            id: interval,
+        })
+        .to_string(),
+    );
+
+    let next_page_token = if timestamps.is_empty() {
+        None
+    } else {
+        Some(
+            PaginateToken::V1(V1PaginateToken {
+                created_at: end + interval,
+                id: interval,
+            })
+            .to_string(),
+        )
+    };
+
     Ok(EndpointStatisticsResponse {
         timestamps,
         stats,
-        previous_page_token: None,
-        next_page_token: None,
+        previous_page_token,
+        next_page_token,
     })
+}
+
+fn parse_token(token: &str) -> Result<(chrono::DateTime<Utc>, chrono::Duration), ErrorModel> {
+    // ... don't get me started.. we have a quite flexible token format. We can pass arbitrary data
+    // through the id field as long as it implements Display and TryFrom<&str>. Now, we'd really love
+    // to pass a chrono::Duration through here. But chrono::Duration doesn't implement FromStr or
+    // TryFrom<&str>. Bummer. So we resort to iso8601::Duration which offers a FromStr implementation.
+    // Their Error type is String and incompatible with our TryFrom implementation which requires an
+    // std::error::Error, so we now end up having our own Duration type RoundTrippableDuration which
+    // wraps the iso8601::Duration and implements TryFrom<&str> and Display.
+    // Funfunfun.
+    let PaginateToken::V1(V1PaginateToken { created_at, id }): PaginateToken<
+        RoundTrippableDuration,
+    > = PaginateToken::try_from(token)?;
+
+    match id.0 {
+        iso8601::Duration::YMDHMS {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            millisecond,
+        } => {
+            if year != 0 || month != 0 {
+                return Err(ErrorModel::bad_request(
+                    "Invalid paginate token".to_string(),
+                    "PaginateTokenParseError".to_string(),
+                    None,
+                ));
+            }
+            Ok((
+                created_at,
+                chrono::Duration::days(i64::from(day))
+                    + chrono::Duration::hours(i64::from(hour))
+                    + chrono::Duration::minutes(i64::from(minute))
+                    + chrono::Duration::seconds(i64::from(second))
+                    + chrono::Duration::milliseconds(i64::from(millisecond)),
+            ))
+        }
+        iso8601::Duration::Weeks(w) => Ok((created_at, chrono::Duration::weeks(i64::from(w)))),
+    }
 }
 
 #[cfg(test)]

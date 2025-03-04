@@ -1,3 +1,4 @@
+use chrono::Utc;
 use iceberg_ext::catalog::rest::ErrorModel;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -247,25 +248,13 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             )
             .await?;
 
-        let (end, interval) = match request.range_specifier {
-            Some(RangeSpecifier::Range {
-                end_of_range: start,
-                interval,
-            }) => (start, interval.unwrap_or_else(|| chrono::Duration::days(1))),
-            Some(RangeSpecifier::PageToken { token }) => {
-                todo!()
-            }
-            None => {
-                let now = chrono::Utc::now();
-                (now - chrono::Duration::days(1), chrono::Duration::days(1))
-            }
-        };
-
         C::get_endpoint_statistics(
             project_id,
             request.warehouse,
-            end,
-            interval,
+            request.range_specifier.unwrap_or(RangeSpecifier::Range {
+                end_of_range: Utc::now(),
+                interval: chrono::Duration::days(1),
+            }),
             request.status_codes.as_deref(),
             context.v1_state.catalog,
         )
@@ -276,7 +265,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
 #[derive(Deserialize, Serialize, Debug, ToSchema)]
 pub struct EndpointStatistic {
     pub count: i64,
-    pub http_string: String,
+    pub http_route: String,
     pub status_code: u16,
     pub warehouse_id: Uuid,
     pub warehouse_name: String,
@@ -296,7 +285,7 @@ pub struct EndpointStatisticsResponse {
 pub enum RangeSpecifier {
     Range {
         end_of_range: chrono::DateTime<chrono::Utc>,
-        interval: Option<chrono::Duration>,
+        interval: chrono::Duration,
     },
     PageToken {
         token: String,

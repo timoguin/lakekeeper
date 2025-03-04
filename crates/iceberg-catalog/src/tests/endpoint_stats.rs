@@ -46,7 +46,7 @@ mod test {
         // tokio::time::pause();
         // send each endpoint once
         for ep in Endpoints::iter() {
-            let (method, path) = ep.to_http_string().split_once(' ').unwrap();
+            let (method, path) = ep.as_http_route().split_once(' ').unwrap();
             let method = Method::from_str(method).unwrap();
             let request_metadata = RequestMetadata::new_test(
                 None,
@@ -93,10 +93,10 @@ mod test {
 
         let all = stats.stats[0]
             .iter()
-            .map(|s| s.http_string.clone())
+            .map(|s| s.http_route.clone())
             .collect::<HashSet<_>>();
         let expected = Endpoints::iter()
-            .map(|e| e.to_http_string().to_string())
+            .map(|e| e.as_http_route().to_string())
             .collect::<HashSet<_>>();
         assert_eq!(
             all,

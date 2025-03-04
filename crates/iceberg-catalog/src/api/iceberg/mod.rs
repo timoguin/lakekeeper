@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 pub mod types;
 
 pub mod v1 {
@@ -202,11 +204,15 @@ pub mod v1 {
     }
 }
 
-pub(crate) fn supported_endpoints() -> Vec<String> {
+static SUPPORTED_ENDPOINTS: LazyLock<Vec<String>> = LazyLock::new(|| {
     crate::api::endpoints::Endpoints::catalog()
         .iter()
-        .map(ToString::to_string)
+        .map(|s| ToString::to_string(s).replace(" /catalog/", " /"))
         .collect()
+});
+
+pub(crate) fn supported_endpoints() -> &'static [String] {
+    &SUPPORTED_ENDPOINTS
 }
 
 #[cfg(test)]

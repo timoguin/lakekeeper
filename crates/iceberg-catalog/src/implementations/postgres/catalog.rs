@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::Duration;
 use iceberg::spec::ViewMetadata;
 use iceberg_ext::{
     catalog::rest::{CatalogConfig, ErrorModel},
@@ -27,6 +26,7 @@ use super::{
     },
     CatalogState, PostgresTransaction,
 };
+use crate::api::management::v1::project::RangeSpecifier;
 use crate::{
     api::{
         iceberg::v1::{PaginatedMapping, PaginationQuery},
@@ -630,8 +630,7 @@ impl Catalog for super::PostgresCatalog {
     async fn get_endpoint_statistics(
         project_id: ProjectId,
         warehouse_id: WarehouseFilter,
-        end: chrono::DateTime<chrono::Utc>,
-        interval: Duration,
+        range_specifier: RangeSpecifier,
         status_codes: Option<&[u16]>,
         catalog_state: Self::State,
     ) -> Result<EndpointStatisticsResponse> {
@@ -639,8 +638,7 @@ impl Catalog for super::PostgresCatalog {
             project_id,
             warehouse_id,
             status_codes,
-            interval,
-            end,
+            range_specifier,
             &catalog_state.read_pool(),
         )
         .await

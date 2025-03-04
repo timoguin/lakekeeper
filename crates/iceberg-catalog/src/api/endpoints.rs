@@ -84,7 +84,7 @@ pub enum Endpoints {
     ManagementDeletePermissions,
 }
 
-static MAP: LazyLock<HashMap<&str, Endpoints>> = LazyLock::new(|| {
+static ROUTE_MAP: LazyLock<HashMap<(Method, &'static str), Endpoints>> = LazyLock::new(|| {
     Endpoints::iter()
         .filter(|e| {
             !matches!(
@@ -97,7 +97,7 @@ static MAP: LazyLock<HashMap<&str, Endpoints>> = LazyLock::new(|| {
                     | Endpoints::ManagementDeletePermissions
             )
         })
-        .map(|e| (e.to_http_string(), e))
+        .map(|e| ((e.method(), e.path()), e))
         .collect()
 });
 
@@ -138,11 +138,44 @@ impl Endpoints {
                 _ => None,
             };
         }
-        MAP.get(format!("{method} {inp}").as_str()).copied()
+        ROUTE_MAP
+            .get(&(
+                match method {
+                    &Method::GET => Method::GET,
+                    &Method::POST => Method::POST,
+                    &Method::HEAD => Method::HEAD,
+                    &Method::DELETE => Method::DELETE,
+                    x => x.clone(),
+                },
+                inp,
+            ))
+            .copied()
+    }
+
+    pub fn method(self) -> Method {
+        match self
+            .as_http_route()
+            .split_once(' ')
+            .expect("as_http_route needs to contain a whitespace separated method and path")
+            .0
+        {
+            "GET" => Method::GET,
+            "POST" => Method::POST,
+            "HEAD" => Method::HEAD,
+            "DELETE" => Method::DELETE,
+            x => panic!("unsupported method: '{x}', if you add a route to the enum, you need to add the method to this match"),
+        }
+    }
+
+    pub fn path(self) -> &'static str {
+        self.as_http_route()
+            .split_once(' ')
+            .expect("as_http_route needs to contain a whitespace separated method and path")
+            .1
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn to_http_string(self) -> &'static str {
+    pub fn as_http_route(self) -> &'static str {
         match self {
             Endpoints::CatalogPostAwsS3Sign => "POST /catalog/v1/aws/s3/sign",
             Endpoints::CatalogPostPrefixAwsS3Sign => "POST /catalog/v1/{prefix}/v1/aws/s3/sign",
@@ -174,7 +207,7 @@ impl Endpoints {
                 "DELETE /catalog/v1/{prefix}/namespaces/{namespace}/tables/{table}"
             }
             Endpoints::CatalogHeadNamespaceTable => {
-                "Head /catalog/v1/{prefix}/namespaces/{namespace}/tables/{table}"
+                "HEAD /catalog/v1/{prefix}/namespaces/{namespace}/tables/{table}"
             }
             Endpoints::CatalogGetNamespaceTableCredentials => {
                 "GET /catalog/v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials"
@@ -193,7 +226,7 @@ impl Endpoints {
                 "POST /catalog/v1/{prefix}/namespaces/{namespace}/views"
             }
             Endpoints::CatalogGetNamespaceViews => {
-                "Get /catalog/v1/{prefix}/namespaces/{namespace}/views"
+                "GET /catalog/v1/{prefix}/namespaces/{namespace}/views"
             }
             Endpoints::CatalogGetNamespaceView => {
                 "GET /catalog/v1/{prefix}/namespaces/{namespace}/views/{view}"
@@ -272,6 +305,36 @@ impl Endpoints {
             Endpoints::ManagementPostPermissions => "POST /management/v1/permissions",
             Endpoints::ManagementHeadPermissions => "HEAD /management/v1/permissions",
             Endpoints::ManagementDeletePermissions => "DELETE /management/v1/permissions",
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::api::endpoints::Endpoints;
+    use itertools::Itertools;
+    use strum::IntoEnumIterator;
+
+    #[test]
+    fn test_can_get_all_paths() {
+        let _ = Endpoints::iter().map(Endpoints::path).collect_vec();
+    }
+
+    #[test]
+    fn test_can_get_all_methods() {
+        let _ = Endpoints::iter().map(Endpoints::method).collect_vec();
+    }
+
+    #[test]
+    fn test_can_resolve_all_tuples() {
+        let paths = Endpoints::iter().map(Endpoints::path).collect_vec();
+        let methods = Endpoints::iter().map(Endpoints::method).collect_vec();
+        for (method, path) in methods.iter().zip(paths.into_iter()) {
+            let endpoint = Endpoints::from_method_and_matched_path(method, path);
+            assert_eq!(
+                endpoint.unwrap().as_http_route(),
+                format!("{method} {path}")
+            );
         }
     }
 }
