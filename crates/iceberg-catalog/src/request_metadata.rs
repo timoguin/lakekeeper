@@ -10,7 +10,7 @@ use iceberg_ext::catalog::rest::{ErrorModel, IcebergErrorResponse};
 use limes::Authentication;
 use uuid::Uuid;
 
-use crate::{service::authn::Actor, ProjectIdent, WarehouseIdent, CONFIG, DEFAULT_PROJECT_ID};
+use crate::{service::authn::Actor, ProjectId, WarehouseIdent, CONFIG, DEFAULT_PROJECT_ID};
 
 pub const PROJECT_ID_HEADER: &str = "x-project-ident";
 pub const X_REQUEST_ID_HEADER: &str = "x-request-id";
@@ -23,7 +23,7 @@ const X_FORWARDED_PORT_HEADER: &str = "x-forwarded-port";
 #[derive(Debug, Clone)]
 pub struct RequestMetadata {
     request_id: Uuid,
-    project_id: Option<ProjectIdent>,
+    project_id: Option<ProjectId>,
     authentication: Option<Authentication>,
     base_url: String,
     actor: Actor,
@@ -56,11 +56,6 @@ impl RequestMetadata {
     }
 
     #[must_use]
-    pub fn preferred_project_id(&self) -> Option<ProjectIdent> {
-        self.project_id.or(*DEFAULT_PROJECT_ID)
-    }
-
-    #[must_use]
     pub(crate) fn matched_path(&self) -> Option<&str> {
         self.matched_path.as_deref()
     }
@@ -81,6 +76,11 @@ impl RequestMetadata {
             matched_path: None,
             request_method: Method::default(),
         }
+    }
+
+    #[must_use]
+    pub fn preferred_project_id(&self) -> Option<ProjectId> {
+        self.project_id.or(*DEFAULT_PROJECT_ID)
     }
 
     #[cfg(test)]
@@ -112,7 +112,7 @@ impl RequestMetadata {
         authentication: Option<Authentication>,
         base_url: Option<String>,
         actor: Actor,
-        project_id: Option<ProjectIdent>,
+        project_id: Option<ProjectId>,
         matched_path: Option<Arc<str>>,
         request_method: Method,
     ) -> Self {
@@ -158,8 +158,8 @@ impl RequestMetadata {
     /// Fails if none of the above methods provide a project ID.
     pub fn require_project_id(
         &self,
-        user_project: Option<ProjectIdent>, // Explicitly requested via an API parameter
-    ) -> crate::api::Result<ProjectIdent> {
+        user_project: Option<ProjectId>, // Explicitly requested via an API parameter
+    ) -> crate::api::Result<ProjectId> {
         user_project.or(self.preferred_project_id()).ok_or_else(|| {
             crate::api::ErrorModel::bad_request(
                 format!("No project provided. Please provide the `{PROJECT_ID_HEADER}` header"),
@@ -230,7 +230,7 @@ pub(crate) async fn create_request_metadata_with_trace_and_project_fn(
     let project_id = headers
         .get(PROJECT_ID_HEADER)
         .and_then(|hv| hv.to_str().ok())
-        .map(ProjectIdent::from_str)
+        .map(ProjectId::from_str)
         .transpose();
     let project_id = match project_id {
         Ok(ident) => ident,

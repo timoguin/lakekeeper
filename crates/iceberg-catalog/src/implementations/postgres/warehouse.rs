@@ -14,12 +14,12 @@ use crate::{
     implementations::postgres::pagination::{PaginateToken, V1PaginateToken},
     request_metadata::RequestMetadata,
     service::{storage::StorageProfile, GetProjectResponse, GetWarehouseResponse, WarehouseStatus},
-    ProjectIdent, SecretIdent, WarehouseIdent,
+    ProjectId, SecretIdent, WarehouseIdent,
 };
 
 pub(super) async fn get_warehouse_by_name(
     warehouse_name: &str,
-    project_id: ProjectIdent,
+    project_id: ProjectId,
     catalog_state: CatalogState,
 ) -> Result<Option<WarehouseIdent>> {
     let warehouse_id = sqlx::query_scalar!(
@@ -101,7 +101,7 @@ pub(super) async fn get_config_for_warehouse(
 
 pub(crate) async fn create_warehouse(
     warehouse_name: String,
-    project_id: ProjectIdent,
+    project_id: ProjectId,
     storage_profile: StorageProfile,
     tabular_delete_profile: TabularDeleteProfile,
     storage_secret_id: Option<SecretIdent>,
@@ -166,7 +166,7 @@ pub(crate) async fn create_warehouse(
 }
 
 pub(crate) async fn rename_project(
-    project_id: ProjectIdent,
+    project_id: ProjectId,
     new_name: &str,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<()> {
@@ -190,7 +190,7 @@ pub(crate) async fn rename_project(
 }
 
 pub(crate) async fn create_project(
-    project_id: ProjectIdent,
+    project_id: ProjectId,
     project_name: String,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<()> {
@@ -220,7 +220,7 @@ pub(crate) async fn create_project(
 }
 
 pub(crate) async fn get_project(
-    project_id: ProjectIdent,
+    project_id: ProjectId,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<Option<GetProjectResponse>> {
     let project = sqlx::query!(
@@ -254,7 +254,7 @@ pub(crate) async fn get_project(
 }
 
 pub(crate) async fn delete_project(
-    project_id: ProjectIdent,
+    project_id: ProjectId,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<()> {
     let row_count =
@@ -289,7 +289,7 @@ pub(crate) async fn list_warehouses<
     'c: 'e,
     E: sqlx::Executor<'c, Database = sqlx::Postgres>,
 >(
-    project_id: ProjectIdent,
+    project_id: ProjectId,
     include_status: Option<Vec<WarehouseStatus>>,
     catalog_state: E,
 ) -> Result<Vec<GetWarehouseResponse>> {
@@ -400,7 +400,7 @@ pub(crate) async fn get_warehouse(
         Ok(Some(GetWarehouseResponse {
             id: warehouse_id,
             name: warehouse.warehouse_name,
-            project_id: ProjectIdent::from(warehouse.project_id),
+            project_id: ProjectId::from(warehouse.project_id),
             storage_profile: warehouse.storage_profile.deref().clone(),
             storage_secret_id: warehouse.storage_secret_id.map(std::convert::Into::into),
             status: warehouse.status,
@@ -412,7 +412,7 @@ pub(crate) async fn get_warehouse(
 }
 
 pub(crate) async fn list_projects<'e, 'c: 'e, E: sqlx::Executor<'c, Database = sqlx::Postgres>>(
-    project_ids: Option<HashSet<ProjectIdent>>,
+    project_ids: Option<HashSet<ProjectId>>,
     connection: E,
 ) -> Result<Vec<GetProjectResponse>> {
     let return_all = project_ids.is_none();
@@ -432,7 +432,7 @@ pub(crate) async fn list_projects<'e, 'c: 'e, E: sqlx::Executor<'c, Database = s
     Ok(projects
         .into_iter()
         .map(|project| GetProjectResponse {
-            project_id: ProjectIdent::from(project.project_id),
+            project_id: ProjectId::from(project.project_id),
             name: project.project_name,
         })
         .collect())
@@ -661,12 +661,12 @@ pub(crate) mod test {
     pub(crate) async fn initialize_warehouse(
         state: CatalogState,
         storage_profile: Option<StorageProfile>,
-        project_id: Option<&ProjectIdent>,
+        project_id: Option<&ProjectId>,
         secret_id: Option<SecretIdent>,
         create_project: bool,
     ) -> crate::WarehouseIdent {
         let project_id = project_id.map_or(
-            ProjectIdent::from(uuid::Uuid::nil()),
+            ProjectId::from(uuid::Uuid::nil()),
             std::borrow::ToOwned::to_owned,
         );
         let mut t = PostgresTransaction::begin_write(state.clone())
@@ -683,17 +683,14 @@ pub(crate) mod test {
             .unwrap();
         }
 
-        let storage_profile = storage_profile.unwrap_or(StorageProfile::S3(S3Profile {
-            bucket: "test_bucket".to_string(),
-            endpoint: None,
-            region: "us-east-1".to_string(),
-            assume_role_arn: None,
-            path_style_access: None,
-            key_prefix: None,
-            sts_role_arn: None,
-            sts_enabled: false,
-            flavor: S3Flavor::S3Compat,
-        }));
+        let storage_profile = storage_profile.unwrap_or(StorageProfile::S3(
+            S3Profile::builder()
+                .bucket("test_bucket".to_string())
+                .region("us-east-1".to_string())
+                .flavor(S3Flavor::S3Compat)
+                .sts_enabled(false)
+                .build(),
+        ));
 
         let warehouse_id = PostgresCatalog::create_warehouse(
             "test_warehouse".to_string(),
@@ -719,7 +716,7 @@ pub(crate) mod test {
 
         let fetched_warehouse_id = PostgresCatalog::get_warehouse_by_name(
             "test_warehouse",
-            ProjectIdent::from(uuid::Uuid::nil()),
+            ProjectId::from(uuid::Uuid::nil()),
             state.clone(),
         )
         .await
@@ -732,7 +729,7 @@ pub(crate) mod test {
     async fn test_list_projects(pool: sqlx::PgPool) {
         let state = CatalogState::from_pools(pool.clone(), pool.clone());
 
-        let project_id_1 = ProjectIdent::from(uuid::Uuid::new_v4());
+        let project_id_1 = ProjectId::from(uuid::Uuid::new_v4());
         initialize_warehouse(state.clone(), None, Some(&project_id_1), None, true).await;
 
         let mut trx = PostgresTransaction::begin_read(state.clone())
@@ -749,7 +746,7 @@ pub(crate) mod test {
         assert_eq!(projects.len(), 1);
         assert!(projects.contains(&project_id_1));
 
-        let project_id_2 = ProjectIdent::from(uuid::Uuid::new_v4());
+        let project_id_2 = ProjectId::from(uuid::Uuid::new_v4());
         initialize_warehouse(state.clone(), None, Some(&project_id_2), None, true).await;
 
         let mut trx = PostgresTransaction::begin_read(state.clone())
@@ -786,7 +783,7 @@ pub(crate) mod test {
     #[sqlx::test]
     async fn test_list_warehouses(pool: sqlx::PgPool) {
         let state = CatalogState::from_pools(pool.clone(), pool.clone());
-        let project_id = ProjectIdent::from(uuid::Uuid::new_v4());
+        let project_id = ProjectId::from(uuid::Uuid::new_v4());
         let warehouse_id_1 =
             initialize_warehouse(state.clone(), None, Some(&project_id), None, true).await;
         let mut trx = PostgresTransaction::begin_read(state).await.unwrap();
@@ -803,7 +800,7 @@ pub(crate) mod test {
     #[sqlx::test]
     async fn test_list_warehouses_active_filter(pool: sqlx::PgPool) {
         let state = CatalogState::from_pools(pool.clone(), pool.clone());
-        let project_id = ProjectIdent::from(uuid::Uuid::new_v4());
+        let project_id = ProjectId::from(uuid::Uuid::new_v4());
         let warehouse_id_1 =
             initialize_warehouse(state.clone(), None, Some(&project_id), None, true).await;
 
@@ -857,7 +854,7 @@ pub(crate) mod test {
     #[sqlx::test]
     async fn test_rename_warehouse(pool: sqlx::PgPool) {
         let state = CatalogState::from_pools(pool.clone(), pool.clone());
-        let project_id = ProjectIdent::from(uuid::Uuid::new_v4());
+        let project_id = ProjectId::from(uuid::Uuid::new_v4());
         let warehouse_id =
             initialize_warehouse(state.clone(), None, Some(&project_id), None, true).await;
 
@@ -882,7 +879,7 @@ pub(crate) mod test {
     #[sqlx::test]
     async fn test_rename_project(pool: sqlx::PgPool) {
         let state = CatalogState::from_pools(pool.clone(), pool.clone());
-        let project_id = ProjectIdent::from(uuid::Uuid::new_v4());
+        let project_id = ProjectId::from(uuid::Uuid::new_v4());
         {
             let mut t = PostgresTransaction::begin_write(state.clone())
                 .await
@@ -915,7 +912,7 @@ pub(crate) mod test {
     #[sqlx::test]
     async fn test_same_project_id(pool: sqlx::PgPool) {
         let state = CatalogState::from_pools(pool.clone(), pool.clone());
-        let project_id = ProjectIdent::from(uuid::Uuid::new_v4());
+        let project_id = ProjectId::from(uuid::Uuid::new_v4());
         let mut t = PostgresTransaction::begin_write(state.clone())
             .await
             .unwrap();
@@ -933,7 +930,7 @@ pub(crate) mod test {
     #[sqlx::test]
     async fn test_warehouse_statistics_pagination(pool: sqlx::PgPool) {
         let state = CatalogState::from_pools(pool.clone(), pool.clone());
-        let project_id = ProjectIdent::from(uuid::Uuid::new_v4());
+        let project_id = ProjectId::from(uuid::Uuid::new_v4());
         let warehouse_id =
             initialize_warehouse(state.clone(), None, Some(&project_id), None, true).await;
 

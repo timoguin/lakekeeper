@@ -411,7 +411,7 @@ paths:
         '204':
           description: Permissions updated successfully
   /management/v1/permissions/role/{role_id}/access:
-    post:
+    get:
       tags:
       - permissions
       summary: Get my access to the default project
@@ -424,12 +424,6 @@ paths:
         schema:
           type: string
           format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateRoleAssignmentsRequest'
-        required: true
       responses:
         '200':
           description: ''
@@ -2724,9 +2718,6 @@ components:
               enum:
               - modify
         title: ProjectAssignmentModify
-    ProjectIdent:
-      type: string
-      format: uuid
     ProjectRelation:
       type: string
       enum:
@@ -2864,6 +2855,15 @@ components:
       - region
       - sts-enabled
       properties:
+        allow-alternative-protocols:
+          type:
+          - boolean
+          - 'null'
+          description: |-
+            Allow `s3a://` and `s3n://` in locations.
+            This is disabled by default. We do not recommend to use this setting
+            except for migration of old hadoop-based tables via the register endpoint.
+            Tables with `s3a` paths are not accessible outside the Java ecosystem.
         assume-role-arn:
           type:
           - string
@@ -2917,13 +2917,15 @@ components:
       - search
       properties:
         project-id:
-          oneOf:
-          - type: 'null'
-          - $ref: '#/components/schemas/ProjectIdent'
-            description: |-
-              Project ID in which the role is created.
-              Only required if the project ID cannot be inferred from the
-              users token and no default project is set.
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: |-
+            Deprecated: Please use the x-project-id header instead.
+            Project ID in which the role is created.
+            Only required if the project ID cannot be inferred from the
+            users token and no default project is set.
         search:
           type: string
           description: |-

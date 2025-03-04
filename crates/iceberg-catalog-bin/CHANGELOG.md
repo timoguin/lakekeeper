@@ -2,6 +2,46 @@
 
 
 
+## [0.7.2](https://github.com/lakekeeper/lakekeeper/compare/v0.7.1...v0.7.2) (2025-02-27)
+
+
+### Bug Fixes
+
+* Authenticator order (OIDC before K8s), add K8s Authenticator Audiences ([#864](https://github.com/lakekeeper/lakekeeper/issues/864)) ([b894ba5](https://github.com/lakekeeper/lakekeeper/commit/b894ba564b7629bf5ec42e7e7e961cd833bd6de2))
+* **ui:** Update UI to 0.5.0 ([fc81b7b](https://github.com/lakekeeper/lakekeeper/commit/fc81b7bd967dc47f9b30fb511bfa0eee7a10ed43))
+
+
+### Miscellaneous Chores
+
+* release 0.7.2 ([b4c77ac](https://github.com/lakekeeper/lakekeeper/commit/b4c77ac57ed1b463f4a89a10e380da7b9d7960f3))
+
+## [0.7.1](https://github.com/lakekeeper/lakekeeper/compare/v0.7.0...v0.7.1) (2025-02-26)
+
+
+### Bug Fixes
+
+* improve authn logging ([#854](https://github.com/lakekeeper/lakekeeper/issues/854)) ([2f2b3a2](https://github.com/lakekeeper/lakekeeper/commit/2f2b3a26292665260f59de745137f78ba9389b30))
+
+
+### Miscellaneous Chores
+
+* release 0.7.1 ([05938cd](https://github.com/lakekeeper/lakekeeper/commit/05938cd499e15ea648c58de05ef1b866d6395036))
+
+## [0.7.0](https://github.com/lakekeeper/lakekeeper/compare/v0.6.2...v0.7.0) (2025-02-24)
+
+
+### Features
+
+* Add Opt-In to S3 Variant prefixes (s3a, s3n) ([#821](https://github.com/lakekeeper/lakekeeper/issues/821)) ([b85b724](https://github.com/lakekeeper/lakekeeper/commit/b85b7245376cedb18d5131e24cff671d18045dff))
+* Migrate Authentication to Limes, Support Unlimited Authenticators, Customizable Authentication ([b72852d](https://github.com/lakekeeper/lakekeeper/commit/b72852de125a23691f75a291ecdf3c452b8e1c14))
+* Update Storage Profile alternative S3 protocols in UI ([#848](https://github.com/lakekeeper/lakekeeper/issues/848)) ([55a5334](https://github.com/lakekeeper/lakekeeper/commit/55a5334c35cab649a72cb218aa781d2b379614be))
+* use x-forwarded-for/host headers to generate links ([#834](https://github.com/lakekeeper/lakekeeper/issues/834)) ([89c0f8a](https://github.com/lakekeeper/lakekeeper/commit/89c0f8adacc2dc26b30d400563aeed716b5bdf62))
+
+
+### Miscellaneous Chores
+
+* release 0.7.0 ([491940b](https://github.com/lakekeeper/lakekeeper/commit/491940b864dbf564f711adfa58be03f45f06f9e3))
+
 ## [0.6.2](https://github.com/lakekeeper/lakekeeper/compare/v0.6.1...v0.6.2) (2025-01-30)
 
 

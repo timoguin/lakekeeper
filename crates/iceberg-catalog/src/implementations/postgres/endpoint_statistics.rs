@@ -11,7 +11,7 @@ use crate::{
     },
     implementations::postgres::dbutils::DBErrorHandler,
     service::endpoint_statistics::{EndpointIdentifier, EndpointStatisticsSink},
-    ProjectIdent,
+    ProjectId,
 };
 
 #[derive(Debug)]
@@ -27,7 +27,7 @@ impl PostgresStatisticsSink {
 
     async fn process_stats(
         &self,
-        stats: Arc<HashMap<ProjectIdent, HashMap<EndpointIdentifier, i64>>>,
+        stats: Arc<HashMap<ProjectId, HashMap<EndpointIdentifier, i64>>>,
     ) -> crate::api::Result<()> {
         let mut conn = self.pool.begin().await.map_err(|e| {
             tracing::error!("Failed to start transaction: {e}, lost stats: {stats:?}");
@@ -131,7 +131,7 @@ impl PostgresStatisticsSink {
 impl EndpointStatisticsSink for PostgresStatisticsSink {
     async fn consume_endpoint_statistics(
         &self,
-        stats: HashMap<ProjectIdent, HashMap<EndpointIdentifier, i64>>,
+        stats: HashMap<ProjectId, HashMap<EndpointIdentifier, i64>>,
     ) -> crate::api::Result<()> {
         let stats = Arc::new(stats);
 
@@ -160,7 +160,7 @@ impl EndpointStatisticsSink for PostgresStatisticsSink {
 }
 
 pub(crate) async fn list_statistics(
-    project: ProjectIdent,
+    project: ProjectId,
     warehouse_filter: WarehouseFilter,
     status_codes: Option<&[u16]>,
     interval: chrono::Duration,

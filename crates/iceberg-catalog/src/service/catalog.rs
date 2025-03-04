@@ -11,7 +11,7 @@ use iceberg_ext::{
 };
 
 use super::{
-    authz::TableUuid, storage::StorageProfile, NamespaceIdentUuid, ProjectIdent, RoleId,
+    authz::TableUuid, storage::StorageProfile, NamespaceIdentUuid, ProjectId, RoleId,
     TableIdentUuid, TabularDetails, ViewIdentUuid, WarehouseIdent, WarehouseStatus,
 };
 pub use crate::api::iceberg::v1::{
@@ -121,7 +121,7 @@ pub struct GetWarehouseResponse {
     /// Name of the warehouse.
     pub name: String,
     /// Project ID in which the warehouse is created.
-    pub project_id: ProjectIdent,
+    pub project_id: ProjectId,
     /// Storage profile used for the warehouse.
     pub storage_profile: StorageProfile,
     /// Storage secret ID used for the warehouse.
@@ -135,7 +135,7 @@ pub struct GetWarehouseResponse {
 #[derive(Debug, Clone)]
 pub struct GetProjectResponse {
     /// ID of the project.
-    pub project_id: ProjectIdent,
+    pub project_id: ProjectId,
     /// Name of the project.
     pub name: String,
 }
@@ -209,7 +209,7 @@ where
     // Should only return a warehouse if the warehouse is active.
     async fn get_warehouse_by_name(
         warehouse_name: &str,
-        project_id: ProjectIdent,
+        project_id: ProjectId,
         catalog_state: Self::State,
     ) -> Result<Option<WarehouseIdent>>;
 
@@ -217,7 +217,7 @@ where
     /// not found error if the warehouse does not exist.
     async fn require_warehouse_by_name(
         warehouse_name: &str,
-        project_id: ProjectIdent,
+        project_id: ProjectId,
         catalog_state: Self::State,
     ) -> Result<WarehouseIdent> {
         Self::get_warehouse_by_name(warehouse_name, project_id, catalog_state)
@@ -417,7 +417,7 @@ where
     // ---------------- Role Management API ----------------
     async fn create_role<'a>(
         role_id: RoleId,
-        project_id: ProjectIdent,
+        project_id: ProjectId,
         role_name: &str,
         description: Option<&str>,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
@@ -432,7 +432,7 @@ where
     ) -> Result<Option<Role>>;
 
     async fn list_roles<'a>(
-        filter_project_id: Option<ProjectIdent>,
+        filter_project_id: Option<ProjectId>,
         filter_role_id: Option<Vec<RoleId>>,
         filter_name: Option<String>,
         pagination: PaginationQuery,
@@ -484,7 +484,7 @@ where
     /// Create a warehouse.
     async fn create_warehouse<'a>(
         warehouse_name: String,
-        project_id: ProjectIdent,
+        project_id: ProjectId,
         storage_profile: StorageProfile,
         tabular_delete_profile: TabularDeleteProfile,
         storage_secret_id: Option<SecretIdent>,
@@ -493,20 +493,20 @@ where
 
     /// Create a project
     async fn create_project<'a>(
-        project_id: ProjectIdent,
+        project_id: ProjectId,
         project_name: String,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<()>;
 
     /// Delete a project
     async fn delete_project<'a>(
-        project_id: ProjectIdent,
+        project_id: ProjectId,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<()>;
 
     /// Get the project metadata
     async fn get_project<'a>(
-        project_id: ProjectIdent,
+        project_id: ProjectId,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<Option<GetProjectResponse>>;
 
@@ -514,7 +514,7 @@ where
     ///
     /// If project_ids is None, return all projects, otherwise return only the projects in the set
     async fn list_projects(
-        project_ids: Option<HashSet<ProjectIdent>>,
+        project_ids: Option<HashSet<ProjectId>>,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
     ) -> Result<Vec<GetProjectResponse>>;
 
@@ -523,7 +523,7 @@ where
     /// We'll return statistics for the time-frame end - interval until end.
     /// If status_codes is None, return all status codes.
     async fn get_endpoint_statistics(
-        project_id: ProjectIdent,
+        project_id: ProjectId,
         warehouse_id: WarehouseFilter,
         end: chrono::DateTime<chrono::Utc>,
         interval: chrono::Duration,
@@ -533,7 +533,7 @@ where
 
     /// Return a list of all warehouse in a project
     async fn list_warehouses(
-        project_id: ProjectIdent,
+        project_id: ProjectId,
         // If None, return only active warehouses
         // If Some, return only warehouses with any of the statuses in the set
         include_inactive: Option<Vec<WarehouseStatus>>,
@@ -591,7 +591,7 @@ where
 
     /// Rename a project.
     async fn rename_project<'a>(
-        project_id: ProjectIdent,
+        project_id: ProjectId,
         new_name: &str,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<()>;

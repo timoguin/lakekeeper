@@ -21,7 +21,7 @@ use crate::{
         secrets::SecretStore,
         Catalog, State, Transaction,
     },
-    ProjectIdent,
+    ProjectId,
 };
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -42,7 +42,7 @@ pub struct RenameProjectRequest {
     /// Only required if the project ID cannot be inferred and no default project is set.
     #[serde(default)]
     #[schema(value_type = Option::<uuid::Uuid>)]
-    pub project_id: Option<ProjectIdent>,
+    pub project_id: Option<ProjectId>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -60,7 +60,7 @@ pub struct CreateProjectRequest {
     /// Request a specific project ID - optional.
     /// If not provided, a new project ID will be generated (recommended).
     #[schema(value_type = Option::<uuid::Uuid>)]
-    pub project_id: Option<ProjectIdent>,
+    pub project_id: Option<ProjectId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -68,7 +68,7 @@ pub struct CreateProjectRequest {
 pub struct CreateProjectResponse {
     /// ID of the created project.
     #[schema(value_type = uuid::Uuid)]
-    pub project_id: ProjectIdent,
+    pub project_id: ProjectId,
 }
 
 impl axum::response::IntoResponse for CreateProjectResponse {
@@ -105,7 +105,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         } = request;
         validate_project_name(&project_name)?;
         let mut t = C::Transaction::begin_write(context.v1_state.catalog).await?;
-        let project_id = project_id.unwrap_or(ProjectIdent::from(uuid::Uuid::now_v7()));
+        let project_id = project_id.unwrap_or(ProjectId::from(uuid::Uuid::now_v7()));
         C::create_project(project_id, project_name, t.transaction()).await?;
         authorizer
             .create_project(&request_metadata, project_id)
@@ -116,12 +116,12 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
     }
 
     async fn rename_project(
-        project_ident: Option<ProjectIdent>,
+        project_id: Option<ProjectId>,
         request: RenameProjectRequest,
         context: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
     ) -> Result<()> {
-        let project_id = request_metadata.require_project_id(project_ident)?;
+        let project_id = request_metadata.require_project_id(project_id)?;
         // ------------------- AuthZ -------------------
         let authorizer = context.v1_state.authz;
         authorizer
@@ -142,11 +142,11 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
     }
 
     async fn get_project(
-        project_ident: Option<ProjectIdent>,
+        project_id: Option<ProjectId>,
         context: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
     ) -> Result<GetProjectResponse> {
-        let project_id = request_metadata.require_project_id(project_ident)?;
+        let project_id = request_metadata.require_project_id(project_id)?;
         // ------------------- AuthZ -------------------
         let authorizer = context.v1_state.authz;
         authorizer
@@ -176,11 +176,11 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
     }
 
     async fn delete_project(
-        project_ident: Option<ProjectIdent>,
+        project_id: Option<ProjectId>,
         context: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
     ) -> Result<()> {
-        let project_id = request_metadata.require_project_id(project_ident)?;
+        let project_id = request_metadata.require_project_id(project_id)?;
         // ------------------- AuthZ -------------------
         let authorizer = context.v1_state.authz;
         authorizer
@@ -247,13 +247,25 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             )
             .await?;
 
+        let (end, interval) = match request.range_specifier {
+            Some(RangeSpecifier::Range {
+                end_of_range: start,
+                interval,
+            }) => (start, interval.unwrap_or_else(|| chrono::Duration::days(1))),
+            Some(RangeSpecifier::PageToken { token }) => {
+                todo!()
+            }
+            None => {
+                let now = chrono::Utc::now();
+                (now - chrono::Duration::days(1), chrono::Duration::days(1))
+            }
+        };
+
         C::get_endpoint_statistics(
             project_id,
             request.warehouse,
-            request.end.unwrap_or(chrono::Utc::now()),
-            request
-                .interval
-                .unwrap_or_else(|| chrono::Duration::days(1)),
+            end,
+            interval,
             request.status_codes.as_deref(),
             context.v1_state.catalog,
         )
@@ -280,10 +292,10 @@ pub struct EndpointStatisticsResponse {
     pub next_page_token: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub enum RangeSpecifier {
     Range {
-        start: chrono::DateTime<chrono::Utc>,
+        end_of_range: chrono::DateTime<chrono::Utc>,
         interval: Option<chrono::Duration>,
     },
     PageToken {
@@ -295,7 +307,7 @@ pub enum RangeSpecifier {
 pub struct GetEndpointStatisticsRequest {
     pub warehouse: WarehouseFilter,
     pub status_codes: Option<Vec<u16>>,
-    pub range_specifier: RangeSpecifier,
+    pub range_specifier: Option<RangeSpecifier>,
 }
 
 #[derive(Deserialize, ToSchema, Debug)]

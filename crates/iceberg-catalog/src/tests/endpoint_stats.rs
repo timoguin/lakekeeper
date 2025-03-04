@@ -77,8 +77,7 @@ mod test {
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
-                end: None,
-                interval: None,
+                range_specifier: None,
             },
             RequestMetadata::new_unauthenticated(),
         )

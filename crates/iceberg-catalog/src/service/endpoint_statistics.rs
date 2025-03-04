@@ -17,7 +17,7 @@ use http::StatusCode;
 use uuid::Uuid;
 
 use crate::{
-    api::endpoints::Endpoints, request_metadata::RequestMetadata, ProjectIdent, WarehouseIdent,
+    api::endpoints::Endpoints, request_metadata::RequestMetadata, ProjectId, WarehouseIdent,
 };
 
 /// Middleware for tracking endpoint statistics.
@@ -115,7 +115,7 @@ pub struct EndpointIdentifier {
 #[derive(Debug)]
 pub struct EndpointStatisticsTracker {
     rcv: tokio::sync::mpsc::Receiver<EndpointStatisticsMessage>,
-    endpoint_statistics: HashMap<ProjectIdent, ProjectStatistics>,
+    endpoint_statistics: HashMap<ProjectId, ProjectStatistics>,
     statistic_sinks: Vec<Arc<dyn EndpointStatisticsSink>>,
     flush_interval: Duration,
 }
@@ -223,7 +223,7 @@ impl EndpointStatisticsTracker {
         let mut stats = HashMap::new();
         std::mem::swap(&mut stats, &mut self.endpoint_statistics);
 
-        let s: HashMap<ProjectIdent, HashMap<EndpointIdentifier, i64>> = stats
+        let s: HashMap<ProjectId, HashMap<EndpointIdentifier, i64>> = stats
             .into_iter()
             .map(|(k, v)| (k, v.into_consumable()))
             .collect();
@@ -264,7 +264,7 @@ impl EndpointStatisticsTracker {
 pub trait EndpointStatisticsSink: Debug + Send + Sync + 'static {
     async fn consume_endpoint_statistics(
         &self,
-        stats: HashMap<ProjectIdent, HashMap<EndpointIdentifier, i64>>,
+        stats: HashMap<ProjectId, HashMap<EndpointIdentifier, i64>>,
     ) -> crate::api::Result<()>;
 
     fn sink_id(&self) -> &'static str;

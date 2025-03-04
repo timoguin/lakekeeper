@@ -34,7 +34,7 @@ use crate::{
         Catalog, ListFlags, NamespaceIdentUuid, State, TableIdentUuid, TabularIdentUuid,
         Transaction,
     },
-    ProjectIdent, WarehouseIdent, DEFAULT_PROJECT_ID,
+    ProjectId, WarehouseIdent, DEFAULT_PROJECT_ID,
 };
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -75,7 +75,7 @@ pub struct CreateWarehouseRequest {
     /// Project ID in which to create the warehouse.
     /// If no default project is set for this server, this field is required.
     #[schema(value_type=Option<uuid::Uuid>)]
-    pub project_id: Option<ProjectIdent>,
+    pub project_id: Option<ProjectId>,
     /// Storage profile to use for the warehouse.
     pub storage_profile: StorageProfile,
     /// Optional storage credential to use for the warehouse.
@@ -158,7 +158,7 @@ pub struct UpdateWarehouseStorageRequest {
     pub storage_credential: Option<StorageCredential>,
 }
 
-#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct ListWarehousesRequest {
     /// Optional filter to return only warehouses
@@ -171,7 +171,7 @@ pub struct ListWarehousesRequest {
     /// Setting a warehouse is required.
     #[serde(default)]
     #[param(value_type=Option::<uuid::Uuid>)]
-    pub project_id: Option<ProjectIdent>,
+    pub project_id: Option<ProjectId>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, ToSchema)]
@@ -601,9 +601,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
 
         let mut transaction = C::Transaction::begin_write(context.v1_state.catalog).await?;
         let warehouse = C::require_warehouse(warehouse_id, transaction.transaction()).await?;
-        warehouse
-            .storage_profile
-            .can_be_updated_with(&storage_profile)?;
+        let storage_profile = warehouse.storage_profile.update_with(storage_profile)?;
         let old_secret_id = warehouse.storage_secret_id;
 
         let secret_id = if let Some(storage_credential) = storage_credential {
