@@ -121,10 +121,8 @@ jobs:
       - name: Setup OpenFGA CLI
         run: |
           mkdir -p /tmp/fga
-          curl -L https://github.com/openfga/cli/releases/download/v0.6.4/fga_0.6.4_darwin_amd64.tar.gz -o /tmp/fga/fga.tar.gz
-          tar -xvf /tmp/fga/fga.tar.gz -C /tmp/fga
-          sudo mv /tmp/fga/fga /usr/local/bin/fga
-          sudo chmod +x /usr/local/bin/fga
+          curl -L https://github.com/openfga/cli/releases/download/v0.6.4/fga_0.6.4_linux_amd64.deb -o /tmp/fga/fga_0.6.4_linux_amd64.deb
+          sudo dpkg -i /tmp/fga/fga_0.6.4_linux_amd64.deb
       - name: Test OpenFGA
         run: just test-openfga
       - name: Regenerate OpenFGA JSON
