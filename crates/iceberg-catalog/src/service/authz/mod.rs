@@ -563,8 +563,10 @@ where
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::sync::{Arc, RwLock};
-    use std::str::FromStr;
+    use std::{
+        str::FromStr,
+        sync::{Arc, RwLock},
+    };
 
     use super::*;
     use crate::service::health::Health;
