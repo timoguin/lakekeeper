@@ -111,6 +111,8 @@ pub(crate) mod tests {
 
     #[needs_env_var(TEST_OPENFGA = 1)]
     mod openfga {
+        use openfga_client::client::ReadAuthorizationModelsRequest;
+
         use super::super::*;
         use crate::service::authz::implementations::openfga::new_client_from_config;
 
@@ -128,9 +130,28 @@ pub(crate) mod tests {
             migrate(&client, Some(store_name.clone())).await.unwrap();
             migrate(&client, Some(store_name.clone())).await.unwrap();
 
+            let store_id = client
+                .get_store_by_name(&store_name)
+                .await
+                .unwrap()
+                .unwrap()
+                .id;
             let _model = get_active_auth_model_id(&mut client, Some(store_name.clone()))
                 .await
-                .unwrap();
+                .expect("Active model should exist after migration");
+
+            // Check that there is only a single model in the store
+            let models = client
+                .read_authorization_models(ReadAuthorizationModelsRequest {
+                    store_id,
+                    page_size: Some(100),
+                    continuation_token: String::new(),
+                })
+                .await
+                .unwrap()
+                .into_inner()
+                .authorization_models;
+            assert_eq!(models.len(), 1);
         }
     }
 }
