@@ -36,7 +36,10 @@ update-rest-openapi:
     curl -o docs/docs/api/rest-catalog-open-api.yaml https://raw.githubusercontent.com/apache/iceberg/main/open-api/rest-catalog-open-api.yaml
 
 update-openfga:
-    fga model transform --file authz/openfga/v2.1/schema.fga > authz/openfga/v2.1/schema.json
+    fga model transform --file authz/openfga/v3.0/fga.mod > authz/openfga/v3.0/schema.json
+
+test-openfga:
+    fga model test --tests authz/openfga/v3.0/store.fga.yaml
 
 update-management-openapi:
     LAKEKEEPER__AUTHZ_BACKEND=openfga RUST_LOG=error cargo run management-openapi > docs/docs/api/management-open-api.yaml

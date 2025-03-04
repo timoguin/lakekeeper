@@ -17,6 +17,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tests-pass:
+    name: all tests pass
+    runs-on: ubuntu-latest
+    needs:
+      - sqlx-check
+      - check-format
+      - clippy
+      - check-generated-openapi-matches
+      - test-openfga
+      - test
+    steps:
+      - run: exit 0
   sqlx-check:
     runs-on: ubuntu-24.04
     steps:
@@ -79,7 +91,7 @@ jobs:
           TEST_KV2: 1
           TEST_MINIO: 1
 
-  check-generated-cotents-match:
+  check-generated-openapi-matches:
     runs-on: ubuntu-24.04
     steps:
       - run: sudo snap install --edge --classic just
@@ -100,6 +112,25 @@ jobs:
           node-version: 20
       - name: Build TS Client
         run: npx @hey-api/openapi-ts -i docs/docs/api/management-open-api.yaml -o src/gen/management -c @hey-api/client-fetch
+  
+  test-openfga:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: sudo snap install --edge --classic just
+      - uses: actions/checkout@v4
+      - name: Setup OpenFGA CLI
+        run: |
+          mkdir -p /tmp/fga
+          curl -L https://github.com/openfga/cli/releases/download/v0.6.4/fga_0.6.4_darwin_amd64.tar.gz -o /tmp/fga/fga.tar.gz
+          tar -xvf /tmp/fga/fga.tar.gz -C /tmp/fga
+          sudo mv /tmp/fga/fga /usr/local/bin/fga
+          sudo chmod +x /usr/local/bin/fga
+      - name: Test OpenFGA
+        run: just test-openfga
+      - name: Regenerate OpenFGA JSON
+        run: just update-openfga
+      - name: Fail on diff
+        run: git diff -w --ignore-blank-lines --exit-code authz/openfga/
 
   test:
     runs-on: ubuntu-24.04

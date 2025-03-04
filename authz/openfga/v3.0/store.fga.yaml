@@ -1,5 +1,5 @@
-name: Custom Roles
-model_file: ./schema.fga
+name: Lakekeeper Core
+model_file: ./fga.mod
 tuples:
   # Hierarchies: server_1 -> project_1 -> (warehouse_1 (unmanaged), warehouse_2 (managed access))
   - user: server:server_1
