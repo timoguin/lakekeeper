@@ -1,4 +1,4 @@
-FROM alpine:3.16
+FROM alpine:3.21
 
 RUN apk update
 RUN apk add --no-cache ca-certificates gcc build-base curl perl nodejs npm git bash cmake pkgconf cyrus-sasl-dev python3
@@ -26,4 +26,9 @@ RUN set -eux; \
   cargo --version; \
   rustc --version;
 
+WORKDIR /app
+COPY . .
 
+ENV SQLX_OFFLINE=true
+ENV RUST_BACKTRACE=1
+RUN cargo build --release --all-features --target aarch64-unknown-linux-musl
