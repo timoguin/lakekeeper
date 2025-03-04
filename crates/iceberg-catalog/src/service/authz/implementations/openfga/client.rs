@@ -88,7 +88,7 @@ pub(crate) async fn new_authorizer(
         .get_store_by_name(&store_name)
         .await?
         .ok_or_else(|| OpenFGAError::StoreNotFound(store_name.clone()))?;
-    eprintln!("store: {:?}", store.id);
+    eprintln!("store: {:?}, store_name: {store_name}", store.id);
 
     let client = BasicOpenFgaClient::new(service_client, &store.id, &auth_model_id)
         .set_consistency(consistency);
