@@ -12,10 +12,14 @@ type server
     # The admin role is designed for human users.
     define admin: [user, role#assignee]
 
-    # Opererators are more powerful than administrators - they are the most powerful role in
+    # Operators are more powerful than administrators - they are the most powerful role in
     # Lakekeeper. The operator role allows usage of all APIs inside the catalog. It is designed
     # to be used by machines that provision resources inside Lakekeeper, i.e. a `KubernetesOperator`
     define operator: [user, role#assignee]
+
+    # If projects in this server are externally managed, deletion of projects is prohibited
+    # for project admins. Only server admins & operators can delete projects.
+    define external_project_management: [user:*, role:*]
 
     # ------------------ Actions ------------------
     define can_create_project: admin or operator
