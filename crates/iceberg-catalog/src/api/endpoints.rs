@@ -89,6 +89,8 @@ static MAP: LazyLock<HashMap<&str, Endpoints>> = LazyLock::new(|| {
         .filter(|e| {
             !matches!(
                 e,
+                // see comment above in the endpoints enum, these are grouped endpoints due to them
+                // potentially being different for every authorizer
                 Endpoints::ManagementGetPermissions
                     | Endpoints::ManagementPostPermissions
                     | Endpoints::ManagementHeadPermissions

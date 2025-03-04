@@ -286,14 +286,16 @@ pub enum RangeSpecifier {
         start: chrono::DateTime<chrono::Utc>,
         interval: Option<chrono::Duration>,
     },
+    PageToken {
+        token: String,
+    },
 }
 
 #[derive(Deserialize, ToSchema, Debug)]
 pub struct GetEndpointStatisticsRequest {
     pub warehouse: WarehouseFilter,
     pub status_codes: Option<Vec<u16>>,
-    pub end: Option<chrono::DateTime<chrono::Utc>>,
-    pub interval: Option<chrono::Duration>,
+    pub range_specifier: RangeSpecifier,
 }
 
 #[derive(Deserialize, ToSchema, Debug)]
