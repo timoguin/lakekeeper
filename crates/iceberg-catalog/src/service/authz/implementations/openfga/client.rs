@@ -83,6 +83,7 @@ pub(crate) async fn new_authorizer(
 ) -> OpenFGAResult<OpenFGAAuthorizer> {
     let store_name = store_name.unwrap_or(AUTH_CONFIG.store_name.clone());
     let auth_model_id = get_active_auth_model_id(&mut client, Some(store_name.clone())).await?;
+    eprintln!("auth_model_id: {:?}", auth_model_id);
     let store = client
         .get_store_by_name(&store_name)
         .await?
