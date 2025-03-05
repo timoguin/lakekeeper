@@ -1,4 +1,4 @@
-name: kafka_build_aarch64_musl_test
+name: kafka_build_x_86_musl_test
 
 on:
   push:
