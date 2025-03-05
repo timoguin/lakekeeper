@@ -25,7 +25,6 @@ jobs:
       - check-format
       - clippy
       - check-generated-openapi-matches
-      - test-openfga
       - test
     steps:
       - run: exit 0
@@ -112,23 +111,6 @@ jobs:
           node-version: 20
       - name: Build TS Client
         run: npx @hey-api/openapi-ts -i docs/docs/api/management-open-api.yaml -o src/gen/management -c @hey-api/client-fetch
-  
-  test-openfga:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: sudo snap install --edge --classic just
-      - uses: actions/checkout@v4
-      - name: Setup OpenFGA CLI
-        run: |
-          mkdir -p /tmp/fga
-          curl -L https://github.com/openfga/cli/releases/download/v0.6.4/fga_0.6.4_linux_amd64.deb -o /tmp/fga/fga_0.6.4_linux_amd64.deb
-          sudo dpkg -i /tmp/fga/fga_0.6.4_linux_amd64.deb
-      - name: Test OpenFGA
-        run: just test-openfga
-      - name: Regenerate OpenFGA JSON
-        run: just update-openfga
-      - name: Fail on diff
-        run: git diff -w --ignore-blank-lines --exit-code authz/openfga/
 
   test:
     runs-on: ubuntu-24.04

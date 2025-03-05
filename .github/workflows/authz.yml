@@ -28,7 +28,7 @@ jobs:
         run: |
           BASE_PATH=authz/openfga
           LAST_VERSION=$(ls $BASE_PATH | sort -r | head -n 1)
-          VALIDATION_OUTPUT=$(fga model validate --file $BASE_PATH/$LAST_VERSION/schema.fga)
+          VALIDATION_OUTPUT=$(fga model validate --file $BASE_PATH/$LAST_VERSION/fga.mod)
           echo $VALIDATION_OUTPUT | jq -e '.is_valid == true' > /dev/null || { echo "Validation failed"; exit 1; }
 
       - name: Test Collaboration Model
