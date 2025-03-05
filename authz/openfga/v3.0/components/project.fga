@@ -29,7 +29,7 @@ type project
     # Create stuff inside the project / create new warehouses
     define can_create_warehouse: create
     # Drop this project
-    define can_delete: modify but not external_project_management from server
+    define can_delete: modify
     define can_rename: modify
     define can_get_metadata: describe or can_get_metadata from warehouse or admin from server
     # Can list elements in this projects - will be filtered subsequently

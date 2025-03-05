@@ -17,10 +17,6 @@ type server
     # to be used by machines that provision resources inside Lakekeeper, i.e. a `KubernetesOperator`
     define operator: [user, role#assignee]
 
-    # If projects in this server are externally managed, deletion of projects is prohibited
-    # for project admins. Only server admins & operators can delete projects.
-    define external_project_management: [user:*, role:*]
-
     # ------------------ Actions ------------------
     define can_create_project: admin or operator
 
