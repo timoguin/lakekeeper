@@ -18,12 +18,11 @@ pub use crate::api::iceberg::v1::{
     CreateNamespaceRequest, CreateNamespaceResponse, ListNamespacesQuery, NamespaceIdent, Result,
     TableIdent, UpdateNamespacePropertiesRequest, UpdateNamespacePropertiesResponse,
 };
-use crate::api::management::v1::project::RangeSpecifier;
 use crate::{
     api::{
         iceberg::v1::{PaginatedMapping, PaginationQuery},
         management::v1::{
-            project::{EndpointStatisticsResponse, WarehouseFilter},
+            project::{EndpointStatisticsResponse, RangeSpecifier, WarehouseFilter},
             role::{ListRolesResponse, Role, SearchRoleResponse},
             user::{ListUsersResponse, SearchUserResponse, User, UserLastUpdatedWith, UserType},
             warehouse::{TabularDeleteProfile, WarehouseStatisticsResponse},

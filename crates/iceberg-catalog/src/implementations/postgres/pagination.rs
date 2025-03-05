@@ -1,11 +1,10 @@
 // TODO: lift this from DB module?
 
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 use base64::Engine;
 use chrono::Utc;
 use iceberg_ext::catalog::rest::ErrorModel;
-use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Debug, PartialEq)]

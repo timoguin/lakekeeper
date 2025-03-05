@@ -26,12 +26,11 @@ use super::{
     },
     CatalogState, PostgresTransaction,
 };
-use crate::api::management::v1::project::RangeSpecifier;
 use crate::{
     api::{
         iceberg::v1::{PaginatedMapping, PaginationQuery},
         management::v1::{
-            project::{EndpointStatisticsResponse, WarehouseFilter},
+            project::{EndpointStatisticsResponse, RangeSpecifier, WarehouseFilter},
             role::{ListRolesResponse, Role, SearchRoleResponse},
             user::{ListUsersResponse, SearchUserResponse, UserLastUpdatedWith, UserType},
             warehouse::{TabularDeleteProfile, WarehouseStatisticsResponse},

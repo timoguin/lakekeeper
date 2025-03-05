@@ -267,8 +267,8 @@ pub struct EndpointStatistic {
     pub count: i64,
     pub http_route: String,
     pub status_code: u16,
-    pub warehouse_id: Uuid,
-    pub warehouse_name: String,
+    pub warehouse_id: Option<Uuid>,
+    pub warehouse_name: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -282,6 +282,7 @@ pub struct EndpointStatisticsResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "kebab-case", tag = "type")]
 pub enum RangeSpecifier {
     Range {
         end_of_range: chrono::DateTime<chrono::Utc>,

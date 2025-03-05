@@ -311,9 +311,10 @@ impl Endpoints {
 
 #[cfg(test)]
 mod test {
-    use crate::api::endpoints::Endpoints;
     use itertools::Itertools;
     use strum::IntoEnumIterator;
+
+    use crate::api::endpoints::Endpoints;
 
     #[test]
     fn test_can_get_all_paths() {

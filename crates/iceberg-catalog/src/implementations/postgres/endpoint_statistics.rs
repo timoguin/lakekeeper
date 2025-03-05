@@ -1,21 +1,25 @@
-use crate::api::management::v1::project::RangeSpecifier;
-use crate::implementations::postgres::pagination::{
-    PaginateToken, RoundTrippableDuration, V1PaginateToken,
-};
-use crate::{
-    api::{
-        endpoints::Endpoints,
-        management::v1::project::{EndpointStatistic, EndpointStatisticsResponse, WarehouseFilter},
-    },
-    implementations::postgres::dbutils::DBErrorHandler,
-    service::endpoint_statistics::{EndpointIdentifier, EndpointStatisticsSink},
-    ProjectId,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
 use chrono::Utc;
 use iceberg_ext::catalog::rest::ErrorModel;
 use itertools::{izip, Itertools};
 use sqlx::PgPool;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use uuid::Uuid;
+
+use crate::{
+    api::{
+        endpoints::Endpoints,
+        management::v1::project::{
+            EndpointStatistic, EndpointStatisticsResponse, RangeSpecifier, WarehouseFilter,
+        },
+    },
+    implementations::postgres::{
+        dbutils::DBErrorHandler,
+        pagination::{PaginateToken, RoundTrippableDuration, V1PaginateToken},
+    },
+    service::endpoint_statistics::{EndpointIdentifier, EndpointStatisticsSink},
+    ProjectId,
+};
 
 #[derive(Debug)]
 pub struct PostgresStatisticsSink {
@@ -203,16 +207,16 @@ pub(crate) async fn list_statistics(
                array_agg(matched_path) as "matched_path!: Vec<Endpoints>",
                array_agg(status_code) as "status_code!",
                array_agg(count) as "count!",
-               array_agg(es.warehouse_id) as "warehouse_id!",
-               array_agg(warehouse_name) as "warehouse_name!",
+               array_agg(es.warehouse_id) as "warehouse_id!: Vec<Option<Uuid>>",
+               array_agg(warehouse_name) as "warehouse_name!: Vec<Option<String>>",
                array_agg(es.created_at) as "created_at!",
                array_agg(es.updated_at) as "updated_at!: Vec<Option<chrono::DateTime<Utc>>>"
         FROM endpoint_statistics es
-        JOIN warehouse w ON es.warehouse_id = w.warehouse_id
+        LEFT JOIN warehouse w ON es.warehouse_id = w.warehouse_id
         WHERE es.project_id = $1
             AND (es.warehouse_id = $2 OR $3)
             AND (status_code = ANY($4) OR $4 IS NULL)
-            AND timestamp >= $5
+            AND timestamp > $5
             AND timestamp <= $6
         group by timestamp
         order by timestamp desc
