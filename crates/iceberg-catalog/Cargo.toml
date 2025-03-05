@@ -115,3 +115,8 @@ serde_urlencoded = "0.7.1"
 similar = { workspace = true }
 tower = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+[build-dependencies]
+openssl-src = { version = "300.4.2+3.4.1", features = [
+    "force-engine",
+], default-features = true }

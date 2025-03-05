@@ -1,7 +1,7 @@
-FROM alpine:3.16
+FROM alpine:3.21
 
-RUN apk update
-RUN apk add --no-cache ca-certificates gcc build-base curl perl nodejs npm git bash cmake pkgconf cyrus-sasl-dev python3
+RUN apk update && apk upgrade
+RUN apk add --no-cache ca-certificates gcc build-base curl perl nodejs npm git bash cmake pkgconf cyrus-sasl-dev python3 linux-headers
 
 ENV RUSTUP_HOME=/usr/local/rustup \
   CARGO_HOME=/usr/local/cargo \
@@ -27,3 +27,6 @@ RUN set -eux; \
   rustc --version;
 
 
+WORKDIR /build
+ENV SQLX_OFFLINE=true
+ENV RUST_BACKTRACE=full
