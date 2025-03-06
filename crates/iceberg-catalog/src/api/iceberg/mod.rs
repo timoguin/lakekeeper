@@ -207,7 +207,7 @@ pub mod v1 {
 static SUPPORTED_ENDPOINTS: LazyLock<Vec<String>> = LazyLock::new(|| {
     crate::api::endpoints::Endpoints::catalog()
         .iter()
-        .map(|s| ToString::to_string(s).replace(" /catalog/", " /"))
+        .map(|s| s.as_http_route().replace(" /catalog/", " /"))
         .collect()
 });
 

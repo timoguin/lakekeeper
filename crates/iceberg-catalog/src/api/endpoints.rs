@@ -107,11 +107,11 @@ impl Endpoints {
     }
 
     pub fn is_catalog(self) -> bool {
-        self.to_string().starts_with("Catalog")
+        self.to_string().starts_with("catalog")
     }
 
     pub fn is_management(self) -> bool {
-        self.to_string().starts_with("Management")
+        self.to_string().starts_with("management")
     }
 
     pub fn is_real_endpoint(self) -> bool {
@@ -315,6 +315,11 @@ mod test {
     use strum::IntoEnumIterator;
 
     use crate::api::endpoints::Endpoints;
+
+    #[test]
+    fn test_catalog_is_not_empty() {
+        assert!(!Endpoints::catalog().is_empty());
+    }
 
     #[test]
     fn test_can_get_all_paths() {
