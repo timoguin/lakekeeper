@@ -4,7 +4,7 @@ pub(crate) mod dbutils;
 mod endpoint_statistics;
 pub mod migrations;
 pub(crate) mod namespace;
-mod pagination;
+pub(crate) mod pagination;
 pub(crate) mod role;
 pub(crate) mod secrets;
 pub mod tabular;

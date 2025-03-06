@@ -277,8 +277,8 @@ pub struct EndpointStatistic {
 pub struct EndpointStatisticsResponse {
     pub timestamps: Vec<chrono::DateTime<chrono::Utc>>,
     pub stats: Vec<Vec<EndpointStatistic>>,
-    pub previous_page_token: Option<String>,
-    pub next_page_token: Option<String>,
+    pub previous_page_token: String,
+    pub next_page_token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

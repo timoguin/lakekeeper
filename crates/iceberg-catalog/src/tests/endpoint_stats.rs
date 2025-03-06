@@ -8,8 +8,10 @@ use crate::{
     api::{management::v1::warehouse::TabularDeleteProfile, ApiContext},
     implementations::postgres::{PostgresCatalog, PostgresStatisticsSink, SecretsState},
     service::{
-        authz::AllowAllAuthorizer, endpoint_statistics::EndpointStatisticsTracker,
-        task_queue::TaskQueueConfig, EndpointStatisticsTrackerTx, State, UserId,
+        authz::AllowAllAuthorizer,
+        endpoint_statistics::{EndpointStatisticsTracker, FlushMode},
+        task_queue::TaskQueueConfig,
+        EndpointStatisticsTrackerTx, State, UserId,
     },
     tests::TestWarehouseResponse,
 };
@@ -31,19 +33,27 @@ mod test {
         api::{
             endpoints::Endpoints,
             management::v1::{
-                project::{GetEndpointStatisticsRequest, Service, WarehouseFilter},
+                project::{GetEndpointStatisticsRequest, RangeSpecifier, Service, WarehouseFilter},
                 ApiServer,
             },
         },
+        implementations::postgres::{
+            pagination,
+            pagination::{PaginateToken, RoundTrippableDuration},
+        },
         request_metadata::RequestMetadata,
-        service::{endpoint_statistics::EndpointStatisticsMessage, Actor},
+        service::{
+            endpoint_statistics::{EndpointStatisticsMessage, FlushMode},
+            Actor,
+        },
+        tests::endpoint_stats::StatsSetup,
         DEFAULT_PROJECT_ID,
     };
 
     #[sqlx::test]
     async fn test_stats_task_produces_correct_values(pool: PgPool) {
-        let setup = super::setup_stats_test(pool).await;
-        // tokio::time::pause();
+        let setup = super::setup_stats_test(pool, FlushMode::Automatic).await;
+
         // send each endpoint once
         for ep in Endpoints::iter() {
             let (method, path) = ep.as_http_route().split_once(' ').unwrap();
@@ -70,8 +80,9 @@ mod test {
                 .await
                 .unwrap();
         }
-        // tokio::time::advance(Duration::from_secs(2)).await;
-        tokio::time::sleep(Duration::from_millis(2100)).await;
+
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+
         let stats = ApiServer::get_endpoint_statistics(
             setup.ctx.clone(),
             GetEndpointStatisticsRequest {
@@ -111,6 +122,129 @@ mod test {
             .unwrap();
         setup.tracker_handle.await.unwrap();
     }
+
+    #[sqlx::test]
+    async fn test_endpoint_stats_pagination(pool: PgPool) {
+        let setup = super::setup_stats_test(pool, FlushMode::Manual).await;
+
+        send_all_endpoints(&setup).await;
+
+        setup
+            .tx
+            .send(EndpointStatisticsMessage::Flush)
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(950)).await;
+        let stats = ApiServer::get_endpoint_statistics(
+            setup.ctx.clone(),
+            GetEndpointStatisticsRequest {
+                warehouse: WarehouseFilter::All,
+                status_codes: None,
+                range_specifier: Some(RangeSpecifier::Range {
+                    end_of_range: chrono::Utc::now(),
+                    interval: chrono::Duration::seconds(1),
+                }),
+            },
+            RequestMetadata::new_unauthenticated(),
+        )
+        .await
+        .unwrap();
+
+        send_all_endpoints(&setup).await;
+
+        setup
+            .tx
+            .send(EndpointStatisticsMessage::Flush)
+            .await
+            .unwrap();
+
+        // give some time to process
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let t: PaginateToken<RoundTrippableDuration> =
+            pagination::PaginateToken::try_from(stats.next_page_token.as_str()).unwrap();
+        tracing::error!("{t:?} {t}");
+        let new_stats = ApiServer::get_endpoint_statistics(
+            setup.ctx.clone(),
+            GetEndpointStatisticsRequest {
+                warehouse: WarehouseFilter::All,
+                status_codes: None,
+                range_specifier: Some(RangeSpecifier::PageToken {
+                    token: stats.next_page_token,
+                }),
+            },
+            RequestMetadata::new_unauthenticated(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(new_stats.timestamps.len(), 1);
+        assert_eq!(new_stats.stats.len(), 1);
+        assert_eq!(new_stats.stats[0].len(), Endpoints::iter().count());
+        assert!(new_stats.timestamps[0] > stats.timestamps[0]);
+
+        for s in &new_stats.stats[0] {
+            assert_eq!(s.count, 1, "{s:?}");
+        }
+
+        let two_items = ApiServer::get_endpoint_statistics(
+            setup.ctx.clone(),
+            GetEndpointStatisticsRequest {
+                warehouse: WarehouseFilter::All,
+                status_codes: None,
+                range_specifier: Some(RangeSpecifier::Range {
+                    end_of_range: new_stats.timestamps[0],
+                    interval: chrono::Duration::seconds(2),
+                }),
+            },
+            RequestMetadata::new_unauthenticated(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(two_items.timestamps.len(), 2);
+        assert_eq!(two_items.stats.len(), 2);
+        assert_eq!(two_items.stats[0].len(), Endpoints::iter().count());
+        assert_eq!(two_items.stats[1].len(), Endpoints::iter().count());
+        assert!(two_items.timestamps[0] > two_items.timestamps[1]);
+
+        setup
+            .tx
+            .send(EndpointStatisticsMessage::Shutdown)
+            .await
+            .unwrap();
+        setup.tracker_handle.await.unwrap();
+    }
+
+    async fn send_all_endpoints(setup: &StatsSetup) {
+        // send each endpoint once
+        for ep in Endpoints::iter() {
+            let (method, path) = ep.as_http_route().split_once(' ').unwrap();
+            let method = Method::from_str(method).unwrap();
+            let request_metadata = RequestMetadata::new_test(
+                None,
+                None,
+                Actor::Anonymous,
+                *DEFAULT_PROJECT_ID,
+                Some(Arc::from(path)),
+                method,
+            );
+
+            setup
+                .tx
+                .send(EndpointStatisticsMessage::EndpointCalled {
+                    request_metadata,
+                    response_status: http::StatusCode::OK,
+                    path_params: hashmap! {
+                        "warehouse_id".to_string() => setup.warehouse.warehouse_id.to_string(),
+                    },
+                    query_params: HashMap::default(),
+                })
+                .await
+                .unwrap();
+        }
+    }
 }
 
 // TODO: test with multiple warehouses and projects
@@ -136,7 +270,7 @@ async fn configure_trigger(pool: &PgPool) {
     .unwrap();
 }
 
-async fn setup_stats_test(pool: PgPool) -> StatsSetup {
+async fn setup_stats_test(pool: PgPool, flush_mode: FlushMode) -> StatsSetup {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
@@ -169,6 +303,7 @@ async fn setup_stats_test(pool: PgPool) -> StatsSetup {
         rx,
         vec![Arc::new(PostgresStatisticsSink::new(pool.clone()))],
         Duration::from_secs(1),
+        flush_mode,
     );
     let tracker_handle = tokio::task::spawn(tracker.run());
 

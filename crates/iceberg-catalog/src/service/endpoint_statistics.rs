@@ -85,6 +85,7 @@ pub enum EndpointStatisticsMessage {
         path_params: HashMap<String, String>,
         query_params: HashMap<String, String>,
     },
+    Flush,
     Shutdown,
 }
 
@@ -112,12 +113,19 @@ pub struct EndpointIdentifier {
     pub warehouse_name: Option<String>,
 }
 
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum FlushMode {
+    Automatic,
+    Manual,
+}
+
 #[derive(Debug)]
 pub struct EndpointStatisticsTracker {
     rcv: tokio::sync::mpsc::Receiver<EndpointStatisticsMessage>,
     endpoint_statistics: HashMap<ProjectId, ProjectStatistics>,
     statistic_sinks: Vec<Arc<dyn EndpointStatisticsSink>>,
     flush_interval: Duration,
+    flush_mode: FlushMode,
 }
 
 impl EndpointStatisticsTracker {
@@ -126,19 +134,23 @@ impl EndpointStatisticsTracker {
         rcv: tokio::sync::mpsc::Receiver<EndpointStatisticsMessage>,
         stat_sinks: Vec<Arc<dyn EndpointStatisticsSink>>,
         flush_interval: Duration,
+        flush_mode: FlushMode,
     ) -> Self {
         Self {
             rcv,
             endpoint_statistics: HashMap::new(),
             statistic_sinks: stat_sinks,
             flush_interval,
+            flush_mode,
         }
     }
 
     pub async fn run(mut self) {
         let mut last_update = tokio::time::Instant::now();
         loop {
-            if last_update.elapsed() > self.flush_interval {
+            if !matches!(self.flush_mode, FlushMode::Manual)
+                && last_update.elapsed() > self.flush_interval
+            {
                 tracing::debug!(
                     "Flushing stats after: {}ms",
                     last_update.elapsed().as_millis()
@@ -147,9 +159,15 @@ impl EndpointStatisticsTracker {
                 last_update = tokio::time::Instant::now();
             }
 
-            let Ok(msg) = tokio::time::timeout(self.flush_interval, self.rcv.recv()).await else {
-                tracing::debug!("No message received, continuing.");
-                continue;
+            let msg = if matches!(self.flush_mode, FlushMode::Automatic) {
+                let Ok(msg) = tokio::time::timeout(self.flush_interval, self.rcv.recv()).await
+                else {
+                    tracing::debug!("No message received, continuing.");
+                    continue;
+                };
+                msg
+            } else {
+                self.rcv.recv().await
             };
 
             let Some(msg) = msg else {
@@ -157,8 +175,6 @@ impl EndpointStatisticsTracker {
                 self.close().await;
                 break;
             };
-
-            tracing::debug!("Received message: {:?}", msg);
 
             match msg {
                 EndpointStatisticsMessage::EndpointCalled {
@@ -170,7 +186,7 @@ impl EndpointStatisticsTracker {
                     let warehouse = Self::maybe_get_warehouse_ident(&path_params);
 
                     let Some(matched_path) = request_metadata.matched_path() else {
-                        tracing::error!("No path matched.");
+                        tracing::trace!("No path matched.");
                         continue;
                     };
 
@@ -179,7 +195,7 @@ impl EndpointStatisticsTracker {
                         matched_path,
                     ) else {
                         tracing::error!(
-                            "Could not parse endpoint from matched path: '{matched_path}'.",
+                            "Could not parse endpoint from matched path: '{matched_path}'. This is likely a bug which will affect the statistics collection.",
                         );
                         continue;
                     };
@@ -209,6 +225,10 @@ impl EndpointStatisticsTracker {
                     );
                     self.close().await;
                     break;
+                }
+                EndpointStatisticsMessage::Flush => {
+                    tracing::info!("Received flush message, flushing sinks.");
+                    self.flush_storage().await;
                 }
             }
         }

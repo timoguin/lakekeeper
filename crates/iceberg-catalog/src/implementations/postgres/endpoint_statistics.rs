@@ -41,91 +41,100 @@ impl PostgresStatisticsSink {
             e.into_error_model("failed to start transaction")
         })?;
 
+        let (projects, warehouse_idents): (Vec<Uuid>, Vec<_>) = stats
+            .iter()
+            .flat_map(|(p, e)| {
+                e.keys().filter_map(|epi| {
+                    epi.warehouse_name
+                        .as_ref()
+                        .map(|warehouse| (**p, warehouse.to_string()))
+                })
+            })
+            .unique()
+            .unzip();
+
+        let warehouse_ids = sqlx::query!(
+            r#"SELECT project_id, warehouse_name, warehouse_id
+               FROM warehouse
+               WHERE (project_id, warehouse_name) IN (
+                   SELECT unnest($1::uuid[]), unnest($2::text[])
+               )"#,
+            &projects,
+            &warehouse_idents
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch warehouse ids: {e}, lost stats: {stats:?}");
+            e.into_error_model("failed to fetch warehouse ids")
+        })?
+        .into_iter()
+        .map(|w| ((w.project_id, w.warehouse_name), w.warehouse_id))
+        .collect::<HashMap<_, _>>();
+        let n_eps = stats.iter().map(|(_, eps)| eps.len()).sum::<usize>();
+        let mut uris = Vec::with_capacity(n_eps);
+        let mut status_codes = Vec::with_capacity(n_eps);
+        let mut warehouses = Vec::with_capacity(n_eps);
+        let mut counts = Vec::with_capacity(n_eps);
+        let mut projects = Vec::with_capacity(n_eps);
         for (project, endpoints) in stats.iter() {
+            for (
+                EndpointIdentifier {
+                    uri,
+                    status_code,
+                    warehouse,
+                    warehouse_name,
+                },
+                count,
+            ) in endpoints
+            {
+                projects.push(**project);
+                uris.push(*uri);
+                status_codes.push(i32::from(status_code.as_u16()));
+                let warehouse = warehouse
+                    .as_deref()
+                    .or_else(|| {
+                        warehouse_name
+                            .as_deref()
+                            .and_then(|wn| warehouse_ids.get(&(**project, wn.to_string())))
+                    })
+                    .copied();
+                warehouses.push(warehouse);
+                counts.push(*count);
+            }
+
             tracing::info!("Consuming stats for project: {project:?}, counts: {endpoints:?}",);
-            let (uris, status_codes, warehouses, warehouse_names, counts): (
-                Vec<Endpoints>,
-                Vec<i32>,
-                Vec<_>,
-                Vec<_>,
-                Vec<_>,
-            ) = endpoints
-                .iter()
-                .map(
-                    |(
-                        EndpointIdentifier {
+        }
+
+        // TODO: when to start batching the inserts?
+        sqlx::query!(r#"INSERT INTO endpoint_statistics (project_id, warehouse_id, matched_path, status_code, count, timestamp)
+                        SELECT
+                            project_id,
+                            warehouse,
                             uri,
                             status_code,
-                            warehouse,
-                            warehouse_name,
-                        },
-                        count,
-                    )| {
-                        (
-                            uri,
-                            i32::from(status_code.as_u16()),
-                            *warehouse,
-                            warehouse_name,
-                            count,
-                        )
-                    },
-                )
-                .multiunzip::<_>();
-            let whn = warehouse_names
-                .iter()
-                .filter_map(|w| w.as_deref().map(ToString::to_string))
-                .collect::<Vec<_>>();
-            let warehouse_ids = sqlx::query!(
-                r#"select warehouse_name, warehouse_id from warehouse where warehouse_name = any($1)"#,
-                &whn
-            ).fetch_all(&mut *conn).await.map_err(|e| {
-                tracing::error!("Failed to fetch warehouse ids: {e}, lost stats: {stats:?}");
-                e.into_error_model("failed to fetch warehouse ids")
-            })?.into_iter().map(|w| (w.warehouse_name, w.warehouse_id)).collect::<HashMap<_, _>>();
-
-            let warehouses = warehouses
-                .into_iter()
-                .zip(warehouse_names.iter())
-                .map(|(w, wn)| {
-                    let mut w = w.map(|w| *w);
-                    if w.is_none() && wn.is_some() {
-                        let wn = wn.as_ref().unwrap();
-                        if let Some(warehouse_id) = warehouse_ids.get(wn) {
-                            w.replace(*warehouse_id);
-                        }
-                    }
-                    w
-                })
-                .collect::<Vec<_>>();
-
-            sqlx::query!(
-                        r#"INSERT INTO endpoint_statistics (project_id, warehouse_id, matched_path, status_code, count, timestamp)
+                            cnt,
+                            get_stats_date_default()
+                        FROM (
                             SELECT
-                                $1,
-                                warehouse,
-                                uri,
-                                status_code,
-                                cnt,
-                                get_stats_date_default()
-                            FROM (
-                                SELECT
-                                    unnest($2::UUID[]) as warehouse,
-                                    unnest($3::api_endpoints[]) as uri,
-                                    unnest($4::INT[]) as status_code,
-                                    unnest($5::BIGINT[]) as cnt
-                            ) t
-                            ON CONFLICT (project_id, warehouse_id, matched_path, status_code, timestamp)
-                                DO UPDATE SET count = endpoint_statistics.count + EXCLUDED.count"#,
-                **project,
+                                unnest($1::UUID[]) as project_id,
+                                unnest($2::UUID[]) as warehouse,
+                                unnest($3::api_endpoints[]) as uri,
+                                unnest($4::INT[]) as status_code,
+                                unnest($5::BIGINT[]) as cnt
+                        ) t
+                        ON CONFLICT (project_id, warehouse_id, matched_path, status_code, timestamp)
+                            DO UPDATE SET count = endpoint_statistics.count + EXCLUDED.count"#,
+                projects.as_slice(),
                 warehouses.as_slice() as _,
                 &uris as _,
                 &status_codes,
                 &counts
             ).execute(&mut *conn).await.map_err(|e| {
-                tracing::error!("Failed to insert stats: {e}, lost stats: {stats:?}");
-                e.into_error_model("failed to insert stats")
-            })?;
-        }
+            tracing::error!("Failed to insert stats: {e}, lost stats: {stats:?}");
+            e.into_error_model("failed to insert stats")
+        })?;
+
         conn.commit().await.map_err(|e| {
             tracing::error!("Failed to commit: {e}");
             e.into_error_model("failed to commit")
@@ -276,31 +285,19 @@ pub(crate) async fn list_statistics(
         })
         .unzip();
 
-    let previous_page_token = Some(
-        PaginateToken::V1(V1PaginateToken {
+    Ok(EndpointStatisticsResponse {
+        timestamps,
+        stats,
+        previous_page_token: PaginateToken::V1(V1PaginateToken {
             created_at: start,
             id: interval,
         })
         .to_string(),
-    );
-
-    let next_page_token = if timestamps.is_empty() {
-        None
-    } else {
-        Some(
-            PaginateToken::V1(V1PaginateToken {
-                created_at: end + interval,
-                id: interval,
-            })
-            .to_string(),
-        )
-    };
-
-    Ok(EndpointStatisticsResponse {
-        timestamps,
-        stats,
-        previous_page_token,
-        next_page_token,
+        next_page_token: PaginateToken::V1(V1PaginateToken {
+            created_at: end + interval,
+            id: interval,
+        })
+        .to_string(),
     })
 }
 

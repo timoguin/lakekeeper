@@ -18,7 +18,7 @@ use iceberg_catalog::{
             Authorizer,
         },
         contract_verification::ContractVerifiers,
-        endpoint_statistics::{EndpointStatisticsMessage, EndpointStatisticsTracker},
+        endpoint_statistics::{EndpointStatisticsMessage, EndpointStatisticsTracker, FlushMode},
         event_publisher::{
             CloudEventBackend, CloudEventsMessage, CloudEventsPublisher,
             CloudEventsPublisherBackgroundTask, NatsBackend, TracingPublisher,
@@ -318,6 +318,7 @@ async fn serve_inner<A: Authorizer, N: Authenticator + 'static>(
             catalog_state.write_pool(),
         ))],
         CONFIG.endpoint_stat_flush_interval,
+        FlushMode::Automatic,
     );
 
     let endpoint_statistics_tracker_tx = EndpointStatisticsTrackerTx::new(endpoint_statistics_tx);
