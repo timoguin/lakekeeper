@@ -1,3 +1,5 @@
+#![allow(clippy::ref_option)] // For lazy static
+
 use std::{collections::HashSet, fmt::Debug, str::FromStr, sync::Arc};
 
 use axum::Router;
@@ -72,7 +74,7 @@ lazy_static::lazy_static! {
     };
     static ref CONFIGURED_MODEL_VERSION: Option<AuthorizationModelVersion> = {
         AUTH_CONFIG.authorization_model_version.as_ref().filter(|v| !v.is_empty()).map(|v| {
-            AuthorizationModelVersion::from_str(&v).expect(&format!("Failed to parse OpenFGA authorization model version from config. Got {v}, expected <major>.<minor>"))
+            AuthorizationModelVersion::from_str(v).unwrap_or_else(|_| panic!("Failed to parse OpenFGA authorization model version from config. Got {v}, expected <major>.<minor>"))
         })
     };
     pub(crate) static ref OPENFGA_SERVER: String = {

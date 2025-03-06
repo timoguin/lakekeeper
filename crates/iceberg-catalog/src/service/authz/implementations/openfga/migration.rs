@@ -53,7 +53,7 @@ pub(super) async fn get_active_auth_model_id(
             tracing::error!(
                 "Failed to get active OpenFGA Authorization Model ID for Version {model_version}: {:?}",
                 e
-            )
+            );
         })?
         .ok_or(OpenFGAError::ActiveAuthModelNotFound(
             ACTIVE_MODEL_VERSION.to_string(),
