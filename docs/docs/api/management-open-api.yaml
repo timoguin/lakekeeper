@@ -5,7 +5,7 @@ info:
   license:
     name: Apache-2.0
     identifier: Apache-2.0
-  version: 0.6.2
+  version: 0.7.3
 servers:
 - url: '{scheme}://{host}/{basePath}'
   description: Lakekeeper Management API
@@ -98,6 +98,31 @@ paths:
       responses:
         '200':
           description: Project renamed successfully
+        4XX:
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IcebergErrorResponse'
+  /management/v1/endpoint-statistics:
+    get:
+      tags:
+      - project
+      summary: Get endpoint statistics
+      operationId: get_endpoint_statistics
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetEndpointStatisticsRequest'
+        required: true
+      responses:
+        '200':
+          description: Endpoint statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointStatisticsResponse'
         4XX:
           description: ''
           content:
@@ -2110,6 +2135,63 @@ components:
           type: string
           format: uuid
           description: Warehouse ID where the tabular is stored
+    EndpointStatistic:
+      type: object
+      required:
+      - count
+      - http_route
+      - status_code
+      - created_at
+      properties:
+        count:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        http_route:
+          type: string
+        status_code:
+          type: integer
+          format: int32
+          minimum: 0
+        updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        warehouse_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        warehouse_name:
+          type:
+          - string
+          - 'null'
+    EndpointStatisticsResponse:
+      type: object
+      required:
+      - timestamps
+      - stats
+      - previous_page_token
+      - next_page_token
+      properties:
+        next_page_token:
+          type: string
+        previous_page_token:
+          type: string
+        stats:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/EndpointStatistic'
+        timestamps:
+          type: array
+          items:
+            type: string
+            format: date-time
     ErrorModel:
       type: object
       description: JSON error payload returned in a response with further details on the error
@@ -2223,6 +2305,25 @@ components:
           type: string
         universe_domain:
           type: string
+    GetEndpointStatisticsRequest:
+      type: object
+      required:
+      - warehouse
+      properties:
+        range_specifier:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/RangeSpecifier'
+        status_codes:
+          type:
+          - array
+          - 'null'
+          items:
+            type: integer
+            format: int32
+            minimum: 0
+        warehouse:
+          $ref: '#/components/schemas/WarehouseFilter'
     GetNamespaceAccessResponse:
       type: object
       required:
@@ -2729,6 +2830,34 @@ components:
       - select
       - create
       - modify
+    RangeSpecifier:
+      oneOf:
+      - type: object
+        required:
+        - end_of_range
+        - interval
+        - type
+        properties:
+          end_of_range:
+            type: string
+            format: date-time
+          interval:
+            type: string
+          type:
+            type: string
+            enum:
+            - range
+      - type: object
+        required:
+        - token
+        - type
+        properties:
+          token:
+            type: string
+          type:
+            type: string
+            enum:
+            - page-token
     RenameProjectRequest:
       type: object
       required:
@@ -3820,6 +3949,36 @@ components:
               enum:
               - modify
         title: WarehouseAssignmentModify
+    WarehouseFilter:
+      oneOf:
+      - type: object
+        required:
+        - id
+        - type
+        properties:
+          id:
+            type: string
+            format: uuid
+          type:
+            type: string
+            enum:
+            - ident
+      - type: object
+        required:
+        - type
+        properties:
+          type:
+            type: string
+            enum:
+            - unmapped
+      - type: object
+        required:
+        - type
+        properties:
+          type:
+            type: string
+            enum:
+            - all
     WarehouseRelation:
       type: string
       enum:

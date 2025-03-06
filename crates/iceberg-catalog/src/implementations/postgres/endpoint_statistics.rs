@@ -206,7 +206,7 @@ pub(crate) async fn list_statistics(
 
     let get_all = matches!(warehouse_filter, WarehouseFilter::All);
     let warehouse_filter = match warehouse_filter {
-        WarehouseFilter::Ident(ident) => Some(ident),
+        WarehouseFilter::Ident { id } => Some(id),
         _ => None,
     };
     let status_codes = status_codes.map(|s| s.iter().map(|i| i32::from(*i)).collect_vec());

@@ -300,11 +300,24 @@ pub struct GetEndpointStatisticsRequest {
     pub range_specifier: Option<RangeSpecifier>,
 }
 
-#[derive(Deserialize, ToSchema, Debug)]
+#[derive(Deserialize, Serialize, ToSchema, Debug)]
+#[serde(rename_all = "kebab-case", tag = "type")]
 pub enum WarehouseFilter {
-    Ident(Uuid),
+    Ident { id: Uuid },
     Unmapped,
     All,
+}
+
+#[test]
+fn test_deser() {
+    let js = serde_json::json!({"type": "ident","id": Uuid::new_v4().to_string()});
+    let _ = serde_json::from_value::<WarehouseFilter>(js).unwrap();
+
+    let js = serde_json::json!({"type": "unmapped"});
+    let _ = serde_json::from_value::<WarehouseFilter>(js).unwrap();
+
+    let js = serde_json::json!({"type": "all"});
+    let _ = serde_json::from_value::<WarehouseFilter>(js).unwrap();
 }
 
 impl axum::response::IntoResponse for ListProjectsResponse {
