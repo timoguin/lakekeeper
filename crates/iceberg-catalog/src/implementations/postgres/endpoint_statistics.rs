@@ -32,12 +32,13 @@ impl PostgresStatisticsSink {
         Self { pool }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn process_stats(
         &self,
         stats: Arc<HashMap<ProjectId, HashMap<EndpointIdentifier, i64>>>,
     ) -> crate::api::Result<()> {
         let mut conn = self.pool.begin().await.map_err(|e| {
-            tracing::error!("Failed to start transaction: {e}, lost stats: {stats:?}");
+            tracing::error!("Failed to start transaction: {e}");
             e.into_error_model("failed to start transaction")
         })?;
 
@@ -65,19 +66,26 @@ impl PostgresStatisticsSink {
         .fetch_all(&mut *conn)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to fetch warehouse ids: {e}, lost stats: {stats:?}");
+            tracing::error!("Failed to fetch warehouse ids: {e}");
             e.into_error_model("failed to fetch warehouse ids")
         })?
         .into_iter()
         .map(|w| ((w.project_id, w.warehouse_name), w.warehouse_id))
         .collect::<HashMap<_, _>>();
         let n_eps = stats.iter().map(|(_, eps)| eps.len()).sum::<usize>();
+
+        tracing::debug!(
+            "Preparing to insert {n_eps} endpoint statistic datapoints across {} projects",
+            stats.len()
+        );
+
         let mut uris = Vec::with_capacity(n_eps);
         let mut status_codes = Vec::with_capacity(n_eps);
         let mut warehouses = Vec::with_capacity(n_eps);
         let mut counts = Vec::with_capacity(n_eps);
         let mut projects = Vec::with_capacity(n_eps);
         for (project, endpoints) in stats.iter() {
+            tracing::trace!("Processing stats for project: {project}");
             for (
                 EndpointIdentifier {
                     uri,
@@ -102,9 +110,9 @@ impl PostgresStatisticsSink {
                 warehouses.push(warehouse);
                 counts.push(*count);
             }
-
-            tracing::info!("Consuming stats for project: {project:?}, counts: {endpoints:?}",);
         }
+
+        tracing::debug!("Inserting stats batch");
 
         // TODO: when to start batching the inserts?
         sqlx::query!(r#"INSERT INTO endpoint_statistics (project_id, warehouse_id, matched_path, status_code, count, timestamp)
@@ -166,7 +174,10 @@ impl EndpointStatisticsSink for PostgresStatisticsSink {
             tracing::debug!("Successfully consumed stats");
         })
         .inspect_err(|e| {
-            tracing::error!("Failed to consume stats: {:?}", e.error);
+            tracing::error!(
+                "Failed to consume stats: {:?}, lost stats: {stats:?}",
+                e.error
+            );
         })
     }
 
