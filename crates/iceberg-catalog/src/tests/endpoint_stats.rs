@@ -67,14 +67,14 @@ mod test {
         .await
         .unwrap();
         assert_eq!(stats.timestamps.len(), 1);
-        assert_eq!(stats.stats.len(), 1);
-        assert_eq!(stats.stats[0].len(), Endpoints::iter().count());
+        assert_eq!(stats.called_endpoints.len(), 1);
+        assert_eq!(stats.called_endpoints[0].len(), Endpoints::iter().count());
 
-        for s in &stats.stats[0] {
+        for s in &stats.called_endpoints[0] {
             assert_eq!(s.count, 1, "{s:?}");
         }
 
-        let all = stats.stats[0]
+        let all = stats.called_endpoints[0]
             .iter()
             .map(|s| s.http_route.clone())
             .collect::<HashSet<_>>();
@@ -371,7 +371,7 @@ mod test {
         .unwrap();
 
         // Check that we only have 404 status codes in the results
-        for stat_group in &status_filtered.stats {
+        for stat_group in &status_filtered.called_endpoints {
             for stat in stat_group {
                 assert_eq!(stat.status_code, 404);
             }
@@ -396,7 +396,7 @@ mod test {
         .unwrap();
 
         // Check warehouse filtering
-        for stat_group in &warehouse_filtered.stats {
+        for stat_group in &warehouse_filtered.called_endpoints {
             for stat in stat_group {
                 assert_eq!(stat.warehouse_id, Some(*setup.warehouse.warehouse_id));
             }

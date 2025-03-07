@@ -297,7 +297,8 @@ pub struct EndpointStatistic {
 
 #[derive(Deserialize, Serialize, Debug, ToSchema)]
 pub struct EndpointStatisticsResponse {
-    /// Array of timestamps indicating the time at which each entry in the `stats` array is valid.
+    /// Array of timestamps indicating the time at which each entry in the `called_endpoints` array
+    /// is valid.
     ///
     /// We lazily create a new statistics entry every hour, in between hours, the existing entry
     /// is being updated. If any endpoint is called in the following hour, there'll be an entry in
@@ -306,14 +307,14 @@ pub struct EndpointStatisticsResponse {
     /// Array of arrays of statistics detailing each called endpoint for each `timestamp`.
     ///
     /// See docs of `timestamps` for more details.
-    pub stats: Vec<Vec<EndpointStatistic>>,
+    pub called_endpoints: Vec<Vec<EndpointStatistic>>,
     /// Token to get the previous page of results.
     ///
     /// Endpoint statistics are not paginated through page-limits, we paginate them by stepping
     /// through time. By default, the list-statistics endpoint will return all statistics for
-    /// now() - 1 day to now(). In the request, you can specify a `range_specifier` to set the end
+    /// `now()` - 1 day to `now()`. In the request, you can specify a `range_specifier` to set the end
     /// date and step interval. The `previous_page_token` will then move to the neighboring window.
-    /// E.g. in the default case of now() and 1 day, it'd be now() - 2 days to now() - 1 day.
+    /// E.g. in the default case of `now()` and 1 day, it'd be `now()` - 2 days to `now()` - 1 day.
     pub previous_page_token: String,
     /// Token to get the next page of results.
     ///

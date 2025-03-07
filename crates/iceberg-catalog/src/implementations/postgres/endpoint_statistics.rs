@@ -256,7 +256,7 @@ pub(crate) async fn list_statistics(
         e.into_error_model("failed to list stats")
     })?;
 
-    let (timestamps, stats): (Vec<_>, Vec<_>) = row
+    let (timestamps, called_endpoints): (Vec<_>, Vec<_>) = row
         .into_iter()
         .map(|r| {
             let ts = r.timestamp;
@@ -299,7 +299,7 @@ pub(crate) async fn list_statistics(
 
     Ok(EndpointStatisticsResponse {
         timestamps,
-        stats,
+        called_endpoints,
         previous_page_token: PaginateToken::V1(V1PaginateToken {
             created_at: start,
             id: interval,
