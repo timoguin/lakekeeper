@@ -372,18 +372,6 @@ pub enum WarehouseFilter {
     All,
 }
 
-#[test]
-fn test_deser() {
-    let js = serde_json::json!({"type": "ident","id": Uuid::new_v4().to_string()});
-    let _ = serde_json::from_value::<WarehouseFilter>(js).unwrap();
-
-    let js = serde_json::json!({"type": "unmapped"});
-    let _ = serde_json::from_value::<WarehouseFilter>(js).unwrap();
-
-    let js = serde_json::json!({"type": "all"});
-    let _ = serde_json::from_value::<WarehouseFilter>(js).unwrap();
-}
-
 impl axum::response::IntoResponse for ListProjectsResponse {
     fn into_response(self) -> axum::http::Response<axum::body::Body> {
         axum::Json(self).into_response()
@@ -409,4 +397,22 @@ fn validate_project_name(project_name: &str) -> Result<()> {
         .into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use crate::api::management::v1::project::WarehouseFilter;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_deserialize_warehouse_filter() {
+        let js = serde_json::json!({"type": "ident","id": Uuid::new_v4().to_string()});
+        let _ = serde_json::from_value::<WarehouseFilter>(js).unwrap();
+
+        let js = serde_json::json!({"type": "unmapped"});
+        let _ = serde_json::from_value::<WarehouseFilter>(js).unwrap();
+
+        let js = serde_json::json!({"type": "all"});
+        let _ = serde_json::from_value::<WarehouseFilter>(js).unwrap();
+    }
 }
