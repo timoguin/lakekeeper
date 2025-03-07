@@ -70,6 +70,7 @@ create type api_endpoints as enum (
     'management-delete-permissions');
 
 
+
 create table endpoint_statistics
 (
     endpoint_statistics_id uuid primary key       default uuid_generate_v1mc(),
@@ -78,8 +79,7 @@ create table endpoint_statistics
     matched_path           api_endpoints not null,
     status_code            int           not null,
     count                  bigint        not null default 0,
-    -- we keep stats in hourly intervals, every hour we create a new row,
-    timestamp              timestamptz   not null default get_stats_date_default() + interval '1 hour',
+    timestamp              timestamptz   not null default get_stats_date_default(),
     unique nulls not distinct (project_id, warehouse_id, matched_path, status_code, timestamp)
 );
 

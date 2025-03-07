@@ -281,7 +281,7 @@ pub struct EndpointStatisticsResponse {
     pub next_page_token: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Clone)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum RangeSpecifier {
     Range {

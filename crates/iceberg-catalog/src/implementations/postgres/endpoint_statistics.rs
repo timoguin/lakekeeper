@@ -220,7 +220,8 @@ pub(crate) async fn list_statistics(
         start = start,
         end = end,
     );
-
+    // 2025-03-07 09:34:45+00
+    // 2025-03-07 09:34:46+00
     let row = sqlx::query!(
         r#"
         SELECT timestamp,
@@ -236,8 +237,8 @@ pub(crate) async fn list_statistics(
         WHERE es.project_id = $1
             AND (es.warehouse_id = $2 OR $3)
             AND (status_code = ANY($4) OR $4 IS NULL)
-            AND timestamp > $5
-            AND timestamp <= $6
+            AND timestamp >  (date_trunc(get_stats_interval_unit(), $5::timestamptz) + get_stats_interval())
+            AND timestamp <= (date_trunc(get_stats_interval_unit(), $6::timestamptz) + get_stats_interval())
         group by timestamp
         order by timestamp desc
         "#,

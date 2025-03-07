@@ -24,6 +24,7 @@ mod test {
         time::Duration,
     };
 
+    use chrono::{SubsecRound, Utc};
     use http::Method;
     use maplit::hashmap;
     use sqlx::PgPool;
@@ -36,10 +37,6 @@ mod test {
                 project::{GetEndpointStatisticsRequest, RangeSpecifier, Service, WarehouseFilter},
                 ApiServer,
             },
-        },
-        implementations::postgres::{
-            pagination,
-            pagination::{PaginateToken, RoundTrippableDuration},
         },
         request_metadata::RequestMetadata,
         service::{
@@ -55,33 +52,8 @@ mod test {
         let setup = super::setup_stats_test(pool, FlushMode::Automatic).await;
 
         // send each endpoint once
-        for ep in Endpoints::iter() {
-            let (method, path) = ep.as_http_route().split_once(' ').unwrap();
-            let method = Method::from_str(method).unwrap();
-            let request_metadata = RequestMetadata::new_test(
-                None,
-                None,
-                Actor::Anonymous,
-                *DEFAULT_PROJECT_ID,
-                Some(Arc::from(path)),
-                method,
-            );
-
-            setup
-                .tx
-                .send(EndpointStatisticsMessage::EndpointCalled {
-                    request_metadata,
-                    response_status: http::StatusCode::OK,
-                    path_params: hashmap! {
-                        "warehouse_id".to_string() => setup.warehouse.warehouse_id.to_string(),
-                    },
-                    query_params: HashMap::default(),
-                })
-                .await
-                .unwrap();
-        }
-
-        tokio::time::sleep(Duration::from_millis(1100)).await;
+        send_all_endpoints(&setup).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         let stats = ApiServer::get_endpoint_statistics(
             setup.ctx.clone(),
@@ -124,26 +96,42 @@ mod test {
     }
 
     #[sqlx::test]
-    async fn test_endpoint_stats_pagination(pool: PgPool) {
-        let setup = super::setup_stats_test(pool, FlushMode::Manual).await;
+    async fn test_pagination_endpoints_statistics(pool: sqlx::PgPool) {
+        let setup = super::setup_stats_test(pool, FlushMode::Automatic).await;
+        // sync to the nearest second
+        let now = Utc::now();
+        let tdiff = now - now.round_subsecs(0);
+        let sleep_duration = chrono::Duration::seconds(1) - tdiff;
+        tracing::info!(
+            "Sleeping for {} {tdiff} {now}",
+            sleep_duration.num_milliseconds()
+        );
+        tokio::time::sleep(Duration::from_millis(
+            sleep_duration.num_milliseconds().try_into().unwrap(),
+        ))
+        .await;
 
+        // Send endpoints data for first timestamp (oldest)
         send_all_endpoints(&setup).await;
+        tokio::time::sleep(Duration::from_millis(1025)).await;
 
-        setup
-            .tx
-            .send(EndpointStatisticsMessage::Flush)
-            .await
-            .unwrap();
+        // Send endpoints data for second timestamp
+        send_all_endpoints(&setup).await;
+        tokio::time::sleep(Duration::from_millis(1025)).await;
 
-        tokio::time::sleep(Duration::from_millis(950)).await;
-        let stats = ApiServer::get_endpoint_statistics(
+        // Send endpoints data for third timestamp (newest)
+        send_all_endpoints(&setup).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Get all statistics to use for reference
+        let all_stats = ApiServer::get_endpoint_statistics(
             setup.ctx.clone(),
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
                 range_specifier: Some(RangeSpecifier::Range {
-                    end_of_range: chrono::Utc::now(),
-                    interval: chrono::Duration::seconds(1),
+                    end_of_range: Utc::now(),
+                    interval: chrono::Duration::seconds(10),
                 }),
             },
             RequestMetadata::new_unauthenticated(),
@@ -151,27 +139,42 @@ mod test {
         .await
         .unwrap();
 
-        send_all_endpoints(&setup).await;
+        assert_eq!(
+            all_stats.timestamps.len(),
+            3,
+            "Should have 3 distinct timestamps"
+        );
 
-        setup
-            .tx
-            .send(EndpointStatisticsMessage::Flush)
-            .await
-            .unwrap();
+        // Test pagination with range - get first page (most recent item)
+        let page_1 = ApiServer::get_endpoint_statistics(
+            setup.ctx.clone(),
+            GetEndpointStatisticsRequest {
+                warehouse: WarehouseFilter::All,
+                status_codes: None,
+                range_specifier: Some(RangeSpecifier::Range {
+                    end_of_range: Utc::now(),
+                    interval: chrono::Duration::milliseconds(1000),
+                }),
+            },
+            RequestMetadata::new_unauthenticated(),
+        )
+        .await
+        .unwrap();
 
-        // give some time to process
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(page_1.timestamps.len(), 1, "First page should have 1 item");
+        assert_eq!(
+            page_1.timestamps[0], all_stats.timestamps[0],
+            "First page should have the newest timestamp"
+        );
 
-        let t: PaginateToken<RoundTrippableDuration> =
-            pagination::PaginateToken::try_from(stats.next_page_token.as_str()).unwrap();
-        tracing::error!("{t:?} {t}");
-        let new_stats = ApiServer::get_endpoint_statistics(
+        // Use the previous page token to get the second page
+        let page_2 = ApiServer::get_endpoint_statistics(
             setup.ctx.clone(),
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
                 range_specifier: Some(RangeSpecifier::PageToken {
-                    token: stats.next_page_token,
+                    token: page_1.previous_page_token.clone(),
                 }),
             },
             RequestMetadata::new_unauthenticated(),
@@ -179,23 +182,67 @@ mod test {
         .await
         .unwrap();
 
-        assert_eq!(new_stats.timestamps.len(), 1);
-        assert_eq!(new_stats.stats.len(), 1);
-        assert_eq!(new_stats.stats[0].len(), Endpoints::iter().count());
-        assert!(new_stats.timestamps[0] > stats.timestamps[0]);
+        assert_eq!(page_2.timestamps.len(), 1, "Second page should have 1 item");
+        assert_eq!(
+            page_2.timestamps[0], all_stats.timestamps[1],
+            "Second page should have the middle timestamp"
+        );
 
-        for s in &new_stats.stats[0] {
-            assert_eq!(s.count, 1, "{s:?}");
-        }
+        // Use the previous page token to get the third page
+        let page_3 = ApiServer::get_endpoint_statistics(
+            setup.ctx.clone(),
+            GetEndpointStatisticsRequest {
+                warehouse: WarehouseFilter::All,
+                status_codes: None,
+                range_specifier: Some(RangeSpecifier::PageToken {
+                    token: page_2.previous_page_token.clone(),
+                }),
+            },
+            RequestMetadata::new_unauthenticated(),
+        )
+        .await
+        .unwrap();
 
-        let two_items = ApiServer::get_endpoint_statistics(
+        assert_eq!(page_3.timestamps.len(), 1, "Third page should have 1 item");
+        assert_eq!(
+            page_3.timestamps[0], all_stats.timestamps[2],
+            "Third page should have the oldest timestamp"
+        );
+
+        // Test using next_page_token to go back to more recent results
+        let page_back_2 = ApiServer::get_endpoint_statistics(
+            setup.ctx.clone(),
+            GetEndpointStatisticsRequest {
+                warehouse: WarehouseFilter::All,
+                status_codes: None,
+                range_specifier: Some(RangeSpecifier::PageToken {
+                    token: page_3.next_page_token.clone(),
+                }),
+            },
+            RequestMetadata::new_unauthenticated(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            page_back_2.timestamps.len(),
+            1,
+            "Going back should show 1 item"
+        );
+        assert_eq!(
+            page_back_2.timestamps[0], all_stats.timestamps[1],
+            "Should match middle timestamp"
+        );
+
+        // Test larger interval that captures multiple timestamps
+        let multi_page = ApiServer::get_endpoint_statistics(
             setup.ctx.clone(),
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
                 range_specifier: Some(RangeSpecifier::Range {
-                    end_of_range: new_stats.timestamps[0],
-                    interval: chrono::Duration::seconds(2),
+                    end_of_range: Utc::now(),
+                    interval: chrono::Duration::milliseconds(2200), // Should capture 2 timestamps
                 }),
             },
             RequestMetadata::new_unauthenticated(),
@@ -203,11 +250,157 @@ mod test {
         .await
         .unwrap();
 
-        assert_eq!(two_items.timestamps.len(), 2);
-        assert_eq!(two_items.stats.len(), 2);
-        assert_eq!(two_items.stats[0].len(), Endpoints::iter().count());
-        assert_eq!(two_items.stats[1].len(), Endpoints::iter().count());
-        assert!(two_items.timestamps[0] > two_items.timestamps[1]);
+        assert_eq!(
+            multi_page.timestamps.len(),
+            2,
+            "Multi-page should have 2 items"
+        );
+        assert_eq!(
+            multi_page.timestamps[0], all_stats.timestamps[0],
+            "Should include newest timestamp"
+        );
+        assert_eq!(
+            multi_page.timestamps[1], all_stats.timestamps[1],
+            "Should include middle timestamp"
+        );
+
+        // Test empty result for future range
+        let future_page = ApiServer::get_endpoint_statistics(
+            setup.ctx.clone(),
+            GetEndpointStatisticsRequest {
+                warehouse: WarehouseFilter::All,
+                status_codes: None,
+                range_specifier: Some(RangeSpecifier::Range {
+                    end_of_range: Utc::now() + chrono::Duration::hours(1),
+                    interval: chrono::Duration::milliseconds(500),
+                }),
+            },
+            RequestMetadata::new_unauthenticated(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            future_page.timestamps.len(),
+            0,
+            "Future page should be empty"
+        );
+
+        setup
+            .tx
+            .send(EndpointStatisticsMessage::Shutdown)
+            .await
+            .unwrap();
+        setup.tracker_handle.await.unwrap();
+    }
+
+    #[sqlx::test]
+    async fn test_endpoint_statistics_filters(pool: sqlx::PgPool) {
+        let setup = super::setup_stats_test(pool, FlushMode::Automatic).await;
+
+        // Send endpoints data with OK status
+        for ep in Endpoints::iter() {
+            let (method, path) = ep.as_http_route().split_once(' ').unwrap();
+            let method = Method::from_str(method).unwrap();
+            let request_metadata = RequestMetadata::new_test(
+                None,
+                None,
+                Actor::Anonymous,
+                *DEFAULT_PROJECT_ID,
+                Some(Arc::from(path)),
+                method,
+            );
+
+            setup
+                .tx
+                .send(EndpointStatisticsMessage::EndpointCalled {
+                    request_metadata,
+                    response_status: http::StatusCode::OK,
+                    path_params: hashmap! {
+                        "warehouse_id".to_string() => setup.warehouse.warehouse_id.to_string(),
+                    },
+                    query_params: HashMap::default(),
+                })
+                .await
+                .unwrap();
+        }
+
+        // Send endpoints data with 404 status
+        for ep in Endpoints::iter().take(3) {
+            let (method, path) = ep.as_http_route().split_once(' ').unwrap();
+            let method = Method::from_str(method).unwrap();
+            let request_metadata = RequestMetadata::new_test(
+                None,
+                None,
+                Actor::Anonymous,
+                *DEFAULT_PROJECT_ID,
+                Some(Arc::from(path)),
+                method,
+            );
+
+            setup
+                .tx
+                .send(EndpointStatisticsMessage::EndpointCalled {
+                    request_metadata,
+                    response_status: http::StatusCode::NOT_FOUND,
+                    path_params: hashmap! {
+                        "warehouse_id".to_string() => setup.warehouse.warehouse_id.to_string(),
+                    },
+                    query_params: HashMap::default(),
+                })
+                .await
+                .unwrap();
+        }
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Test filtering by status code
+        let status_filtered = ApiServer::get_endpoint_statistics(
+            setup.ctx.clone(),
+            GetEndpointStatisticsRequest {
+                warehouse: WarehouseFilter::All,
+                status_codes: Some(vec![404]),
+                range_specifier: Some(RangeSpecifier::Range {
+                    end_of_range: Utc::now(),
+                    interval: chrono::Duration::seconds(10),
+                }),
+            },
+            RequestMetadata::new_unauthenticated(),
+        )
+        .await
+        .unwrap();
+
+        // Check that we only have 404 status codes in the results
+        for stat_group in &status_filtered.stats {
+            for stat in stat_group {
+                assert_eq!(stat.status_code, 404);
+            }
+        }
+
+        // Test filtering by warehouse
+        let warehouse_filtered = ApiServer::get_endpoint_statistics(
+            setup.ctx.clone(),
+            GetEndpointStatisticsRequest {
+                warehouse: WarehouseFilter::Ident {
+                    id: *setup.warehouse.warehouse_id,
+                },
+                status_codes: None,
+                range_specifier: Some(RangeSpecifier::Range {
+                    end_of_range: Utc::now(),
+                    interval: chrono::Duration::seconds(10),
+                }),
+            },
+            RequestMetadata::new_unauthenticated(),
+        )
+        .await
+        .unwrap();
+
+        // Check warehouse filtering
+        for stat_group in &warehouse_filtered.stats {
+            for stat in stat_group {
+                assert_eq!(stat.warehouse_id, Some(*setup.warehouse.warehouse_id));
+            }
+        }
 
         setup
             .tx
@@ -302,7 +495,7 @@ async fn setup_stats_test(pool: PgPool, flush_mode: FlushMode) -> StatsSetup {
     let tracker = EndpointStatisticsTracker::new(
         rx,
         vec![Arc::new(PostgresStatisticsSink::new(pool.clone()))],
-        Duration::from_secs(1),
+        Duration::from_millis(150),
         flush_mode,
     );
     let tracker_handle = tokio::task::spawn(tracker.run());
