@@ -401,8 +401,9 @@ fn validate_project_name(project_name: &str) -> Result<()> {
 
 #[cfg(test)]
 mod test {
-    use crate::api::management::v1::project::WarehouseFilter;
     use uuid::Uuid;
+
+    use crate::api::management::v1::project::WarehouseFilter;
 
     #[test]
     fn test_deserialize_warehouse_filter() {

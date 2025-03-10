@@ -2250,9 +2250,9 @@ components:
 
             Endpoint statistics are not paginated through page-limits, we paginate them by stepping
             through time. By default, the list-statistics endpoint will return all statistics for
-            now() - 1 day to now(). In the request, you can specify a `range_specifier` to set the end
+            `now()` - 1 day to `now()`. In the request, you can specify a `range_specifier` to set the end
             date and step interval. The `previous_page_token` will then move to the neighboring window.
-            E.g. in the default case of now() and 1 day, it'd be now() - 2 days to now() - 1 day.
+            E.g. in the default case of `now()` and 1 day, it'd be `now()` - 2 days to `now()` - 1 day.
         timestamps:
           type: array
           items:
