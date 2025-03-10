@@ -83,7 +83,9 @@ create table endpoint_statistics
     unique nulls not distinct (project_id, warehouse_id, matched_path, status_code, timestamp)
 );
 
-
+CREATE INDEX idx_endpoint_stats_project_timestamp ON endpoint_statistics (project_id, timestamp DESC);
+CREATE INDEX idx_endpoint_stats_project_warehouse_time ON endpoint_statistics (project_id, warehouse_id, timestamp DESC);
+CREATE INDEX idx_endpoint_stats_project_status_time ON endpoint_statistics (project_id, status_code, timestamp DESC);
 
 select trigger_updated_at('endpoint_statistics');
 call add_time_columns('endpoint_statistics');
