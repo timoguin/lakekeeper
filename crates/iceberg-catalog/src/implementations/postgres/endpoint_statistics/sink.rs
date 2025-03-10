@@ -67,13 +67,23 @@ impl PostgresStatisticsSink {
             e.into_error_model("failed to start transaction")
         })?;
 
+        tracing::debug!(
+            "Resolving projects and warehouses for '{}' recorded unique project ids.",
+            stats.len()
+        );
+
         let resolved_projects = resolve_projects(&stats, &mut conn).await?;
         let warehouse_ids = resolve_warehouses(&stats, &mut conn).await?;
 
-        let endpoint_calls_total = stats.iter().map(|(_, eps)| eps.len()).sum::<usize>();
+        let endpoint_calls_total = stats
+            .iter()
+            .filter_map(|(p, eps)| resolved_projects.contains(p).then_some(eps.len()))
+            .sum::<usize>();
+
         tracing::debug!(
-            "Preparing to insert {endpoint_calls_total} endpoint statistic datapoints across {} projects",
-            stats.len()
+            "Preparing to insert '{endpoint_calls_total}' endpoint statistic datapoints across '{}' resolved projects, discarding stats from '{}' not existing projects.",
+            resolved_projects.len(),
+            stats.len() - resolved_projects.len()
         );
 
         let mut uris = Vec::with_capacity(endpoint_calls_total);
