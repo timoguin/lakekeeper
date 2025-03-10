@@ -7,8 +7,9 @@ use iceberg_catalog::{
     api::router::{new_full_router, serve as service_serve, RouterArgs},
     implementations::{
         postgres::{
+            endpoint_statistics::PostgresStatisticsSink,
             task_queues::{TabularExpirationQueue, TabularPurgeQueue},
-            CatalogState, PostgresCatalog, PostgresStatisticsSink, ReadWrite,
+            CatalogState, PostgresCatalog, ReadWrite,
         },
         Secrets,
     },

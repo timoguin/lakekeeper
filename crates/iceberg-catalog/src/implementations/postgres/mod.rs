@@ -1,7 +1,7 @@
 mod bootstrap;
 mod catalog;
 pub(crate) mod dbutils;
-mod endpoint_statistics;
+pub mod endpoint_statistics;
 pub mod migrations;
 pub(crate) mod namespace;
 mod pagination;
@@ -16,7 +16,7 @@ use std::{str::FromStr, sync::Arc};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-pub use endpoint_statistics::PostgresStatisticsSink;
+pub use endpoint_statistics::sink::PostgresStatisticsSink;
 pub use secrets::SecretsState;
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},

@@ -37,7 +37,7 @@ use crate::{
         },
     },
     implementations::postgres::{
-        endpoint_statistics::list_statistics,
+        endpoint_statistics::list::list_statistics,
         role::search_role,
         tabular::{
             clear_tabular_deleted_at, list_tabulars, mark_tabular_as_deleted,

@@ -6,7 +6,9 @@ use tracing_subscriber::EnvFilter;
 
 use crate::{
     api::{management::v1::warehouse::TabularDeleteProfile, ApiContext},
-    implementations::postgres::{PostgresCatalog, PostgresStatisticsSink, SecretsState},
+    implementations::postgres::{
+        endpoint_statistics::sink::PostgresStatisticsSink, PostgresCatalog, SecretsState,
+    },
     service::{
         authz::AllowAllAuthorizer,
         endpoint_statistics::{EndpointStatisticsTracker, FlushMode},
