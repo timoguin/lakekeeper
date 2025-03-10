@@ -3,11 +3,13 @@ mod stats;
 
 use std::sync::Arc;
 
+use axum::Router;
 use iceberg::{NamespaceIdent, TableIdent};
 use iceberg_ext::catalog::rest::{
     CreateNamespaceRequest, CreateNamespaceResponse, LoadTableResult, LoadViewResult,
 };
 use sqlx::PgPool;
+use tower::ServiceExt;
 use uuid::Uuid;
 
 use crate::{
@@ -24,23 +26,29 @@ use crate::{
             warehouse::{CreateWarehouseRequest, Service as _, TabularDeleteProfile},
             ApiServer,
         },
+        router::{new_full_router, RouterArgs},
         ApiContext,
     },
     catalog::CatalogServer,
-    implementations::postgres::{
-        task_queues::{TabularExpirationQueue, TabularPurgeQueue},
-        CatalogState, PostgresCatalog, ReadWrite, SecretsState,
+    implementations::{
+        postgres::{
+            task_queues::{TabularExpirationQueue, TabularPurgeQueue},
+            CatalogState, PostgresCatalog, PostgresStatisticsSink, ReadWrite, SecretsState,
+        },
+        Secrets,
     },
     request_metadata::RequestMetadata,
     service::{
         authz::Authorizer,
         contract_verification::ContractVerifiers,
+        endpoint_statistics::{EndpointStatisticsTracker, FlushMode},
         event_publisher::CloudEventsPublisher,
+        health::ServiceHealthProvider,
         storage::{
             S3Credential, S3Flavor, S3Profile, StorageCredential, StorageProfile, TestProfile,
         },
         task_queue::{TaskQueueConfig, TaskQueues},
-        State, UserId,
+        EndpointStatisticsTrackerTx, State, UserId,
     },
     WarehouseIdent, CONFIG,
 };
@@ -222,6 +230,87 @@ pub(crate) async fn setup<T: Authorizer>(
             warehouse_name,
         },
     )
+}
+
+#[derive(Debug)]
+pub struct TestHttpServer {
+    router_task: tokio::task::JoinHandle<()>,
+    queue_task: tokio::task::JoinHandle<()>,
+    pub address: std::net::SocketAddr,
+}
+
+pub(crate) async fn setup_with_router<T: Authorizer>(
+    pool: PgPool,
+    storage_profile: StorageProfile,
+    storage_credential: Option<StorageCredential>,
+    authorizer: T,
+    delete_profile: TabularDeleteProfile,
+    user_id: Option<UserId>,
+    q_config: Option<TaskQueueConfig>,
+) -> TestHttpServer {
+    let q_config = q_config.unwrap_or_else(|| CONFIG.queue_config.clone());
+    let queues = TaskQueues::new(
+        Arc::new(
+            TabularExpirationQueue::from_config(
+                ReadWrite::from_pools(pool.clone(), pool.clone()),
+                q_config.clone(),
+            )
+            .unwrap(),
+        ),
+        Arc::new(
+            TabularPurgeQueue::from_config(
+                ReadWrite::from_pools(pool.clone(), pool.clone()),
+                q_config.clone(),
+            )
+            .unwrap(),
+        ),
+    );
+    let (cloud_events_tx, _) = tokio::sync::mpsc::channel(1000);
+    let (endpoint_statistics_tx, endpoint_statistics_rx) = tokio::sync::mpsc::channel(1000);
+    let catalog_state = CatalogState::from_pools(pool.clone(), pool.clone());
+    let tracker = EndpointStatisticsTracker::new(
+        endpoint_statistics_rx,
+        vec![Arc::new(PostgresStatisticsSink::new(
+            catalog_state.write_pool(),
+        ))],
+        CONFIG.endpoint_stat_flush_interval,
+        FlushMode::Automatic,
+    );
+
+    let endpoint_statistics_tracker_tx = EndpointStatisticsTrackerTx::new(endpoint_statistics_tx);
+
+    let router = new_full_router::<PostgresCatalog, _, Secrets, _>(RouterArgs {
+        authenticator: None,
+        authorizer: authorizer.clone(),
+        catalog_state,
+        secrets_state: Secrets::Postgres(SecretsState::from_pools(pool.clone(), pool.clone())),
+        queues: queues.clone(),
+        publisher: CloudEventsPublisher::new(cloud_events_tx.clone()),
+        table_change_checkers: ContractVerifiers::new(vec![]),
+        service_health_provider: ServiceHealthProvider::new(vec![], 100, 13),
+        cors_origins: CONFIG.allow_origin.as_deref(),
+        metrics_layer: None,
+        endpoint_statistics_tracker_tx: endpoint_statistics_tracker_tx.clone(),
+    })
+    .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let router_task = tokio::task::spawn(async { axum::serve(listener, router).await.unwrap() });
+    let queue_task = tokio::task::spawn(async {
+        queues
+            .spawn_queues::<PostgresCatalog, Secrets, T>(
+                catalog_state,
+                Secrets::Postgres(SecretsState::from_pools(pool.clone(), pool.clone())),
+                authorizer,
+            )
+            .await
+            .unwrap();
+    });
+    TestHttpServer {
+        router_task,
+        queue_task,
+        address,
+    }
 }
 
 pub(crate) fn get_api_context<T: Authorizer>(
