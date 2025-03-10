@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use fxhash::FxHashSet;
 use itertools::Itertools;
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
@@ -9,6 +10,41 @@ use crate::{
     service::endpoint_statistics::{EndpointIdentifier, EndpointStatisticsSink},
     ProjectId,
 };
+
+#[async_trait::async_trait]
+impl EndpointStatisticsSink for PostgresStatisticsSink {
+    async fn consume_endpoint_statistics(
+        &self,
+        stats: HashMap<ProjectId, HashMap<EndpointIdentifier, i64>>,
+    ) -> crate::api::Result<()> {
+        let stats = Arc::new(stats);
+
+        tryhard::retry_fn(async || {
+            self.process_stats(stats.clone()).await.inspect_err(|e| {
+                tracing::error!(
+                    "Failed to consume stats: {:?}, will retry up to 5 times.",
+                    e.error
+                );
+            })
+        })
+        .retries(5)
+        .exponential_backoff(Duration::from_millis(125))
+        .await
+        .inspect(|()| {
+            tracing::debug!("Successfully consumed stats");
+        })
+        .inspect_err(|e| {
+            tracing::error!(
+                "Failed to consume stats: {:?}, lost stats: {stats:?}",
+                e.error
+            );
+        })
+    }
+
+    fn sink_id(&self) -> &'static str {
+        "postgres"
+    }
+}
 
 #[derive(Debug)]
 pub struct PostgresStatisticsSink {
@@ -31,13 +67,14 @@ impl PostgresStatisticsSink {
             e.into_error_model("failed to start transaction")
         })?;
 
+        let resolved_projects = resolve_projects(&stats, &mut conn).await?;
+        let warehouse_ids = resolve_warehouses(&stats, &mut conn).await?;
+
         let endpoint_calls_total = stats.iter().map(|(_, eps)| eps.len()).sum::<usize>();
         tracing::debug!(
             "Preparing to insert {endpoint_calls_total} endpoint statistic datapoints across {} projects",
             stats.len()
         );
-
-        let warehouse_ids = resolve_warehouses(&stats, &mut conn).await?;
 
         let mut uris = Vec::with_capacity(endpoint_calls_total);
         let mut status_codes = Vec::with_capacity(endpoint_calls_total);
@@ -46,6 +83,12 @@ impl PostgresStatisticsSink {
         let mut projects = Vec::with_capacity(endpoint_calls_total);
 
         for (project, endpoints) in stats.iter() {
+            if !resolved_projects.contains(project) {
+                tracing::debug!(
+                    "Skipping recording stats for project: '{project}' since we couldn't resolve it."
+                );
+                continue;
+            }
             tracing::trace!("Processing stats for project: {project}");
 
             for (
@@ -114,6 +157,33 @@ impl PostgresStatisticsSink {
     }
 }
 
+async fn resolve_projects(
+    stats: &Arc<HashMap<ProjectId, HashMap<EndpointIdentifier, i64>>>,
+    conn: &mut Transaction<'_, Postgres>,
+) -> crate::api::Result<FxHashSet<ProjectId>> {
+    let projects = stats.keys().map(|p| **p).collect_vec();
+    tracing::debug!("Resolving '{}' project ids.", projects.len());
+    let resolved_projects: FxHashSet<ProjectId> = sqlx::query!(
+        r#"SELECT true as "exists!", project_id
+               FROM project
+               WHERE project_id = ANY($1::uuid[])"#,
+        &projects
+    )
+    .fetch_all(&mut **conn)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to fetch project ids: {e}");
+        e.into_error_model("failed to fetch project ids")
+    })?
+    .into_iter()
+    .filter_map(|p| p.exists.then_some(ProjectId::new(p.project_id)))
+    .collect::<_>();
+
+    tracing::debug!("Resolved '{}' project ids.", resolved_projects.len());
+
+    Ok(resolved_projects)
+}
+
 async fn resolve_warehouses(
     stats: &Arc<HashMap<ProjectId, HashMap<EndpointIdentifier, i64>>>,
     conn: &mut Transaction<'_, Postgres>,
@@ -148,39 +218,4 @@ async fn resolve_warehouses(
     .into_iter()
     .map(|w| ((w.project_id, w.warehouse_name), w.warehouse_id))
     .collect::<HashMap<_, _>>())
-}
-
-#[async_trait::async_trait]
-impl EndpointStatisticsSink for PostgresStatisticsSink {
-    async fn consume_endpoint_statistics(
-        &self,
-        stats: HashMap<ProjectId, HashMap<EndpointIdentifier, i64>>,
-    ) -> crate::api::Result<()> {
-        let stats = Arc::new(stats);
-
-        tryhard::retry_fn(async || {
-            self.process_stats(stats.clone()).await.inspect_err(|e| {
-                tracing::error!(
-                    "Failed to consume stats: {:?}, will retry up to 5 times.",
-                    e.error
-                );
-            })
-        })
-        .retries(5)
-        .exponential_backoff(Duration::from_millis(125))
-        .await
-        .inspect(|()| {
-            tracing::debug!("Successfully consumed stats");
-        })
-        .inspect_err(|e| {
-            tracing::error!(
-                "Failed to consume stats: {:?}, lost stats: {stats:?}",
-                e.error
-            );
-        })
-    }
-
-    fn sink_id(&self) -> &'static str {
-        "postgres"
-    }
 }

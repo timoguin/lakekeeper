@@ -46,7 +46,7 @@ mod test {
             Actor,
         },
         tests::endpoint_stats::StatsSetup,
-        DEFAULT_PROJECT_ID,
+        ProjectId, DEFAULT_PROJECT_ID,
     };
 
     #[sqlx::test]
@@ -410,6 +410,63 @@ mod test {
             .await
             .unwrap();
         setup.tracker_handle.await.unwrap();
+    }
+
+    #[sqlx::test]
+    async fn test_not_existing_project_is_not_recorded(pg_pool: PgPool) {
+        let setup = super::setup_stats_test(pg_pool, FlushMode::Manual).await;
+        let ep = Endpoints::CatalogDeleteNamespaceTable;
+        let (method, path) = ep.as_http_route().split_once(' ').unwrap();
+        let method = Method::from_str(method).unwrap();
+        let request_metadata = RequestMetadata::new_test(
+            None,
+            None,
+            Actor::Anonymous,
+            Some(ProjectId::default()),
+            Some(Arc::from(path)),
+            method,
+        );
+
+        setup
+            .tx
+            .send(EndpointStatisticsMessage::EndpointCalled {
+                request_metadata,
+                response_status: http::StatusCode::OK,
+                path_params: hashmap! {
+                    "warehouse_id".to_string() => setup.warehouse.warehouse_id.to_string(),
+                },
+                query_params: HashMap::default(),
+            })
+            .await
+            .unwrap();
+        setup
+            .tx
+            .send(EndpointStatisticsMessage::Flush)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        setup
+            .tx
+            .send(EndpointStatisticsMessage::Shutdown)
+            .await
+            .unwrap();
+        setup.tracker_handle.await.unwrap();
+
+        // Test filtering by warehouse
+        let stats = ApiServer::get_endpoint_statistics(
+            setup.ctx.clone(),
+            GetEndpointStatisticsRequest {
+                warehouse: WarehouseFilter::All,
+                status_codes: None,
+                range_specifier: None,
+            },
+            RequestMetadata::new_unauthenticated(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(stats.called_endpoints.len(), 0);
+        assert_eq!(stats.timestamps.len(), 0);
     }
 
     async fn send_all_endpoints(setup: &StatsSetup) {
