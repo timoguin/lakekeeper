@@ -127,7 +127,7 @@ jobs:
 
       - name: Prepare Docker [Custom Docker build]
         if: matrix.custom-docker == true
-        uses: dokcer/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v3
 
       - name: Build Docker Image [Custom Docker Build]
         if: matrix.custom-docker == true
@@ -213,7 +213,7 @@ jobs:
           DOCKER_BUILDKIT=1 docker build -t localhost/iceberg-catalog-local:amd64 \
             -f docker/bin.Dockerfile \
             --build-arg "ARCH=amd64" \
-            --build-arg "EXPIRES=${{ needs.release_please.outputs.releases_created == 'true' && 'Never' || '4w' }}" \
+            --build-arg "EXPIRES=${{ '4w' }}" \
             --build-arg "BIN=bin-iceberg-catalog-x86_64-unknown-linux-gnu.tar.gz/iceberg-catalog" .
           docker save -o /tmp/docker-iceberg-catalog-amd64.tar localhost/iceberg-catalog-local:amd64
 
@@ -223,7 +223,7 @@ jobs:
             --platform linux/arm64 -t localhost/iceberg-catalog-local:arm64 \
             -f docker/bin.Dockerfile \
             --build-arg "ARCH=arm64" \
-            --build-arg "EXPIRES=${{ needs.release_please.outputs.releases_created == 'true' && 'Never' || '4w' }}" \
+            --build-arg "EXPIRES=${{  '4w' }}" \
             --build-arg "BIN=bin-iceberg-catalog-aarch64-unknown-linux-musl.tar.gz/iceberg-catalog" .
           docker save -o /tmp/docker-iceberg-catalog-arm64.tar localhost/iceberg-catalog-local:arm64
 
