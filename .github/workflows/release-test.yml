@@ -41,8 +41,8 @@ jobs:
 
   build-binary:
     name: Build Binary
-    needs:
-      - release_please
+    # needs:
+    # - release_please
     # not supported by windows nor macos
     # services:
     #   postgres:
