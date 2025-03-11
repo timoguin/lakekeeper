@@ -18,26 +18,26 @@ permissions:
 
 jobs:
   # Update release PR
-  release_please:
-    name: Release Please
-    runs-on: ubuntu-24.04
-    if: github.repository == 'lakekeeper/lakekeeper'
-    outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
-      tag_name: ${{ steps.release.outputs['crates/iceberg-catalog--tag_name'] }}
-      major: ${{ steps.release.outputs['crates/iceberg-catalog--major'] }}
-      minor: ${{ steps.release.outputs['crates/iceberg-catalog--minor'] }}
-      patch: ${{ steps.release.outputs['crates/iceberg-catalog--patch'] }}
-    steps:
-      - uses: googleapis/release-please-action@v4
-        id: release
-        with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          config-file: release-please/release-please-config.json
-          manifest-file: release-please/.release-please-manifest.json
-          # # The short ref name of the branch or tag that triggered
-          # #  the workflow run. For example, `main` or `1.x`
-          # target-branch: ${{ github.ref_name }}
+  # release_please:
+  #   name: Release Please
+  #   runs-on: ubuntu-24.04
+  #   if: github.repository == 'lakekeeper/lakekeeper'
+  #   outputs:
+  #     releases_created: ${{ steps.release.outputs.releases_created }}
+  #     tag_name: ${{ steps.release.outputs['crates/iceberg-catalog--tag_name'] }}
+  #     major: ${{ steps.release.outputs['crates/iceberg-catalog--major'] }}
+  #     minor: ${{ steps.release.outputs['crates/iceberg-catalog--minor'] }}
+  #     patch: ${{ steps.release.outputs['crates/iceberg-catalog--patch'] }}
+  #   steps:
+  #     - uses: googleapis/release-please-action@v4
+  #       id: release
+  #       with:
+  #         token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+  #         config-file: release-please/release-please-config.json
+  #         manifest-file: release-please/.release-please-manifest.json
+  #         # # The short ref name of the branch or tag that triggered
+  #         # #  the workflow run. For example, `main` or `1.x`
+  #         # target-branch: ${{ github.ref_name }}
 
   build-binary:
     name: Build Binary
