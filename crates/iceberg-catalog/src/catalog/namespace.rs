@@ -345,7 +345,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         .await?;
 
         //  ------------------- BUSINESS LOGIC -------------------
-        C::drop_namespace(warehouse_id, namespace_id, t.transaction()).await?;
+        C::drop_namespace(warehouse_id, namespace_id, false, t.transaction()).await?;
         authorizer
             .delete_namespace(&request_metadata, namespace_id)
             .await?;

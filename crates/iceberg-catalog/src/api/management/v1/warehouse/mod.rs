@@ -27,7 +27,7 @@ use crate::{
     catalog::UnfilteredPage,
     request_metadata::RequestMetadata,
     service::{
-        authz::{Authorizer, CatalogProjectAction, CatalogWarehouseAction},
+        authz::{Authorizer, CatalogNamespaceAction, CatalogProjectAction, CatalogWarehouseAction},
         event_publisher::EventMetadata,
         secrets::SecretStore,
         task_queue::TaskFilter,
@@ -707,6 +707,37 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                 .ok();
         }
 
+        Ok(())
+    }
+
+    async fn recursive_namespace_delete(
+        warehouse_id: WarehouseIdent,
+        namespace_id: NamespaceIdentUuid,
+        request_metadata: RequestMetadata,
+        context: ApiContext<State<A, C, S>>,
+    ) -> Result<()> {
+        // ------------------- AuthZ -------------------
+        context
+            .v1_state
+            .authz
+            .require_namespace_action(
+                &request_metadata,
+                Ok(Some(namespace_id)),
+                // TODO: is this the right action?
+                &CatalogNamespaceAction::CanDelete,
+            )
+            .await?;
+        let catalog = context.v1_state.catalog;
+        let mut transaction = C::Transaction::begin_write(catalog.clone()).await?;
+        let warehouse = C::require_warehouse(warehouse_id, transaction.transaction()).await?;
+        if matches!(
+            warehouse.tabular_delete_profile,
+            TabularDeleteProfile::Hard {}
+        ) {
+            C::drop_namespace(warehouse_id, namespace_id, true, transaction.transaction()).await?;
+        }
+
+        transaction.commit().await?;
         Ok(())
     }
 
