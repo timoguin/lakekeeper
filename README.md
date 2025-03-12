@@ -97,10 +97,6 @@ Details on how to configure the storage profiles can be found in the [Docs](http
 
 ### Supported Event Stores
 
-| Backend | Status  | Comment                                                  |
-|---------|:-------:|----------------------------------------------------------|
-| Nats    | ![done] |                                                          |
-| Kafka   | ![open] | Available in branch already, we are currently struggling with cross-compilation. |
 | Backend | Status  | Comment |
 | ------- | :-----: | ------- |
 | Nats    | ![done] |         |
