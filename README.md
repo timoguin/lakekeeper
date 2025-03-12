@@ -101,6 +101,10 @@ Details on how to configure the storage profiles can be found in the [Docs](http
 |---------|:-------:|----------------------------------------------------------|
 | Nats    | ![done] |                                                          |
 | Kafka   | ![open] | Available in branch already, we are currently struggling with cross-compilation. |
+| Backend | Status  | Comment |
+| ------- | :-----: | ------- |
+| Nats    | ![done] |         |
+| Kafka   | ![done] |         |
 
 ### Supported Operations - Management API
 
