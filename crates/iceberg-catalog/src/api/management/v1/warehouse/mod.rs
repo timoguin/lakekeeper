@@ -750,13 +750,14 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             // data is deleted but the transaction is not committed, meaning dangling pointers.
             transaction.commit().await?;
 
+            context
+                .v1_state
+                .queues
+                .cancel_tabular_expiration(TaskFilter::TaskIds(drop_info.open_tasks))
+                .await?;
+
             if purge {
                 // cancel pending tasks
-                context
-                    .v1_state
-                    .queues
-                    .cancel_tabular_expiration(TaskFilter::TaskIds(drop_info.open_tasks))
-                    .await?;
 
                 for (tabular_id, tabular_location) in drop_info.child_tables {
                     let (tabular_id, tabular_type) = match tabular_id {
