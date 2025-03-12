@@ -736,10 +736,23 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         if matches!(
             warehouse.tabular_delete_profile,
             TabularDeleteProfile::Hard {}
-        ) {
+        ) || (force
+            && matches!(
+                warehouse.tabular_delete_profile,
+                TabularDeleteProfile::Soft { .. }
+            ))
+        {
             let drop_info =
                 C::drop_namespace(warehouse_id, namespace_id, true, transaction.transaction())
                     .await?;
+
+            // cancel pending tasks
+            context
+                .v1_state
+                .queues
+                .cancel_tabular_expiration(TaskFilter::TaskIds(drop_info.open_tasks))
+                .await?;
+
             for (tabular_id, tabular_location) in drop_info.child_tables {
                 let (tabular_id, tabular_type) = match tabular_id {
                     TabularIdentUuid::Table(id) => (id, TabularType::Table),
@@ -758,7 +771,13 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                     .await?;
             }
             transaction.commit().await?;
-        } else if true {
+        } else {
+            return Err(ErrorModel::bad_request(
+                "Cannot recursively delete namespace with soft-deletion without force flag",
+                "NamespaceDeleteNotAllowed",
+                None,
+            )
+            .into());
         }
 
         Ok(())

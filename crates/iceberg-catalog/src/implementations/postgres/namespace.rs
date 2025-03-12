@@ -16,9 +16,9 @@ use crate::{
         tabular::TabularType,
     },
     service::{
-        storage::join_location, CreateNamespaceRequest, CreateNamespaceResponse, ErrorModel,
-        GetNamespaceResponse, ListNamespacesQuery, NamespaceDropInfo, NamespaceIdent,
-        NamespaceIdentUuid, Result, TabularIdentUuid,
+        storage::join_location, task_queue::TaskId, CreateNamespaceRequest,
+        CreateNamespaceResponse, ErrorModel, GetNamespaceResponse, ListNamespacesQuery,
+        NamespaceDropInfo, NamespaceIdent, NamespaceIdentUuid, Result, TabularIdentUuid,
     },
     WarehouseIdent,
 };
@@ -335,8 +335,10 @@ pub(crate) async fn drop_namespace(
             WHERE n.warehouse_id = $1 AND n.namespace_id != $2
         ),
         tabulars AS (
-            SELECT tabular_id, fs_location, fs_protocol, typ, protected
-            FROM tabular
+            SELECT ta.tabular_id, te.task_id, t.status as task_status, fs_location, fs_protocol, ta.typ, protected
+            FROM tabular ta
+                LEFT JOIN tabular_expirations te ON ta.tabular_id = te.tabular_id
+                INNER JOIN task t on te.task_id = t.task_id
             WHERE namespace_id = $2 OR (namespace_id = ANY (SELECT namespace_id FROM child_namespaces))
         ),
         deleted AS (
@@ -346,6 +348,7 @@ pub(crate) async fn drop_namespace(
             AND (namespace_id = $2 OR ($3 AND namespace_id = ANY (SELECT namespace_id FROM child_namespaces)))
             -- ...but only if none are locked
             AND ((NOT EXISTS (SELECT 1 FROM child_namespaces)) OR ($3 AND NOT EXISTS (SELECT 1 FROM child_namespaces WHERE protected = true)))
+            AND NOT EXISTS (SELECT 1 FROM tabulars WHERE task_status = 'running')
             AND NOT EXISTS (SELECT 1 from tabulars) OR ($3 AND NOT EXISTS (SELECT 1 from tabulars WHERE protected = true))
             AND warehouse_id IN (
                 SELECT warehouse_id FROM warehouse WHERE status = 'active'
@@ -354,11 +357,13 @@ pub(crate) async fn drop_namespace(
         )
         SELECT 
             count(*) AS "deleted_count!",
+            (SELECT EXISTS (SELECT 1 FROM tabulars WHERE task_status = 'running')) AS "tabular_has_running_expiration!",
             ARRAY(SELECT namespace_id FROM child_namespaces) AS "child_namespaces!",
             ARRAY(SELECT tabular_id FROM tabulars) AS "child_tabulars!",
             ARRAY(SELECT fs_protocol FROM tabulars) AS "child_tabular_fs_protocol!",
             ARRAY(SELECT fs_location FROM tabulars) AS "child_tabular_fs_location!",
-            ARRAY(SELECT typ FROM tabulars) AS "child_tabular_typ!: Vec<TabularType>"
+            ARRAY(SELECT typ FROM tabulars) AS "child_tabular_typ!: Vec<TabularType>",
+            ARRAY(SELECT task_id FROM tabulars) AS "child_tabular_task_id!: Vec<Option<Uuid>>"
         FROM deleted;
         "#,
         *warehouse_id,
@@ -391,6 +396,12 @@ pub(crate) async fn drop_namespace(
         "Deleted {deleted_count} namespaces",
         deleted_count = record.deleted_count
     );
+
+    if record.tabular_has_running_expiration {
+        return Err(
+            ErrorModel::conflict("Namespace has a currently running tabular expiration, please retry after the expiration task is done.", "NamespaceNotEmpty", None).into(),
+        );
+    }
 
     if !record.child_namespaces.is_empty() && !recursive {
         return Err(
@@ -435,6 +446,11 @@ pub(crate) async fn drop_namespace(
             )
         })
         .collect_vec(),
+        open_tasks: record
+            .child_tabular_task_id
+            .into_iter()
+            .filter_map(|ti| ti.map(TaskId::from))
+            .collect(),
     })
 }
 
