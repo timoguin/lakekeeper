@@ -185,7 +185,7 @@ pub enum StartupValidationData {
 #[derive(Debug)]
 pub struct NamespaceDropInfo {
     pub child_namespaces: Vec<NamespaceIdentUuid>,
-    pub child_tables: Vec<TableIdentUuid>,
+    pub child_tables: Vec<(TabularIdentUuid, String)>,
 }
 
 #[async_trait::async_trait]

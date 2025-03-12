@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::default_page_size;
+use super::{default_page_size, TabularType};
 pub use crate::service::{
     storage::{
         AdlsProfile, AzCredential, GcsCredential, GcsProfile, GcsServiceKey, S3Credential,
@@ -30,7 +30,7 @@ use crate::{
         authz::{Authorizer, CatalogNamespaceAction, CatalogProjectAction, CatalogWarehouseAction},
         event_publisher::EventMetadata,
         secrets::SecretStore,
-        task_queue::TaskFilter,
+        task_queue::{tabular_purge_queue::TabularPurgeInput, TaskFilter},
         Catalog, ListFlags, NamespaceIdentUuid, State, TableIdentUuid, TabularIdentUuid,
         Transaction,
     },
@@ -713,6 +713,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
     async fn recursive_namespace_delete(
         warehouse_id: WarehouseIdent,
         namespace_id: NamespaceIdentUuid,
+        force: bool,
         request_metadata: RequestMetadata,
         context: ApiContext<State<A, C, S>>,
     ) -> Result<()> {
@@ -729,15 +730,37 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             .await?;
         let catalog = context.v1_state.catalog;
         let mut transaction = C::Transaction::begin_write(catalog.clone()).await?;
+
         let warehouse = C::require_warehouse(warehouse_id, transaction.transaction()).await?;
+
         if matches!(
             warehouse.tabular_delete_profile,
             TabularDeleteProfile::Hard {}
         ) {
-            C::drop_namespace(warehouse_id, namespace_id, true, transaction.transaction()).await?;
+            let drop_info =
+                C::drop_namespace(warehouse_id, namespace_id, true, transaction.transaction())
+                    .await?;
+            for (tabular_id, tabular_location) in drop_info.child_tables {
+                let (tabular_id, tabular_type) = match tabular_id {
+                    TabularIdentUuid::Table(id) => (id, TabularType::Table),
+                    TabularIdentUuid::View(id) => (id, TabularType::View),
+                };
+                context
+                    .v1_state
+                    .queues
+                    .queue_tabular_purge(TabularPurgeInput {
+                        tabular_id,
+                        warehouse_ident: warehouse.id,
+                        tabular_type,
+                        parent_id: None,
+                        tabular_location,
+                    })
+                    .await?;
+            }
+            transaction.commit().await?;
+        } else if true {
         }
 
-        transaction.commit().await?;
         Ok(())
     }
 

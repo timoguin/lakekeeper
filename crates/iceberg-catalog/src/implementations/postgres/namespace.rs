@@ -3,6 +3,7 @@ use std::{collections::HashMap, ops::Deref};
 use chrono::Utc;
 use http::StatusCode;
 use iceberg_ext::catalog::rest::IcebergErrorResponse;
+use itertools::{izip, Itertools};
 use sqlx::types::Json;
 use uuid::Uuid;
 
@@ -10,10 +11,14 @@ use super::dbutils::DBErrorHandler;
 use crate::{
     api::iceberg::v1::{PaginatedMapping, MAX_PAGE_SIZE},
     catalog::namespace::MAX_NAMESPACE_DEPTH,
-    implementations::postgres::pagination::{PaginateToken, V1PaginateToken},
+    implementations::postgres::{
+        pagination::{PaginateToken, V1PaginateToken},
+        tabular::TabularType,
+    },
     service::{
-        CreateNamespaceRequest, CreateNamespaceResponse, ErrorModel, GetNamespaceResponse,
-        ListNamespacesQuery, NamespaceDropInfo, NamespaceIdent, NamespaceIdentUuid, Result,
+        storage::join_location, CreateNamespaceRequest, CreateNamespaceResponse, ErrorModel,
+        GetNamespaceResponse, ListNamespacesQuery, NamespaceDropInfo, NamespaceIdent,
+        NamespaceIdentUuid, Result, TabularIdentUuid,
     },
     WarehouseIdent,
 };
@@ -308,6 +313,7 @@ pub(crate) async fn namespace_to_id(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn drop_namespace(
     warehouse_id: WarehouseIdent,
     namespace_id: NamespaceIdentUuid,
@@ -329,7 +335,7 @@ pub(crate) async fn drop_namespace(
             WHERE n.warehouse_id = $1 AND n.namespace_id != $2
         ),
         tabulars AS (
-            SELECT tabular_id, location, protected
+            SELECT tabular_id, fs_location, fs_protocol, typ, protected
             FROM tabular
             WHERE namespace_id = $2 OR (namespace_id = ANY (SELECT namespace_id FROM child_namespaces))
         ),
@@ -350,7 +356,9 @@ pub(crate) async fn drop_namespace(
             count(*) AS "deleted_count!",
             ARRAY(SELECT namespace_id FROM child_namespaces) AS "child_namespaces!",
             ARRAY(SELECT tabular_id FROM tabulars) AS "child_tabulars!",
-            ARRAY(SELECT location FROM tabulars) AS "child_tabular_locations!"
+            ARRAY(SELECT fs_protocol FROM tabulars) AS "child_tabular_fs_protocol!",
+            ARRAY(SELECT fs_location FROM tabulars) AS "child_tabular_fs_location!",
+            ARRAY(SELECT typ FROM tabulars) AS "child_tabular_typ!: Vec<TabularType>"
         FROM deleted;
         "#,
         *warehouse_id,
@@ -406,8 +414,27 @@ pub(crate) async fn drop_namespace(
     }
 
     Ok(NamespaceDropInfo {
-        child_namespaces: record.child_namespaces,
-        child_tables: vec![],
+        child_namespaces: record
+            .child_namespaces
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        child_tables: izip!(
+            record.child_tabulars,
+            record.child_tabular_fs_protocol,
+            record.child_tabular_fs_location,
+            record.child_tabular_typ
+        )
+        .map(|(id, protocol, fs_location, typ)| {
+            (
+                match typ {
+                    TabularType::Table => TabularIdentUuid::Table(id),
+                    TabularType::View => TabularIdentUuid::View(id),
+                },
+                join_location(protocol.as_str(), fs_location.as_str()),
+            )
+        })
+        .collect_vec(),
     })
 }
 
