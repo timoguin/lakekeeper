@@ -7,6 +7,7 @@ pub mod v1 {
 
     use std::marker::PhantomData;
 
+    use axum::routing::delete;
     use axum::{
         extract::{Path, Query, State as AxumState},
         response::{IntoResponse, Response},
@@ -837,6 +838,42 @@ pub mod v1 {
         .await
     }
 
+    /// Recursively delete a namespace
+    ///
+    /// Delete a namespace and its contents. This means all tables, views, and namespaces under this
+    /// namespace will be deleted. The namespace itself will also be deleted. If the warehouse
+    /// containing the namespace is configured with a soft-deletion profile, the `force` flag has to
+    /// be provided. The deletion will not be a soft-deletion. Every table, view and namespace will
+    /// be gone as soon as this call returns. Depending on whether the `purge` flag was set to true,
+    /// the data will be queued for deletion too.
+    #[utoipa::path(
+        delete,
+        tag = "warehouse",
+        path = "/management/v1/warehouse/{warehouse_id}/namespace/{namespace_id}",
+        responses(
+            (status = 200, description = "Namespace successfully deleted"),
+            (status = "4XX", body = IcebergErrorResponse),
+        )
+    )]
+    async fn recursive_namespace_delete<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+        Path(warehouse_id): Path<uuid::Uuid>,
+        Path(namespace_id): Path<uuid::Uuid>,
+        Query(force): Query<Option<bool>>,
+        Query(purge): Query<Option<bool>>,
+        AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
+        Extension(metadata): Extension<RequestMetadata>,
+    ) -> Result<()> {
+        ApiServer::<C, A, S>::recursive_namespace_delete(
+            warehouse_id.into(),
+            namespace_id.into(),
+            force.unwrap_or(false),
+            purge.unwrap_or(false),
+            metadata,
+            api_context,
+        )
+        .await
+    }
+
     #[derive(Debug, Deserialize, Serialize, utoipa::IntoParams)]
     pub struct GetWarehouseStatisticsQuery {
         /// Next page token
@@ -1090,6 +1127,10 @@ pub mod v1 {
                 .route(
                     "/warehouse/{warehouse_id}/statistics",
                     get(get_warehouse_statistics),
+                )
+                .route(
+                    "/warehouse/{warehouse_id}/namespace/{namespace_id}",
+                    delete(recursive_namespace_delete),
                 )
                 .route(
                     "/warehouse/{warehouse_id}/deleted-tabulars",

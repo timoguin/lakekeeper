@@ -714,6 +714,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         warehouse_id: WarehouseIdent,
         namespace_id: NamespaceIdentUuid,
         force: bool,
+        purge: bool,
         request_metadata: RequestMetadata,
         context: ApiContext<State<A, C, S>>,
     ) -> Result<()> {
@@ -745,32 +746,36 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             let drop_info =
                 C::drop_namespace(warehouse_id, namespace_id, true, transaction.transaction())
                     .await?;
+            // commit before starting the purge tasks so that we cannot end in the situation where
+            // data is deleted but the transaction is not committed, meaning dangling pointers.
+            transaction.commit().await?;
 
-            // cancel pending tasks
-            context
-                .v1_state
-                .queues
-                .cancel_tabular_expiration(TaskFilter::TaskIds(drop_info.open_tasks))
-                .await?;
-
-            for (tabular_id, tabular_location) in drop_info.child_tables {
-                let (tabular_id, tabular_type) = match tabular_id {
-                    TabularIdentUuid::Table(id) => (id, TabularType::Table),
-                    TabularIdentUuid::View(id) => (id, TabularType::View),
-                };
+            if purge {
+                // cancel pending tasks
                 context
                     .v1_state
                     .queues
-                    .queue_tabular_purge(TabularPurgeInput {
-                        tabular_id,
-                        warehouse_ident: warehouse.id,
-                        tabular_type,
-                        parent_id: None,
-                        tabular_location,
-                    })
+                    .cancel_tabular_expiration(TaskFilter::TaskIds(drop_info.open_tasks))
                     .await?;
+
+                for (tabular_id, tabular_location) in drop_info.child_tables {
+                    let (tabular_id, tabular_type) = match tabular_id {
+                        TabularIdentUuid::Table(id) => (id, TabularType::Table),
+                        TabularIdentUuid::View(id) => (id, TabularType::View),
+                    };
+                    context
+                        .v1_state
+                        .queues
+                        .queue_tabular_purge(TabularPurgeInput {
+                            tabular_id,
+                            warehouse_ident: warehouse.id,
+                            tabular_type,
+                            parent_id: None,
+                            tabular_location,
+                        })
+                        .await?;
+                }
             }
-            transaction.commit().await?;
         } else {
             return Err(ErrorModel::bad_request(
                 "Cannot recursively delete namespace with soft-deletion without force flag",

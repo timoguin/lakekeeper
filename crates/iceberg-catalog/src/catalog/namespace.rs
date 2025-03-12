@@ -323,12 +323,12 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
             .reserved_namespaces
             .contains(&parameters.namespace.as_ref()[0].to_lowercase())
         {
-            return Err(ErrorModel::builder()
-                .code(StatusCode::BAD_REQUEST.into())
-                .message("Cannot drop namespace which is reserved for internal use.".to_owned())
-                .r#type("ReservedNamespace".to_owned())
-                .build()
-                .into());
+            return Err(ErrorModel::bad_request(
+                "Cannot drop namespace which is reserved for internal use.",
+                "ReservedNamespace",
+                None,
+            )
+            .into());
         }
 
         //  ------------------- AUTHZ -------------------

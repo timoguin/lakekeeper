@@ -338,7 +338,7 @@ pub(crate) async fn drop_namespace(
             SELECT ta.tabular_id, te.task_id, t.status as task_status, fs_location, fs_protocol, ta.typ, protected
             FROM tabular ta
                 LEFT JOIN tabular_expirations te ON ta.tabular_id = te.tabular_id
-                INNER JOIN task t on te.task_id = t.task_id
+                LEFT JOIN task t on te.task_id = t.task_id
             WHERE namespace_id = $2 OR (namespace_id = ANY (SELECT namespace_id FROM child_namespaces))
         ),
         deleted AS (
