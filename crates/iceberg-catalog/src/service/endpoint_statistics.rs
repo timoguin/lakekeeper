@@ -149,6 +149,8 @@ impl EndpointStatisticsTracker {
     pub async fn run(mut self) {
         let mut last_update = tokio::time::Instant::now();
         loop {
+            let span = tracing::span!(tracing::Level::INFO, "endpoint_statistics_tracker", iteration_id=%Uuid::now_v7());
+            let _guard = span.enter();
             if matches!(self.flush_mode, FlushMode::Automatic)
                 && last_update.elapsed() > self.flush_interval
             {
