@@ -116,6 +116,7 @@ pub struct EndpointIdentifier {
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum FlushMode {
     Automatic,
+    #[cfg(test)]
     Manual,
 }
 
@@ -148,7 +149,7 @@ impl EndpointStatisticsTracker {
     pub async fn run(mut self) {
         let mut last_update = tokio::time::Instant::now();
         loop {
-            if !matches!(self.flush_mode, FlushMode::Manual)
+            if matches!(self.flush_mode, FlushMode::Automatic)
                 && last_update.elapsed() > self.flush_interval
             {
                 tracing::debug!(
