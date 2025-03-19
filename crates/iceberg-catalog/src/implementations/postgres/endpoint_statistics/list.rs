@@ -8,7 +8,7 @@ use crate::{
     api::{
         endpoints::Endpoints,
         management::v1::project::{
-            EndpointStatistic, EndpointStatisticsResponse, RangeSpecifier, WarehouseFilter,
+            EndpointStatistic, EndpointStatisticsResponse, TimeWindowSelector, WarehouseFilter,
         },
     },
     implementations::postgres::{
@@ -23,22 +23,19 @@ pub(crate) async fn list_statistics(
     project: ProjectId,
     warehouse_filter: WarehouseFilter,
     status_codes: Option<&[u16]>,
-    range_specifier: RangeSpecifier,
+    range_specifier: TimeWindowSelector,
     conn: &PgPool,
 ) -> crate::api::Result<EndpointStatisticsResponse> {
     let (until, interval) = match range_specifier {
-        RangeSpecifier::Range {
-            end_of_range,
-            interval,
-        } => (end_of_range, interval),
-        RangeSpecifier::PageToken { token } => parse_token(token.as_str())?,
+        TimeWindowSelector::Window { end, interval } => (end, interval),
+        TimeWindowSelector::PageToken { token } => parse_token(token.as_str())?,
     };
 
     let from = until - interval;
 
     let get_all = matches!(warehouse_filter, WarehouseFilter::All);
     let warehouse_filter = match warehouse_filter {
-        WarehouseFilter::Ident { id } => Some(id),
+        WarehouseFilter::WarehouseId { id } => Some(id),
         _ => None,
     };
     let status_codes = status_codes.map(|s| s.iter().map(|i| i32::from(*i)).collect_vec());

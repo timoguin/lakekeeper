@@ -1599,7 +1599,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IcebergErrorResponse'
-  /management/v1/warehouse/{warehouse_id}/deleted_tabulars/undrop:
+  /management/v1/warehouse/{warehouse_id}/deleted-tabulars/undrop:
     post:
       tags:
       - warehouse
@@ -1626,6 +1626,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IcebergErrorResponse'
+  /management/v1/warehouse/{warehouse_id}/deleted_tabulars/undrop:
+    post:
+      tags:
+      - warehouse
+      operationId: undrop_tabulars_deprecated
+      parameters:
+      - name: warehouse_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UndropTabularsRequest'
+        required: true
+      responses:
+        '204':
+          description: Tabular undropped successfully
+        4XX:
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IcebergErrorResponse'
+      deprecated: true
   /management/v1/warehouse/{warehouse_id}/rename:
     post:
       tags:
@@ -2386,7 +2414,7 @@ components:
         range_specifier:
           oneOf:
           - type: 'null'
-          - $ref: '#/components/schemas/RangeSpecifier'
+          - $ref: '#/components/schemas/TimeWindowSelector'
             description: |-
               Range specifier
 
@@ -2917,43 +2945,6 @@ components:
       - select
       - create
       - modify
-    RangeSpecifier:
-      oneOf:
-      - type: object
-        required:
-        - end_of_range
-        - interval
-        - type
-        properties:
-          end_of_range:
-            type: string
-            format: date-time
-            description: Sets the end of the range for which the query will return results
-          interval:
-            type: string
-            description: |-
-              Sets the interval for which the query will return results
-
-              Effective range = `end_of_range` - `interval` : `end_of_range`
-          type:
-            type: string
-            enum:
-            - range
-      - type: object
-        required:
-        - token
-        - type
-        properties:
-          token:
-            type: string
-            description: |-
-              Used to paginate through the results after the initial request. Populated from the
-              `next_page_token` or `previous_page_token` of a previous request. Make sure to always use
-              the tokens from the latest request, else you will see the same page over and over again.
-          type:
-            type: string
-            enum:
-            - page-token
     RenameProjectRequest:
       type: object
       required:
@@ -3641,6 +3632,43 @@ components:
       enum:
       - table
       - view
+    TimeWindowSelector:
+      oneOf:
+      - type: object
+        required:
+        - end
+        - interval
+        - type
+        properties:
+          end:
+            type: string
+            format: date-time
+            description: End timestamp of the time window
+          interval:
+            type: string
+            description: |-
+              Duration/span of the time window
+
+              The effective time range = `window_end` - `window_duration` to `end`
+          type:
+            type: string
+            enum:
+            - window
+      - type: object
+        required:
+        - token
+        - type
+        properties:
+          token:
+            type: string
+            description: |-
+              Opaque Token from previous response for paginating through time windows
+
+              Use the `next_page_token` or `previous_page_token` from a previous response
+          type:
+            type: string
+            enum:
+            - page-token
     UndropTabularsRequest:
       type: object
       required:
@@ -4059,7 +4087,7 @@ components:
           type:
             type: string
             enum:
-            - ident
+            - warehouse-id
       - type: object
         description: |-
           Filter for requests that could not be associated with any warehouse, e.g. some management

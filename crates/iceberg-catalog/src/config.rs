@@ -207,7 +207,7 @@ pub struct DynAppConfig {
     /// milliseconds.
     #[serde(
         deserialize_with = "seconds_to_std_duration",
-        serialize_with = "std_duration_to_seconds"
+        serialize_with = "serialize_std_duration_as_ms"
     )]
     pub endpoint_stat_flush_interval: Duration,
 
@@ -257,7 +257,7 @@ where
     })
 }
 
-pub(crate) fn std_duration_to_seconds<S>(
+pub(crate) fn serialize_std_duration_as_ms<S>(
     duration: &Duration,
     serializer: S,
 ) -> Result<S::Ok, S::Error>

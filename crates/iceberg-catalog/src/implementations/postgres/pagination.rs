@@ -36,7 +36,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct RoundTrippableDuration(pub(crate) iso8601::Duration);
 
 #[derive(Debug, Error)]
@@ -123,6 +123,16 @@ fn parse_error(e: Option<Box<dyn std::error::Error + Send + Sync + 'static>>) ->
 mod test {
     use super::*;
     use crate::service::ProjectId;
+
+    #[test]
+    fn test_roundtrip_duration() {
+        let duration =
+            RoundTrippableDuration(iso8601::Duration::from_str("P1Y2M3DT4H5M6S").unwrap());
+        let duration_str = duration.to_string();
+        let duration_after: RoundTrippableDuration =
+            RoundTrippableDuration::try_from(duration_str.as_str()).unwrap();
+        assert_eq!(duration, duration_after);
+    }
 
     #[test]
     fn test_paginate_token() {

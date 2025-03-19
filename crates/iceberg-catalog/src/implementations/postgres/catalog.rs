@@ -30,7 +30,7 @@ use crate::{
     api::{
         iceberg::v1::{PaginatedMapping, PaginationQuery},
         management::v1::{
-            project::{EndpointStatisticsResponse, RangeSpecifier, WarehouseFilter},
+            project::{EndpointStatisticsResponse, TimeWindowSelector, WarehouseFilter},
             role::{ListRolesResponse, Role, SearchRoleResponse},
             user::{ListUsersResponse, SearchUserResponse, UserLastUpdatedWith, UserType},
             warehouse::{TabularDeleteProfile, WarehouseStatisticsResponse},
@@ -629,7 +629,7 @@ impl Catalog for super::PostgresCatalog {
     async fn get_endpoint_statistics(
         project_id: ProjectId,
         warehouse_id: WarehouseFilter,
-        range_specifier: RangeSpecifier,
+        range_specifier: TimeWindowSelector,
         status_codes: Option<&[u16]>,
         catalog_state: Self::State,
     ) -> Result<EndpointStatisticsResponse> {

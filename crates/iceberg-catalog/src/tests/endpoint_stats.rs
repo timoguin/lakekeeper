@@ -36,7 +36,9 @@ mod test {
         api::{
             endpoints::Endpoints,
             management::v1::{
-                project::{GetEndpointStatisticsRequest, RangeSpecifier, Service, WarehouseFilter},
+                project::{
+                    GetEndpointStatisticsRequest, Service, TimeWindowSelector, WarehouseFilter,
+                },
                 ApiServer,
             },
         },
@@ -131,8 +133,8 @@ mod test {
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
-                range_specifier: Some(RangeSpecifier::Range {
-                    end_of_range: Utc::now(),
+                range_specifier: Some(TimeWindowSelector::Window {
+                    end: Utc::now(),
                     interval: chrono::Duration::seconds(10),
                 }),
             },
@@ -153,8 +155,8 @@ mod test {
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
-                range_specifier: Some(RangeSpecifier::Range {
-                    end_of_range: Utc::now(),
+                range_specifier: Some(TimeWindowSelector::Window {
+                    end: Utc::now(),
                     interval: chrono::Duration::milliseconds(1000),
                 }),
             },
@@ -175,7 +177,7 @@ mod test {
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
-                range_specifier: Some(RangeSpecifier::PageToken {
+                range_specifier: Some(TimeWindowSelector::PageToken {
                     token: page_1.previous_page_token.clone(),
                 }),
             },
@@ -196,7 +198,7 @@ mod test {
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
-                range_specifier: Some(RangeSpecifier::PageToken {
+                range_specifier: Some(TimeWindowSelector::PageToken {
                     token: page_2.previous_page_token.clone(),
                 }),
             },
@@ -217,7 +219,7 @@ mod test {
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
-                range_specifier: Some(RangeSpecifier::PageToken {
+                range_specifier: Some(TimeWindowSelector::PageToken {
                     token: page_3.next_page_token.clone(),
                 }),
             },
@@ -242,8 +244,8 @@ mod test {
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
-                range_specifier: Some(RangeSpecifier::Range {
-                    end_of_range: Utc::now(),
+                range_specifier: Some(TimeWindowSelector::Window {
+                    end: Utc::now(),
                     interval: chrono::Duration::milliseconds(2200), // Should capture 2 timestamps
                 }),
             },
@@ -272,8 +274,8 @@ mod test {
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: None,
-                range_specifier: Some(RangeSpecifier::Range {
-                    end_of_range: Utc::now() + chrono::Duration::hours(1),
+                range_specifier: Some(TimeWindowSelector::Window {
+                    end: Utc::now() + chrono::Duration::hours(1),
                     interval: chrono::Duration::milliseconds(500),
                 }),
             },
@@ -362,8 +364,8 @@ mod test {
             GetEndpointStatisticsRequest {
                 warehouse: WarehouseFilter::All,
                 status_codes: Some(vec![404]),
-                range_specifier: Some(RangeSpecifier::Range {
-                    end_of_range: Utc::now(),
+                range_specifier: Some(TimeWindowSelector::Window {
+                    end: Utc::now(),
                     interval: chrono::Duration::seconds(10),
                 }),
             },
@@ -383,12 +385,12 @@ mod test {
         let warehouse_filtered = ApiServer::get_endpoint_statistics(
             setup.ctx.clone(),
             GetEndpointStatisticsRequest {
-                warehouse: WarehouseFilter::Ident {
+                warehouse: WarehouseFilter::WarehouseId {
                     id: *setup.warehouse.warehouse_id,
                 },
                 status_codes: None,
-                range_specifier: Some(RangeSpecifier::Range {
-                    end_of_range: Utc::now(),
+                range_specifier: Some(TimeWindowSelector::Window {
+                    end: Utc::now(),
                     interval: chrono::Duration::seconds(10),
                 }),
             },

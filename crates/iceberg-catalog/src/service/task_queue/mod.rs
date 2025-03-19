@@ -219,7 +219,7 @@ pub struct TaskQueueConfig {
     pub max_age: chrono::Duration,
     #[serde(
         deserialize_with = "crate::config::seconds_to_std_duration",
-        serialize_with = "crate::config::std_duration_to_seconds"
+        serialize_with = "crate::config::serialize_std_duration_as_ms"
     )]
     pub poll_interval: Duration,
 }

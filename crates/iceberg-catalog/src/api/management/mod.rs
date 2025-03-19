@@ -108,6 +108,7 @@ pub mod v1 {
             search_role,
             search_user,
             undrop_tabulars,
+            undrop_tabulars_deprecated,
             update_role,
             update_storage_credential,
             update_storage_profile,
@@ -986,6 +987,32 @@ pub mod v1 {
             (status = "4XX", body = IcebergErrorResponse),
         )
     )]
+    #[deprecated = "This endpoint is deprecated and will be removed soon, please use /management/v1/warehouse/{warehouse_id}/deleted-tabulars/undrop instead."]
+    async fn undrop_tabulars_deprecated<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
+        Path(warehouse_id): Path<uuid::Uuid>,
+        AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
+        Extension(metadata): Extension<RequestMetadata>,
+        Json(request): Json<UndropTabularsRequest>,
+    ) -> Result<StatusCode> {
+        ApiServer::<C, A, S>::undrop_tabulars(
+            WarehouseIdent::from(warehouse_id),
+            metadata,
+            request,
+            api_context,
+        )
+        .await?;
+        Ok(StatusCode::NO_CONTENT)
+    }
+
+    #[utoipa::path(
+        post,
+        tag = "warehouse",
+        path = "/management/v1/warehouse/{warehouse_id}/deleted-tabulars/undrop",
+        responses(
+            (status = 204, description = "Tabular undropped successfully"),
+            (status = "4XX", body = IcebergErrorResponse),
+        )
+    )]
     async fn undrop_tabulars<C: Catalog, A: Authorizer + Clone, S: SecretStore>(
         Path(warehouse_id): Path<uuid::Uuid>,
         AxumState(api_context): AxumState<ApiContext<State<A, C, S>>>,
@@ -1139,7 +1166,8 @@ pub mod v1 {
                 )
                 .route(
                     "/warehouse/{warehouse_id}/deleted_tabulars/undrop",
-                    post(undrop_tabulars),
+                    #[allow(deprecated)]
+                    post(undrop_tabulars_deprecated),
                 )
                 .route(
                     "/warehouse/{warehouse_id}/deleted-tabulars/undrop",

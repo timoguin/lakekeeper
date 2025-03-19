@@ -251,10 +251,12 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         C::get_endpoint_statistics(
             project_id,
             request.warehouse,
-            request.range_specifier.unwrap_or(RangeSpecifier::Range {
-                end_of_range: Utc::now(),
-                interval: chrono::Duration::days(1),
-            }),
+            request
+                .range_specifier
+                .unwrap_or(TimeWindowSelector::Window {
+                    end: Utc::now(),
+                    interval: chrono::Duration::days(1),
+                }),
             request.status_codes.as_deref(),
             context.v1_state.catalog,
         )
@@ -322,21 +324,40 @@ pub struct EndpointStatisticsResponse {
     pub next_page_token: String,
 }
 
+// #[derive(Debug, Serialize, Deserialize, ToSchema, Clone)]
+// #[serde(rename_all = "kebab-case", tag = "type")]
+// pub enum TimeWindowSelector {
+//     Window {
+//         /// End timestamp of the time window
+//         window_end: chrono::DateTime<chrono::Utc>,
+//         /// Duration/span of the time window
+//         ///
+//         /// The effective time range = `window_end` - `window_duration` to `window_end`
+//         window_duration: chrono::Duration,
+//     },
+//     PageToken {
+//         /// Opaque Token from previous response for paginating through time windows
+//         ///
+//         /// Use the `next_page_token` or `previous_page_token` from a previous response
+//         token: String,
+//     },
+// }
+
 #[derive(Debug, Serialize, Deserialize, ToSchema, Clone)]
 #[serde(rename_all = "kebab-case", tag = "type")]
-pub enum RangeSpecifier {
-    Range {
-        /// Sets the end of the range for which the query will return results
-        end_of_range: chrono::DateTime<chrono::Utc>,
-        /// Sets the interval for which the query will return results
+pub enum TimeWindowSelector {
+    Window {
+        /// End timestamp of the time window
+        end: chrono::DateTime<chrono::Utc>,
+        /// Duration/span of the time window
         ///
-        /// Effective range = `end_of_range` - `interval` : `end_of_range`
+        /// The effective time range = `window_end` - `window_duration` to `end`
         interval: chrono::Duration,
     },
     PageToken {
-        /// Used to paginate through the results after the initial request. Populated from the
-        /// `next_page_token` or `previous_page_token` of a previous request. Make sure to always use
-        /// the tokens from the latest request, else you will see the same page over and over again.
+        /// Opaque Token from previous response for paginating through time windows
+        ///
+        /// Use the `next_page_token` or `previous_page_token` from a previous response
         token: String,
     },
 }
@@ -356,14 +377,14 @@ pub struct GetEndpointStatisticsRequest {
     ///
     /// Either for a explicit range or a page token to paginate through the results. See the docs of
     /// `RangeSpecifier` for more details.
-    pub range_specifier: Option<RangeSpecifier>,
+    pub range_specifier: Option<TimeWindowSelector>,
 }
 
 #[derive(Deserialize, Serialize, ToSchema, Debug)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum WarehouseFilter {
     /// Filter for a specific warehouse
-    Ident { id: Uuid },
+    WarehouseId { id: Uuid },
     /// Filter for requests that could not be associated with any warehouse, e.g. some management
     /// endpoints
     Unmapped,
