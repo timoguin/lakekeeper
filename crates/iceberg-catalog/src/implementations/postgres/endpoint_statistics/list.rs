@@ -136,14 +136,13 @@ pub(crate) async fn list_statistics(
 }
 
 fn parse_token(token: &str) -> Result<(chrono::DateTime<Utc>, chrono::Duration), ErrorModel> {
-    // ... don't get me started.. we have a quite flexible token format. We can pass arbitrary data
-    // through the id field as long as it implements Display and TryFrom<&str>. Now, we'd really love
-    // to pass a chrono::Duration through here. But chrono::Duration doesn't implement FromStr or
-    // TryFrom<&str>. Bummer. So we resort to iso8601::Duration which offers a FromStr implementation.
-    // Their Error type is String and incompatible with our TryFrom implementation which requires an
-    // std::error::Error, so we now end up having our own Duration type RoundTrippableDuration which
-    // wraps the iso8601::Duration and implements TryFrom<&str> and Display.
-    // Funfunfun.
+    // We have a flexible token format that allows passing arbitrary data through the id field as long as it
+    // implements Display and TryFrom<&str>. Ideally, we would like to pass a chrono::Duration through here.
+    // However, chrono::Duration does not implement FromStr or TryFrom<&str>. Therefore, we use iso8601::Duration,
+    // which offers a FromStr implementation. The Error type of iso8601::Duration is String and is incompatible
+    // with our TryFrom implementation, which requires an std::error::Error. As a result, we created our own
+    // Duration type, RoundTrippableDuration, which wraps iso8601::Duration and implements TryFrom<&str> and Display.
+    // This approach ensures compatibility and functionality.
     let PaginateToken::V1(V1PaginateToken { created_at, id }): PaginateToken<
         RoundTrippableDuration,
     > = PaginateToken::try_from(token)?;
