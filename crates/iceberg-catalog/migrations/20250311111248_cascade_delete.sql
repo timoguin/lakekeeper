@@ -1,4 +1,3 @@
--- TODO: should these become an enum?
 alter table tabular
     add column protected bool not null default false;
 

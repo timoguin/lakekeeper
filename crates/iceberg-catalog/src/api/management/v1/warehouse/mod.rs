@@ -725,7 +725,6 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             .require_namespace_action(
                 &request_metadata,
                 Ok(Some(namespace_id)),
-                // TODO: is this the right action?
                 &CatalogNamespaceAction::CanDelete,
             )
             .await?;
@@ -750,6 +749,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             // data is deleted but the transaction is not committed, meaning dangling pointers.
             transaction.commit().await?;
 
+            // cancel pending tasks
             context
                 .v1_state
                 .queues
@@ -757,8 +757,6 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                 .await?;
 
             if purge {
-                // cancel pending tasks
-
                 for (tabular_id, tabular_location) in drop_info.child_tables {
                     let (tabular_id, tabular_type) = match tabular_id {
                         TabularIdentUuid::Table(id) => (id, TabularType::Table),

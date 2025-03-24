@@ -349,7 +349,7 @@ pub(crate) async fn drop_namespace(
             -- ...but only if none are locked
             AND ((NOT EXISTS (SELECT 1 FROM child_namespaces)) OR ($3 AND NOT EXISTS (SELECT 1 FROM child_namespaces WHERE protected = true)))
             AND NOT EXISTS (SELECT 1 FROM tabulars WHERE task_status = 'running')
-            AND NOT EXISTS (SELECT 1 from tabulars) OR ($3 AND NOT EXISTS (SELECT 1 from tabulars WHERE protected = true))
+            AND (NOT EXISTS (SELECT 1 from tabulars) OR ($3 AND NOT EXISTS (SELECT 1 from tabulars WHERE protected = true)))
             AND warehouse_id IN (
                 SELECT warehouse_id FROM warehouse WHERE status = 'active'
             )

@@ -136,6 +136,7 @@ pub trait TaskQueue: Debug {
     fn config(&self) -> &TaskQueueConfig;
     fn queue_name(&self) -> &'static str;
 
+    async fn enqueue_batch(&self, task: Vec<Self::Input>) -> crate::api::Result<()>;
     async fn enqueue(&self, task: Self::Input) -> crate::api::Result<()>;
     async fn pick_new_task(&self) -> crate::api::Result<Option<Self::Task>>;
     async fn record_success(&self, id: Uuid) -> crate::api::Result<()>;
