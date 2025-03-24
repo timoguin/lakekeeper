@@ -16,7 +16,7 @@ use crate::{
     request_metadata::RequestMetadata,
     service::{
         authz::{
-            Authorizer, CatalogProjectAction, CatalogServerAction,
+            Authorizer, CatalogProjectAction, CatalogServerAction, CatalogWarehouseAction,
             ListProjectsResponse as AuthZListProjectsResponse,
         },
         secrets::SecretStore,
@@ -238,15 +238,29 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         request: GetEndpointStatisticsRequest,
         request_metadata: RequestMetadata,
     ) -> Result<EndpointStatisticsResponse> {
-        let authorizer = context.v1_state.authz;
         let project_id = request_metadata.require_project_id(None)?;
-        authorizer
-            .require_project_action(
-                &request_metadata,
-                project_id,
-                &CatalogProjectAction::CanGetMetadata,
-            )
-            .await?;
+        let authorizer = context.v1_state.authz;
+
+        match request.warehouse {
+            WarehouseFilter::WarehouseId { id } => {
+                authorizer
+                    .require_warehouse_action(
+                        &request_metadata,
+                        id.into(),
+                        &CatalogWarehouseAction::CanGetMetadata,
+                    )
+                    .await?;
+            }
+            WarehouseFilter::All | WarehouseFilter::Unmapped => {
+                authorizer
+                    .require_project_action(
+                        &request_metadata,
+                        project_id,
+                        &CatalogProjectAction::CanGetMetadata,
+                    )
+                    .await?;
+            }
+        }
 
         C::get_endpoint_statistics(
             project_id,
