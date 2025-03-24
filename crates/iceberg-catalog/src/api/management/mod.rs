@@ -905,14 +905,32 @@ pub mod v1 {
         .map(Json)
     }
 
-    /// Get endpoint call statistics
+    /// Retrieve API Usage Statistics
     ///
-    /// Get endpoint call statistics for your project.
+    /// Returns detailed endpoint call statistics for your project, allowing you to monitor API usage patterns,
+    /// track frequency of operations, and analyze response codes.
     ///
-    /// We lazily create a new statistics entry every hour, in between hours, the existing entry
-    /// is being updated. If any endpoint is called in the following hour, there'll be an entry in
-    /// the `timestamps` field of the response for the following hour. If not, then there'll be no
-    /// entry.
+    /// ## Data Collection
+    ///
+    /// The statistics include:
+    /// - Endpoint paths and HTTP methods
+    /// - Response status codes
+    /// - Call counts per endpoint
+    /// - Warehouse context (when applicable)
+    /// - Timestamps of activity
+    ///
+    /// ## Time Aggregation
+    ///
+    /// Statistics are aggregated hourly. Within each hour window:
+    /// - An initial entry is created on the first API call
+    /// - Subsequent calls update the existing hourly entry
+    /// - Each hour boundary creates a new aggregation bucket
+    /// - Hours with no API activity have no entries (gaps in data)
+    ///
+    /// ## Response Format
+    ///
+    /// The response includes timestamp buckets (in UTC) and corresponding endpoint metrics,
+    /// allowing for time-series analysis of API usage patterns.
     ///
     /// Example:
     /// - 00:00:00-00:16:32: no activity
