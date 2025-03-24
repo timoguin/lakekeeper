@@ -130,11 +130,11 @@ impl Endpoints {
 
     pub fn from_method_and_matched_path(method: &Method, inp: &str) -> Option<Self> {
         if inp.starts_with("/management/v1/permissions") {
-            return match method {
-                &Method::GET => Some(Endpoints::ManagementGetPermissions),
-                &Method::POST => Some(Endpoints::ManagementPostPermissions),
-                &Method::HEAD => Some(Endpoints::ManagementHeadPermissions),
-                &Method::DELETE => Some(Endpoints::ManagementDeletePermissions),
+            return match *method {
+                Method::GET => Some(Endpoints::ManagementGetPermissions),
+                Method::POST => Some(Endpoints::ManagementPostPermissions),
+                Method::HEAD => Some(Endpoints::ManagementHeadPermissions),
+                Method::DELETE => Some(Endpoints::ManagementDeletePermissions),
                 _ => None,
             };
         }

@@ -222,6 +222,32 @@ mod test {
     use crate::api::iceberg::v1::PaginatedMapping;
 
     #[test]
+    fn test_supported_endpoints() {
+        let openapi = include_str!("../../../../../docs/docs/api/rest-catalog-open-api.yaml");
+        let s: serde_json::Value = serde_yml::from_str(openapi).unwrap();
+        let paths = s["paths"].as_object().unwrap();
+        let unsupported = &[
+            "/v1/oauth/tokens",
+            "/v1/{prefix}/namespaces/{namespace}/tables/{table}/plan",
+            "/v1/{prefix}/namespaces/{namespace}/tables/{table}/plan/{plan-id}",
+            "/v1/{prefix}/namespaces/{namespace}/tables/{table}/tasks",
+        ];
+        paths
+            .into_iter()
+            .filter(|(path, _)| !unsupported.contains(&path.as_str()))
+            .for_each(|(path, vals)| {
+                let methods = vals.as_object().unwrap();
+                methods
+                    .keys()
+                    .filter(|m| *m != "parameters")
+                    .for_each(|method| {
+                        let route = format!("{} {}", method.to_uppercase(), path);
+                        assert!(super::supported_endpoints().contains(&route), "{route}");
+                    });
+            });
+    }
+
+    #[test]
     fn iteration_with_page_token_is_in_insertion_order() {
         let mut map = PaginatedMapping::with_capacity(3);
         let k1 = Uuid::now_v7();
