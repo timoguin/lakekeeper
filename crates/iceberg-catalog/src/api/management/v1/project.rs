@@ -324,25 +324,6 @@ pub struct EndpointStatisticsResponse {
     pub next_page_token: String,
 }
 
-// #[derive(Debug, Serialize, Deserialize, ToSchema, Clone)]
-// #[serde(rename_all = "kebab-case", tag = "type")]
-// pub enum TimeWindowSelector {
-//     Window {
-//         /// End timestamp of the time window
-//         window_end: chrono::DateTime<chrono::Utc>,
-//         /// Duration/span of the time window
-//         ///
-//         /// The effective time range = `window_end` - `window_duration` to `window_end`
-//         window_duration: chrono::Duration,
-//     },
-//     PageToken {
-//         /// Opaque Token from previous response for paginating through time windows
-//         ///
-//         /// Use the `next_page_token` or `previous_page_token` from a previous response
-//         token: String,
-//     },
-// }
-
 #[derive(Debug, Serialize, Deserialize, ToSchema, Clone)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum TimeWindowSelector {
@@ -428,7 +409,7 @@ mod test {
 
     #[test]
     fn test_deserialize_warehouse_filter() {
-        let js = serde_json::json!({"type": "ident","id": Uuid::new_v4().to_string()});
+        let js = serde_json::json!({"type": "warehouse-id","id": Uuid::new_v4().to_string()});
         let _ = serde_json::from_value::<WarehouseFilter>(js).unwrap();
 
         let js = serde_json::json!({"type": "unmapped"});
