@@ -14,6 +14,7 @@ use axum::{
     response::Response,
 };
 use http::StatusCode;
+use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -129,6 +130,12 @@ pub struct EndpointStatisticsTracker {
     flush_mode: FlushMode,
 }
 
+#[derive(Debug)]
+enum LoopState {
+    Continue,
+    Break,
+}
+
 impl EndpointStatisticsTracker {
     #[must_use]
     pub fn new(
@@ -149,99 +156,81 @@ impl EndpointStatisticsTracker {
     pub async fn run(mut self) {
         let mut last_update = tokio::time::Instant::now();
         loop {
-            let span = tracing::span!(tracing::Level::INFO, "endpoint_statistics_tracker", iteration_id=%Uuid::now_v7());
-            let _guard = span.enter();
-            if matches!(self.flush_mode, FlushMode::Automatic)
-                && last_update.elapsed() > self.flush_interval
-            {
-                tracing::debug!(
-                    "Flushing stats after: {}ms",
-                    last_update.elapsed().as_millis()
-                );
-                self.flush_storage().await;
-                last_update = tokio::time::Instant::now();
-            }
+            let span =
+                tracing::info_span!("endpoint_statistics_tracker", iteration_id=%Uuid::now_v7());
 
-            let msg = if matches!(self.flush_mode, FlushMode::Automatic) {
-                let Ok(msg) = tokio::time::timeout(self.flush_interval, self.rcv.recv()).await
-                else {
-                    tracing::debug!("No message received, continuing.");
+            match self.loop_tick(&mut last_update).instrument(span).await {
+                LoopState::Continue => {
                     continue;
-                };
-                msg
-            } else {
-                self.rcv.recv().await
-            };
-
-            let Some(msg) = msg else {
-                tracing::info!("Channel closed, shutting down.");
-                self.close().await;
-                break;
-            };
-
-            match msg {
-                EndpointStatisticsMessage::EndpointCalled {
-                    request_metadata,
-                    response_status,
-                    path_params,
-                    query_params,
-                } => {
-                    let warehouse = Self::maybe_get_warehouse_ident(&path_params);
-
-                    let Some(matched_path) = request_metadata.matched_path() else {
-                        tracing::trace!("No path matched.");
-                        continue;
-                    };
-
-                    let Some(uri) = Endpoints::from_method_and_matched_path(
-                        request_metadata.request_method(),
-                        matched_path,
-                    ) else {
-                        tracing::error!(
-                            "Could not parse endpoint from matched path: '{} {}'. This is likely a bug which will affect the statistics collection.",
-                            request_metadata.request_method(),
-                            matched_path
-                        );
-                        continue;
-                    };
-                    let Some(project) = request_metadata.preferred_project_id() else {
-                        tracing::debug!("No project specified, request not counted.");
-                        continue;
-                    };
-
-                    // TODO: we should probably make sure the project-id actually exists. Else, we'll
-                    //       run into foreign-key issues upon inserting.
-                    self.endpoint_statistics
-                        .entry(project)
-                        .or_default()
-                        .stats
-                        .entry(EndpointIdentifier {
-                            warehouse,
-                            uri,
-                            status_code: response_status,
-                            warehouse_name: query_params.get("warehouse").cloned(),
-                        })
-                        .or_insert_with(|| AtomicI64::new(0))
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
-                EndpointStatisticsMessage::Shutdown => {
-                    tracing::info!(
-                        "Received shutdown message, flushing sinks before shutting down."
-                    );
+                LoopState::Break => {
                     self.close().await;
                     break;
-                }
-                EndpointStatisticsMessage::Flush => {
-                    tracing::info!("Received flush message, flushing sinks.");
-                    self.flush_storage().await;
                 }
             }
         }
     }
 
+    async fn loop_tick(&mut self, last_update: &mut tokio::time::Instant) -> LoopState {
+        if matches!(self.flush_mode, FlushMode::Automatic)
+            && last_update.elapsed() > self.flush_interval
+        {
+            tracing::debug!(
+                "Flushing stats after: {}ms",
+                last_update.elapsed().as_millis()
+            );
+            self.flush_storage().await;
+            *last_update = tokio::time::Instant::now();
+        }
+
+        let msg = if matches!(self.flush_mode, FlushMode::Automatic) {
+            let Ok(msg) = tokio::time::timeout(self.flush_interval, self.rcv.recv()).await else {
+                tracing::debug!("No message received, continuing.");
+                return LoopState::Continue;
+            };
+            msg
+        } else {
+            self.rcv.recv().await
+        };
+
+        let Some(msg) = msg else {
+            tracing::info!("Channel closed, breaking rcv loop.");
+            return LoopState::Break;
+        };
+
+        match msg {
+            EndpointStatisticsMessage::EndpointCalled {
+                request_metadata,
+                response_status,
+                path_params,
+                query_params,
+            } => {
+                self.process_endpoint_called(
+                    &request_metadata,
+                    response_status,
+                    &path_params,
+                    &query_params,
+                );
+                LoopState::Continue
+            }
+            EndpointStatisticsMessage::Shutdown => {
+                tracing::info!("Received shutdown message, breaking rcv loop.");
+                LoopState::Break
+            }
+            EndpointStatisticsMessage::Flush => {
+                tracing::info!("Received flush message, flushing sinks.");
+                self.flush_storage().await;
+                LoopState::Continue
+            }
+        }
+    }
+
     async fn close(mut self) {
+        tracing::info!("Shutting down endpoint statistics tracker, flushing storage.");
         self.rcv.close();
+        tracing::trace!("Channel closed, flushing stats.");
         self.flush_storage().await;
+        tracing::trace!("Endpoint Statistics Tracker done.");
     }
 
     async fn flush_storage(&mut self) {
@@ -263,6 +252,50 @@ impl EndpointStatisticsTracker {
                 );
             };
         }
+    }
+
+    fn process_endpoint_called(
+        &mut self,
+        request_metadata: &RequestMetadata,
+        response_status: StatusCode,
+        path_params: &HashMap<String, String>,
+        query_params: &HashMap<String, String>,
+    ) {
+        let warehouse = Self::maybe_get_warehouse_ident(path_params);
+
+        let Some(matched_path) = request_metadata.matched_path() else {
+            tracing::trace!("No path matched.");
+            return;
+        };
+
+        let Some(uri) = Endpoints::from_method_and_matched_path(
+            request_metadata.request_method(),
+            matched_path,
+        ) else {
+            tracing::error!(
+                            "Could not parse endpoint from matched path: '{} {}'. This is likely a bug which will affect the statistics collection.",
+                            request_metadata.request_method(),
+                            matched_path
+                        );
+            return;
+        };
+        let Some(project) = request_metadata.preferred_project_id() else {
+            tracing::debug!("No project specified, request not counted.");
+            return;
+        };
+
+        self.endpoint_statistics
+            .entry(project)
+            .or_default()
+            .stats
+            .entry(EndpointIdentifier {
+                warehouse,
+                uri,
+                status_code: response_status,
+                warehouse_name: query_params.get("warehouse").cloned(),
+            })
+            .or_insert_with(|| AtomicI64::new(0))
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     fn maybe_get_warehouse_ident(path_params: &HashMap<String, String>) -> Option<WarehouseIdent> {
