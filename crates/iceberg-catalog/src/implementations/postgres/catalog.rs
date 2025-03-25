@@ -82,7 +82,7 @@ impl Catalog for super::PostgresCatalog {
     // ---------------- Role Management API ----------------
     async fn create_role<'a>(
         role_id: RoleId,
-        project_id: ProjectId,
+        project_id: &ProjectId,
         role_name: &str,
         description: Option<&str>,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
@@ -189,7 +189,7 @@ impl Catalog for super::PostgresCatalog {
 
     async fn get_warehouse_by_name(
         warehouse_name: &str,
-        project_id: ProjectId,
+        project_id: &ProjectId,
         catalog_state: CatalogState,
     ) -> Result<Option<WarehouseIdent>> {
         get_warehouse_by_name(warehouse_name, project_id, catalog_state).await
@@ -389,7 +389,7 @@ impl Catalog for super::PostgresCatalog {
 
     async fn create_warehouse<'a>(
         warehouse_name: String,
-        project_id: ProjectId,
+        project_id: &ProjectId,
         storage_profile: StorageProfile,
         tabular_delete_profile: TabularDeleteProfile,
         storage_secret_id: Option<SecretIdent>,
@@ -408,7 +408,7 @@ impl Catalog for super::PostgresCatalog {
 
     // ---------------- Management API ----------------
     async fn create_project<'a>(
-        project_id: ProjectId,
+        project_id: &ProjectId,
         project_name: String,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<()> {
@@ -417,7 +417,7 @@ impl Catalog for super::PostgresCatalog {
 
     /// Delete a project
     async fn delete_project<'a>(
-        project_id: ProjectId,
+        project_id: &ProjectId,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<()> {
         delete_project(project_id, transaction).await
@@ -425,7 +425,7 @@ impl Catalog for super::PostgresCatalog {
 
     /// Get the project metadata
     async fn get_project<'a>(
-        project_id: ProjectId,
+        project_id: &ProjectId,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<Option<GetProjectResponse>> {
         get_project(project_id, transaction).await
@@ -439,7 +439,7 @@ impl Catalog for super::PostgresCatalog {
     }
 
     async fn rename_project<'a>(
-        project_id: ProjectId,
+        project_id: &ProjectId,
         new_name: &str,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<()> {
@@ -447,7 +447,7 @@ impl Catalog for super::PostgresCatalog {
     }
 
     async fn list_warehouses(
-        project_id: ProjectId,
+        project_id: &ProjectId,
         include_inactive: Option<Vec<WarehouseStatus>>,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
     ) -> Result<Vec<GetWarehouseResponse>> {
@@ -613,7 +613,6 @@ impl Catalog for super::PostgresCatalog {
             &mut **transaction,
             None,
             pagination_query,
-            false,
         )
         .await
     }

@@ -216,7 +216,7 @@ where
     async fn is_allowed_project_action(
         &self,
         metadata: &RequestMetadata,
-        project_id: ProjectId,
+        project_id: &ProjectId,
         action: &CatalogProjectAction,
     ) -> Result<bool>;
 
@@ -274,8 +274,11 @@ where
 
     /// Hook that is called when a new project is created.
     /// This is used to set up the initial permissions for the project.
-    async fn create_project(&self, metadata: &RequestMetadata, project_id: ProjectId)
-        -> Result<()>;
+    async fn create_project(
+        &self,
+        metadata: &RequestMetadata,
+        project_id: &ProjectId,
+    ) -> Result<()>;
 
     /// Hook that is called when a project is deleted.
     /// This is used to clean up permissions for the project.
@@ -288,7 +291,7 @@ where
         &self,
         metadata: &RequestMetadata,
         warehouse_id: WarehouseIdent,
-        parent_project_id: ProjectId,
+        parent_project_id: &ProjectId,
     ) -> Result<()>;
 
     /// Hook that is called when a warehouse is deleted.
@@ -418,7 +421,7 @@ where
     async fn require_project_action(
         &self,
         metadata: &RequestMetadata,
-        project_id: ProjectId,
+        project_id: &ProjectId,
         action: &CatalogProjectAction,
     ) -> Result<()> {
         if self
@@ -475,7 +478,10 @@ where
         let typ = "NamespaceActionForbidden";
 
         match namespace_id {
-            Ok(None) => Err(ErrorModel::forbidden(msg, typ, None).into()),
+            Ok(None) => {
+                tracing::debug!("Namespace not found, returning forbidden.");
+                Err(ErrorModel::forbidden(msg, typ, None).into())
+            }
             Ok(Some(namespace_id)) => {
                 if self
                     .is_allowed_namespace_action(metadata, namespace_id, action)
@@ -483,6 +489,7 @@ where
                 {
                     Ok(namespace_id)
                 } else {
+                    tracing::trace!("Namespace action forbidden.");
                     Err(ErrorModel::forbidden(msg, typ, None).into())
                 }
             }
@@ -505,7 +512,10 @@ where
         let typ = "TableActionForbidden";
 
         match table_id {
-            Ok(None) => Err(ErrorModel::forbidden(msg, typ, None).into()),
+            Ok(None) => {
+                tracing::debug!("Table not found, returning forbidden.");
+                Err(ErrorModel::forbidden(msg, typ, None).into())
+            }
             Ok(Some(table_id)) => {
                 if self
                     .is_allowed_table_action(metadata, table_id.table_uuid(), action)
@@ -513,6 +523,7 @@ where
                 {
                     Ok(table_id)
                 } else {
+                    tracing::trace!("Table action forbidden.");
                     Err(ErrorModel::forbidden(msg, typ, None).into())
                 }
             }
@@ -535,7 +546,10 @@ where
         let typ = "ViewActionForbidden";
 
         match view_id {
-            Ok(None) => Err(ErrorModel::forbidden(msg, typ, None).into()),
+            Ok(None) => {
+                tracing::debug!("View not found, returning forbidden.");
+                Err(ErrorModel::forbidden(msg, typ, None).into())
+            }
             Ok(Some(view_id)) => {
                 if self
                     .is_allowed_view_action(metadata, view_id, action)
@@ -543,6 +557,7 @@ where
                 {
                     Ok(view_id)
                 } else {
+                    tracing::trace!("View action forbidden.");
                     Err(ErrorModel::forbidden(msg, typ, None).into())
                 }
             }

@@ -29,7 +29,8 @@ use crate::{
 #[serde(rename_all = "kebab-case")]
 pub struct GetProjectResponse {
     /// ID of the project.
-    pub project_id: uuid::Uuid,
+    #[schema(value_type = String)]
+    pub project_id: ProjectId,
     /// Name of the project
     pub project_name: String,
 }
@@ -39,11 +40,6 @@ pub struct GetProjectResponse {
 pub struct RenameProjectRequest {
     /// New name for the project.
     pub new_name: String,
-    /// Optional project ID.
-    /// Only required if the project ID cannot be inferred and no default project is set.
-    #[serde(default)]
-    #[schema(value_type = Option::<uuid::Uuid>)]
-    pub project_id: Option<ProjectId>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -60,7 +56,7 @@ pub struct CreateProjectRequest {
     pub project_name: String,
     /// Request a specific project ID - optional.
     /// If not provided, a new project ID will be generated (recommended).
-    #[schema(value_type = Option::<uuid::Uuid>)]
+    #[schema(value_type = Option::<String>)]
     pub project_id: Option<ProjectId>,
 }
 
@@ -68,7 +64,7 @@ pub struct CreateProjectRequest {
 #[serde(rename_all = "kebab-case")]
 pub struct CreateProjectResponse {
     /// ID of the created project.
-    #[schema(value_type = uuid::Uuid)]
+    #[schema(value_type = String)]
     pub project_id: ProjectId,
 }
 
@@ -107,9 +103,9 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         validate_project_name(&project_name)?;
         let mut t = C::Transaction::begin_write(context.v1_state.catalog).await?;
         let project_id = project_id.unwrap_or(ProjectId::from(uuid::Uuid::now_v7()));
-        C::create_project(project_id, project_name, t.transaction()).await?;
+        C::create_project(&project_id, project_name, t.transaction()).await?;
         authorizer
-            .create_project(&request_metadata, project_id)
+            .create_project(&request_metadata, &project_id)
             .await?;
         t.commit().await?;
 
@@ -128,7 +124,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         authorizer
             .require_project_action(
                 &request_metadata,
-                project_id,
+                &project_id,
                 &CatalogProjectAction::CanRename,
             )
             .await?;
@@ -136,7 +132,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         // ------------------- Business Logic -------------------
         validate_project_name(&request.new_name)?;
         let mut transaction = C::Transaction::begin_write(context.v1_state.catalog).await?;
-        C::rename_project(project_id, &request.new_name, transaction.transaction()).await?;
+        C::rename_project(&project_id, &request.new_name, transaction.transaction()).await?;
         transaction.commit().await?;
 
         Ok(())
@@ -153,7 +149,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         authorizer
             .require_project_action(
                 &request_metadata,
-                project_id,
+                &project_id,
                 &CatalogProjectAction::CanGetMetadata,
             )
             .await?;
@@ -161,7 +157,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         // ------------------- Business Logic -------------------
         let mut t = C::Transaction::begin_read(context.v1_state.catalog).await?;
         let project =
-            C::get_project(project_id, t.transaction())
+            C::get_project(&project_id, t.transaction())
                 .await?
                 .ok_or(ErrorModel::not_found(
                     format!("Project with id {project_id} not found."),
@@ -171,7 +167,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         t.commit().await?;
 
         Ok(GetProjectResponse {
-            project_id: *project_id,
+            project_id,
             project_name: project.name,
         })
     }
@@ -187,7 +183,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         authorizer
             .require_project_action(
                 &request_metadata,
-                project_id,
+                &project_id,
                 &CatalogProjectAction::CanDelete,
             )
             .await?;
@@ -195,7 +191,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
         // ------------------- Business Logic -------------------
         let mut transaction = C::Transaction::begin_write(context.v1_state.catalog).await?;
 
-        C::delete_project(project_id, transaction.transaction()).await?;
+        C::delete_project(&project_id, transaction.transaction()).await?;
         authorizer
             .delete_project(&request_metadata, project_id)
             .await?;
@@ -226,7 +222,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
             projects: projects
                 .into_iter()
                 .map(|project| GetProjectResponse {
-                    project_id: *project.project_id,
+                    project_id: project.project_id,
                     project_name: project.name,
                 })
                 .collect(),
