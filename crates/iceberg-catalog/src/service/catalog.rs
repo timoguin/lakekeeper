@@ -215,7 +215,7 @@ where
     // Should only return a warehouse if the warehouse is active.
     async fn get_warehouse_by_name(
         warehouse_name: &str,
-        project_id: ProjectId,
+        project_id: &ProjectId,
         catalog_state: Self::State,
     ) -> Result<Option<WarehouseIdent>>;
 
@@ -223,7 +223,7 @@ where
     /// not found error if the warehouse does not exist.
     async fn require_warehouse_by_name(
         warehouse_name: &str,
-        project_id: ProjectId,
+        project_id: &ProjectId,
         catalog_state: Self::State,
     ) -> Result<WarehouseIdent> {
         Self::get_warehouse_by_name(warehouse_name, project_id, catalog_state)
@@ -424,7 +424,7 @@ where
     // ---------------- Role Management API ----------------
     async fn create_role<'a>(
         role_id: RoleId,
-        project_id: ProjectId,
+        project_id: &ProjectId,
         role_name: &str,
         description: Option<&str>,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
@@ -491,7 +491,7 @@ where
     /// Create a warehouse.
     async fn create_warehouse<'a>(
         warehouse_name: String,
-        project_id: ProjectId,
+        project_id: &ProjectId,
         storage_profile: StorageProfile,
         tabular_delete_profile: TabularDeleteProfile,
         storage_secret_id: Option<SecretIdent>,
@@ -500,20 +500,20 @@ where
 
     /// Create a project
     async fn create_project<'a>(
-        project_id: ProjectId,
+        project_id: &ProjectId,
         project_name: String,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<()>;
 
     /// Delete a project
     async fn delete_project<'a>(
-        project_id: ProjectId,
+        project_id: &ProjectId,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<()>;
 
     /// Get the project metadata
     async fn get_project<'a>(
-        project_id: ProjectId,
+        project_id: &ProjectId,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<Option<GetProjectResponse>>;
 
@@ -527,7 +527,7 @@ where
 
     /// Return a list of all warehouse in a project
     async fn list_warehouses(
-        project_id: ProjectId,
+        project_id: &ProjectId,
         // If None, return only active warehouses
         // If Some, return only warehouses with any of the statuses in the set
         include_inactive: Option<Vec<WarehouseStatus>>,
@@ -585,7 +585,7 @@ where
 
     /// Rename a project.
     async fn rename_project<'a>(
-        project_id: ProjectId,
+        project_id: &ProjectId,
         new_name: &str,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<()>;
