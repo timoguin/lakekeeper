@@ -2,6 +2,14 @@
 
 
 
+## [0.8.0](https://github.com/lakekeeper/lakekeeper/compare/v0.7.4...v0.8.0) (2025-03-25)
+
+
+### Features
+
+* Add support for legacy Kubernetes tokens (no audience) ([#940](https://github.com/lakekeeper/lakekeeper/issues/940)) ([e7daf01](https://github.com/lakekeeper/lakekeeper/commit/e7daf010a74b53ac2c6fee0833e8ef1308c1d02a))
+* **s3:** make url-style detection configurable ([#905](https://github.com/lakekeeper/lakekeeper/issues/905)) ([69234fe](https://github.com/lakekeeper/lakekeeper/commit/69234fe4e340485af9bd52be13adb64de7dbd9f8))
+
 ## [0.7.4](https://github.com/lakekeeper/lakekeeper/compare/v0.7.3...v0.7.4) (2025-03-20)
 
 

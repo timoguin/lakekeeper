@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0](https://github.com/lakekeeper/lakekeeper/compare/v0.7.4...v0.8.0) (2025-03-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove `project_id` from `RenameProjectRequest`. Use `/v1/project/{project_id}/rename` instead.
+* Change Project ID type from UUID to String (alphanumeric + hyphen + underscore)
+
+### Features
+
+* Add support for legacy Kubernetes tokens (no audience) ([#940](https://github.com/lakekeeper/lakekeeper/issues/940)) ([e7daf01](https://github.com/lakekeeper/lakekeeper/commit/e7daf010a74b53ac2c6fee0833e8ef1308c1d02a))
+* Change Project ID type from UUID to String (alphanumeric + hyphen + underscore) ([984381b](https://github.com/lakekeeper/lakekeeper/commit/984381b0925828c20eef6281e883f8226c2cad78))
+* Remove `project_id` from `RenameProjectRequest`. Use `/v1/project/{project_id}/rename` instead. ([984381b](https://github.com/lakekeeper/lakekeeper/commit/984381b0925828c20eef6281e883f8226c2cad78))
+* **s3:** make url-style detection configurable ([#905](https://github.com/lakekeeper/lakekeeper/issues/905)) ([69234fe](https://github.com/lakekeeper/lakekeeper/commit/69234fe4e340485af9bd52be13adb64de7dbd9f8))
+
 ## [0.7.4](https://github.com/lakekeeper/lakekeeper/compare/v0.7.3...v0.7.4) (2025-03-20)
 
 
