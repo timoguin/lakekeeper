@@ -31,13 +31,13 @@ mod test {
 
         let sink = PostgresStatisticsSink::new(pool);
 
-        let project = DEFAULT_PROJECT_ID.unwrap();
+        let project = DEFAULT_PROJECT_ID.clone().unwrap();
         let status_code = http::StatusCode::OK;
         let count = 1;
         let ident = None;
         let warehouse_name = Some(warehouse.warehouse_name);
         let mut stats = HashMap::default();
-        stats.insert(project, HashMap::default());
+        stats.insert(project.clone(), HashMap::default());
         let s = stats.get_mut(&project).unwrap();
         for uri in crate::api::endpoints::Endpoints::iter() {
             s.insert(

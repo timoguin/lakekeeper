@@ -130,7 +130,7 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
+        "Text",
         "Uuid",
         "Bool",
         "Int4Array",

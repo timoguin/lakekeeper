@@ -251,7 +251,7 @@ pub trait Service<C: Catalog, A: Authorizer, S: SecretStore> {
                 authorizer
                     .require_project_action(
                         &request_metadata,
-                        project_id,
+                        &project_id,
                         &CatalogProjectAction::CanGetMetadata,
                     )
                     .await?;

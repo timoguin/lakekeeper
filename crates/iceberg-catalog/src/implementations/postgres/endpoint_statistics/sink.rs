@@ -111,7 +111,7 @@ impl PostgresStatisticsSink {
                 count,
             ) in endpoints
             {
-                projects.push(**project);
+                projects.push(project.to_string());
                 uris.push(*uri);
                 status_codes.push(i32::from(status_code.as_u16()));
                 counts.push(*count);
@@ -119,9 +119,9 @@ impl PostgresStatisticsSink {
                 let warehouse = warehouse
                     .as_deref()
                     .or_else(|| {
-                        warehouse_name
-                            .as_deref()
-                            .and_then(|wn| warehouse_ids.get(&(**project, wn.to_string())))
+                        warehouse_name.as_deref().and_then(|wn| {
+                            warehouse_ids.get(&(project.to_string(), wn.to_string()))
+                        })
                     })
                     .copied();
                 warehouses.push(warehouse);
@@ -141,7 +141,7 @@ impl PostgresStatisticsSink {
                             get_stats_date_default()
                         FROM (
                             SELECT
-                                unnest($1::UUID[]) as project_id,
+                                unnest($1::text[]) as project_id,
                                 unnest($2::UUID[]) as warehouse,
                                 unnest($3::api_endpoints[]) as uri,
                                 unnest($4::INT[]) as status_code,
@@ -171,12 +171,12 @@ async fn resolve_projects(
     stats: &Arc<HashMap<ProjectId, HashMap<EndpointIdentifier, i64>>>,
     conn: &mut Transaction<'_, Postgres>,
 ) -> crate::api::Result<FxHashSet<ProjectId>> {
-    let projects = stats.keys().map(|p| **p).collect_vec();
+    let projects = stats.keys().map(ToString::to_string).collect_vec();
     tracing::debug!("Resolving '{}' project ids.", projects.len());
     let resolved_projects: FxHashSet<ProjectId> = sqlx::query!(
         r#"SELECT true as "exists!", project_id
                FROM project
-               WHERE project_id = ANY($1::uuid[])"#,
+               WHERE project_id = ANY($1::text[])"#,
         &projects
     )
     .fetch_all(&mut **conn)
@@ -186,7 +186,16 @@ async fn resolve_projects(
         e.into_error_model("failed to fetch project ids")
     })?
     .into_iter()
-    .filter_map(|p| p.exists.then_some(ProjectId::new(p.project_id)))
+    .filter_map(|p| {
+        p.exists
+            .then_some(ProjectId::try_new(p.project_id))
+            .transpose()
+            .inspect_err(|e| {
+                tracing::error!("Failed to parse project id from db: {:?}", e.error);
+            })
+            .ok()
+            .flatten()
+    })
     .collect::<_>();
 
     tracing::debug!("Resolved '{}' project ids.", resolved_projects.len());
@@ -197,14 +206,14 @@ async fn resolve_projects(
 async fn resolve_warehouses(
     stats: &Arc<HashMap<ProjectId, HashMap<EndpointIdentifier, i64>>>,
     conn: &mut Transaction<'_, Postgres>,
-) -> crate::api::Result<HashMap<(Uuid, String), Uuid>> {
-    let (projects, warehouse_idents): (Vec<Uuid>, Vec<_>) = stats
+) -> crate::api::Result<HashMap<(String, String), Uuid>> {
+    let (projects, warehouse_idents): (Vec<_>, Vec<_>) = stats
         .iter()
         .flat_map(|(p, e)| {
             e.keys().filter_map(|epi| {
                 epi.warehouse_name
                     .as_ref()
-                    .map(|warehouse| (**p, warehouse.to_string()))
+                    .map(|warehouse| (p.to_string(), warehouse.to_string()))
             })
         })
         .unique()
@@ -214,7 +223,7 @@ async fn resolve_warehouses(
         r#"SELECT project_id, warehouse_name, warehouse_id
                FROM warehouse
                WHERE (project_id, warehouse_name) IN (
-                   SELECT unnest($1::uuid[]), unnest($2::text[])
+                   SELECT unnest($1::text[]), unnest($2::text[])
                )"#,
         &projects,
         &warehouse_idents

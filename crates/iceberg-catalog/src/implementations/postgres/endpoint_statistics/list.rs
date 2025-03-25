@@ -64,7 +64,7 @@ pub(crate) async fn list_statistics(
         group by timestamp
         order by timestamp desc
         "#,
-        *project,
+        project.as_str(),
         warehouse_filter,
         get_all,
         status_codes.as_deref(),

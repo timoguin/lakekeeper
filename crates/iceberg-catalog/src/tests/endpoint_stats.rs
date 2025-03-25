@@ -310,7 +310,7 @@ mod test {
                 None,
                 None,
                 Actor::Anonymous,
-                *DEFAULT_PROJECT_ID,
+                DEFAULT_PROJECT_ID.clone(),
                 Some(Arc::from(path)),
                 method,
             );
@@ -337,7 +337,7 @@ mod test {
                 None,
                 None,
                 Actor::Anonymous,
-                *DEFAULT_PROJECT_ID,
+                DEFAULT_PROJECT_ID.clone(),
                 Some(Arc::from(path)),
                 method,
             );
@@ -480,7 +480,7 @@ mod test {
                 None,
                 None,
                 Actor::Anonymous,
-                *DEFAULT_PROJECT_ID,
+                DEFAULT_PROJECT_ID.clone(),
                 Some(Arc::from(path)),
                 method,
             );
