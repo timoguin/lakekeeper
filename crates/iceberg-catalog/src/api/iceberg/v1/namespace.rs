@@ -23,6 +23,13 @@ use crate::{
     request_metadata::RequestMetadata,
 };
 
+#[derive(Deserialize, Serialize, Clone, Copy, Debug)]
+pub struct NamespaceDropFlags {
+    pub force: bool,
+    pub purge: bool,
+    pub recursive: bool,
+}
+
 #[async_trait]
 pub trait Service<S: crate::api::ThreadSafe>
 where
@@ -66,6 +73,7 @@ where
     /// Drop a namespace from the catalog. Namespace must be empty.
     async fn drop_namespace(
         parameters: NamespaceParameters,
+        flags: NamespaceDropFlags,
         state: ApiContext<S>,
         request_metadata: RequestMetadata,
     ) -> Result<()>;
@@ -142,6 +150,14 @@ where
     Ok(url.map(NamespaceIdent::from))
 }
 
+#[derive(Serialize, Deserialize)]
+struct RecursiveDeleteQuery {
+    #[serde(default)]
+    force: bool,
+    #[serde(default)]
+    purge: bool,
+}
+
 #[allow(clippy::too_many_lines)]
 pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S>> {
     Router::new()
@@ -207,6 +223,7 @@ pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S
             // Drop a namespace from the catalog. Namespace must be empty.
             .delete(
                 |Path((prefix, namespace)): Path<(Prefix, NamespaceIdentUrl)>,
+                 Query(flags): Query<NamespaceDropFlags>,
                  State(api_context): State<ApiContext<S>>,
                  Extension(metadata): Extension<RequestMetadata>| async {
                     I::drop_namespace(
@@ -214,6 +231,7 @@ pub fn router<I: Service<S>, S: crate::api::ThreadSafe>() -> Router<ApiContext<S
                             prefix: Some(prefix),
                             namespace: namespace.into(),
                         },
+                        flags,
                         api_context,
                         metadata,
                     )
@@ -406,6 +424,7 @@ mod tests {
             /// Drop a namespace from the catalog. Namespace must be empty.
             async fn drop_namespace(
                 _parameters: NamespaceParameters,
+                _flags: NamespaceDropFlags,
                 _state: ApiContext<ThisState>,
                 _request_metadata: RequestMetadata,
             ) -> Result<()> {
@@ -510,6 +529,7 @@ mod tests {
             /// Drop a namespace from the catalog. Namespace must be empty.
             async fn drop_namespace(
                 _parameters: NamespaceParameters,
+                _flags: NamespaceDropFlags,
                 _state: ApiContext<ThisState>,
                 _request_metadata: RequestMetadata,
             ) -> Result<()> {

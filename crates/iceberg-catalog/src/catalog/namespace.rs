@@ -10,11 +10,12 @@ use super::{require_warehouse_id, CatalogServer, UnfilteredPage};
 use crate::{
     api::{
         iceberg::v1::{
-            namespace::GetNamespacePropertiesQuery, ApiContext, CreateNamespaceRequest,
-            CreateNamespaceResponse, ErrorModel, GetNamespaceResponse, ListNamespacesQuery,
-            ListNamespacesResponse, NamespaceParameters, Prefix, Result,
-            UpdateNamespacePropertiesRequest, UpdateNamespacePropertiesResponse,
+            namespace::{GetNamespacePropertiesQuery, NamespaceDropFlags},
+            ApiContext, CreateNamespaceRequest, CreateNamespaceResponse, ErrorModel,
+            GetNamespaceResponse, ListNamespacesQuery, ListNamespacesResponse, NamespaceParameters,
+            Prefix, Result, UpdateNamespacePropertiesRequest, UpdateNamespacePropertiesResponse,
         },
+        management::v1::{warehouse::TabularDeleteProfile, TabularType},
         set_not_found_status_code,
     },
     catalog,
@@ -22,7 +23,8 @@ use crate::{
     service::{
         authz::{Authorizer, CatalogNamespaceAction, CatalogWarehouseAction, NamespaceParent},
         secrets::SecretStore,
-        Catalog, GetWarehouseResponse, NamespaceIdentUuid, State, Transaction,
+        task_queue::{tabular_purge_queue::TabularPurgeInput, TaskFilter},
+        Catalog, GetWarehouseResponse, NamespaceIdentUuid, State, TabularIdentUuid, Transaction,
     },
     WarehouseIdent, CONFIG,
 };
@@ -312,6 +314,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
     /// Drop a namespace from the catalog. Namespace must be empty.
     async fn drop_namespace(
         parameters: NamespaceParameters,
+        flags: NamespaceDropFlags,
         state: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
     ) -> Result<()> {
@@ -345,12 +348,24 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         .await?;
 
         //  ------------------- BUSINESS LOGIC -------------------
-        C::drop_namespace(warehouse_id, namespace_id, false, t.transaction()).await?;
-        authorizer
-            .delete_namespace(&request_metadata, namespace_id)
-            .await?;
-        t.commit().await?;
-        Ok(())
+        if !flags.recursive {
+            C::drop_namespace(warehouse_id, namespace_id, false, t.transaction()).await?;
+            authorizer
+                .delete_namespace(&request_metadata, namespace_id)
+                .await?;
+            t.commit().await?;
+            Ok(())
+        } else {
+            try_recursive_drop(
+                flags,
+                state,
+                warehouse_id,
+                t,
+                namespace_id,
+                &request_metadata,
+            )
+            .await
+        }
     }
 
     /// Set or remove properties on a namespace
@@ -399,6 +414,71 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
             .await?;
         t.commit().await?;
         Ok(r)
+    }
+}
+
+async fn try_recursive_drop<A: Authorizer, C: Catalog, S: SecretStore>(
+    flags: NamespaceDropFlags,
+    state: ApiContext<State<A, C, S>>,
+    warehouse_id: WarehouseIdent,
+    mut t: <C as Catalog>::Transaction,
+    namespace_id: NamespaceIdentUuid,
+    request_metadata: &RequestMetadata,
+) -> Result<()> {
+    let warehouse = C::require_warehouse(warehouse_id, t.transaction()).await?;
+    if matches!(
+        warehouse.tabular_delete_profile,
+        TabularDeleteProfile::Hard {}
+    ) || (flags.force
+        && matches!(
+            warehouse.tabular_delete_profile,
+            TabularDeleteProfile::Soft { .. }
+        ))
+    {
+        let drop_info =
+            C::drop_namespace(warehouse_id, namespace_id, true, t.transaction()).await?;
+        // commit before starting the purge tasks so that we cannot end in the situation where
+        // data is deleted but the transaction is not committed, meaning dangling pointers.
+        t.commit().await?;
+        state
+            .v1_state
+            .authz
+            .delete_namespace(request_metadata, namespace_id)
+            .await?;
+        // cancel pending tasks
+        state
+            .v1_state
+            .queues
+            .cancel_tabular_expiration(TaskFilter::TaskIds(drop_info.open_tasks))
+            .await?;
+
+        if flags.purge {
+            for (tabular_id, tabular_location) in drop_info.child_tables {
+                let (tabular_id, tabular_type) = match tabular_id {
+                    TabularIdentUuid::Table(id) => (id, TabularType::Table),
+                    TabularIdentUuid::View(id) => (id, TabularType::View),
+                };
+                state
+                    .v1_state
+                    .queues
+                    .queue_tabular_purge(TabularPurgeInput {
+                        tabular_id,
+                        warehouse_ident: warehouse.id,
+                        tabular_type,
+                        parent_id: None,
+                        tabular_location,
+                    })
+                    .await?;
+            }
+        }
+        Ok(())
+    } else {
+        Err(ErrorModel::bad_request(
+            "Cannot recursively delete namespace with soft-deletion without force flag",
+            "NamespaceDeleteNotAllowed",
+            None,
+        )
+        .into())
     }
 }
 
