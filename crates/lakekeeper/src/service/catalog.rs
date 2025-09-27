@@ -22,7 +22,10 @@ pub use crate::api::iceberg::v1::{
 };
 use crate::{
     api::{
-        iceberg::v1::{namespace::NamespaceDropFlags, PaginatedMapping, PaginationQuery},
+        iceberg::v1::{
+            namespace::NamespaceDropFlags, tables::LoadTableFilters, PaginatedMapping,
+            PaginationQuery,
+        },
         management::v1::{
             project::{EndpointStatisticsResponse, TimeWindowSelector, WarehouseFilter},
             role::{ListRolesResponse, Role, SearchRoleResponse},
@@ -472,6 +475,7 @@ where
         warehouse_id: WarehouseId,
         tables: impl IntoIterator<Item = TableId> + Send,
         include_deleted: bool,
+        filters: &LoadTableFilters,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> Result<HashMap<TableId, LoadTableResponse>>;
 
@@ -864,7 +868,7 @@ where
     }
 
     /// Resolve tasks among all known active and historical tasks.
-    /// Returns a map of task_id to (TaskEntity, queue_name).
+    /// Returns a map of `task_id` to `(TaskEntity, queue_name)`.
     /// If `warehouse_id` is `Some`, only resolve tasks for that warehouse.
     async fn resolve_tasks_impl(
         warehouse_id: Option<WarehouseId>,
@@ -873,7 +877,7 @@ where
     ) -> Result<HashMap<TaskId, (TaskEntity, TaskQueueName)>>;
 
     /// Resolve tasks among all known active and historical tasks.
-    /// Returns a map of task_id to (TaskEntity, queue_name).
+    /// Returns a map of `task_id` to `(TaskEntity, queue_name)`.
     /// If a task does not exist, it is not included in the map.
     async fn resolve_tasks(
         warehouse_id: Option<WarehouseId>,
