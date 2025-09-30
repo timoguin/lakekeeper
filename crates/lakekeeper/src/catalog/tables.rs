@@ -10,7 +10,7 @@ use http::StatusCode;
 use iceberg::{
     spec::{
         FormatVersion, MetadataLog, SchemaId, SortOrder, TableMetadata, TableMetadataBuildResult,
-        TableMetadataBuilder, TableMetadataRef, UnboundPartitionSpec, PROPERTY_FORMAT_VERSION,
+        TableMetadataBuilder, UnboundPartitionSpec, PROPERTY_FORMAT_VERSION,
         PROPERTY_METADATA_PREVIOUS_VERSIONS_MAX,
     },
     ErrorKind, NamespaceIdent, TableUpdate,
@@ -1275,13 +1275,12 @@ async fn try_commit_tables<
                 .saturating_sub(previous_table_metadata.table_metadata.metadata_log().len());
 
             Ok(CommitContext {
-                new_metadata: Arc::new(new_metadata),
+                new_metadata,
                 new_metadata_location,
-                table_ident: table_ident.clone(),
                 new_compression_codec,
                 previous_metadata_location: previous_table_metadata.metadata_location,
-                updates: Arc::new(change.updates.clone()),
-                previous_metadata: Arc::new(previous_table_metadata.table_metadata),
+                updates: change.updates.clone(),
+                previous_metadata: previous_table_metadata.table_metadata,
                 number_expired_metadata_log_entries,
                 number_added_metadata_log_entries,
             })
@@ -1429,12 +1428,11 @@ pub(crate) fn extract_count_from_metadata_location(location: &Location) -> Optio
 
 #[derive(Clone, Debug)]
 pub struct CommitContext {
-    pub new_metadata: TableMetadataRef,
+    pub new_metadata: iceberg::spec::TableMetadata,
     pub new_metadata_location: Location,
-    pub table_ident: TableIdent,
-    pub previous_metadata: TableMetadataRef,
+    pub previous_metadata: iceberg::spec::TableMetadata,
     pub previous_metadata_location: Option<Location>,
-    pub updates: Arc<Vec<TableUpdate>>,
+    pub updates: Vec<TableUpdate>,
     pub new_compression_codec: CompressionCodec,
     pub number_expired_metadata_log_entries: usize,
     pub number_added_metadata_log_entries: usize,
@@ -2684,8 +2682,8 @@ pub(crate) mod test {
 
         assert_table_metadata_are_equal(&builder.metadata, &tab.metadata);
 
-        let builder = (*committed.new_metadata)
-            .clone()
+        let builder = committed
+            .new_metadata
             .into_builder(tab.metadata_location)
             .set_properties(HashMap::from_iter(vec![(
                 "change_nr".to_string(),

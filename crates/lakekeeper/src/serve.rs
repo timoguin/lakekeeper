@@ -36,19 +36,16 @@ use crate::{
 ///
 /// # Returns
 /// - `Vec<(String, tokio::task::AbortHandle)>`: A vector of tuples containing the name of the service and its associated abort handle.
-pub type RegisterBackgroundServiceFn<A, C, S> = Box<
-    dyn FnOnce(
+pub type RegisterBackgroundServiceFn<A, C, S> = std::sync::Arc<
+    dyn Fn(
         &mut JoinSet<Result<(), anyhow::Error>>,
         CancellationToken,
         ApiContext<State<A, C, S>>,
     ) -> BoxFuture<'_, anyhow::Result<Vec<(String, AbortHandle)>>>,
 >;
 
-pub type RegisterTaskQueueFn<A, C, S> = Box<
-    dyn FnOnce(
-        TaskQueueRegistry,
-        ApiContext<State<A, C, S>>,
-    ) -> BoxFuture<'static, anyhow::Result<()>>,
+pub type RegisterTaskQueueFn<A, C, S> = std::sync::Arc<
+    dyn Fn(TaskQueueRegistry, ApiContext<State<A, C, S>>) -> BoxFuture<'static, anyhow::Result<()>>,
 >;
 
 /// Helper function to process the result of a service task completion
