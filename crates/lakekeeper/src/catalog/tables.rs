@@ -88,7 +88,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         let return_uuids = query.return_uuids;
         // ------------------- VALIDATIONS -------------------
         let NamespaceParameters { namespace, prefix } = parameters;
-        let warehouse_id = require_warehouse_id(prefix)?;
+        let warehouse_id = require_warehouse_id(prefix.as_ref())?;
         validate_namespace_ident(&namespace)?;
 
         // ------------------- AUTHZ -------------------
@@ -159,7 +159,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
     ) -> Result<LoadTableResult> {
         // ------------------- VALIDATIONS -------------------
         let NamespaceParameters { namespace, prefix } = &parameters;
-        let warehouse_id = require_warehouse_id(prefix.clone())?;
+        let warehouse_id = require_warehouse_id(prefix.as_ref())?;
         let table = TableIdent::new(namespace.clone(), request.name.clone());
         validate_table_or_view_ident(&table)?;
         let metadata_location =
@@ -349,7 +349,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
     ) -> Result<LoadCredentialsResponse> {
         // ------------------- VALIDATIONS -------------------
         let TableParameters { prefix, table } = parameters;
-        let warehouse_id = require_warehouse_id(prefix)?;
+        let warehouse_id = require_warehouse_id(prefix.as_ref())?;
 
         let mut t = C::Transaction::begin_read(state.v1_state.catalog).await?;
         let (tabular_details, storage_permissions) = resolve_and_authorize_table_access::<C, A>(
@@ -463,7 +463,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
     ) -> Result<()> {
         // ------------------- VALIDATIONS -------------------
         let TableParameters { prefix, table } = &parameters;
-        let warehouse_id = require_warehouse_id(prefix.clone())?;
+        let warehouse_id = require_warehouse_id(prefix.as_ref())?;
         validate_table_or_view_ident(table)?;
 
         // ------------------- AUTHZ -------------------
@@ -610,7 +610,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
     ) -> Result<()> {
         // ------------------- VALIDATIONS -------------------
         let TableParameters { prefix, table } = parameters;
-        let warehouse_id = require_warehouse_id(prefix.clone())?;
+        let warehouse_id = require_warehouse_id(prefix.as_ref())?;
         validate_table_or_view_ident(&table)?;
 
         // ------------------- AUTHZ -------------------
@@ -645,7 +645,7 @@ impl<C: Catalog, A: Authorizer + Clone, S: SecretStore>
         request_metadata: RequestMetadata,
     ) -> Result<()> {
         // ------------------- VALIDATIONS -------------------
-        let warehouse_id = require_warehouse_id(prefix.clone())?;
+        let warehouse_id = require_warehouse_id(prefix.as_ref())?;
         let RenameTableRequest {
             source,
             destination,
@@ -957,7 +957,7 @@ async fn commit_tables_with_authz<C: Catalog, A: Authorizer + Clone, S: SecretSt
     request_metadata: RequestMetadata,
 ) -> Result<Vec<CommitContext>> {
     // ------------------- VALIDATIONS -------------------
-    let warehouse_id = require_warehouse_id(prefix.clone())?;
+    let warehouse_id = require_warehouse_id(prefix.as_ref())?;
     commit_tables_validate(&request)?;
 
     // ------------------- AUTHZ -------------------
@@ -3723,7 +3723,7 @@ pub(crate) mod test {
 
         ManagementApiServer::set_table_protection(
             tab.metadata.uuid().into(),
-            WarehouseId::from_str(ns_params.prefix.clone().unwrap().as_str()).unwrap(),
+            WarehouseId::from_str_or_internal(ns_params.prefix.clone().unwrap().as_str()).unwrap(),
             true,
             ctx.clone(),
             random_request_metadata(),
@@ -3749,7 +3749,7 @@ pub(crate) mod test {
 
         ManagementApiServer::set_table_protection(
             tab.metadata.uuid().into(),
-            WarehouseId::from_str(ns_params.prefix.clone().unwrap().as_str()).unwrap(),
+            WarehouseId::from_str_or_internal(ns_params.prefix.clone().unwrap().as_str()).unwrap(),
             false,
             ctx.clone(),
             random_request_metadata(),
@@ -3792,7 +3792,7 @@ pub(crate) mod test {
 
         ManagementApiServer::set_table_protection(
             tab.metadata.uuid().into(),
-            WarehouseId::from_str(ns_params.prefix.clone().unwrap().as_str()).unwrap(),
+            WarehouseId::from_str_or_internal(ns_params.prefix.clone().unwrap().as_str()).unwrap(),
             true,
             ctx.clone(),
             random_request_metadata(),
