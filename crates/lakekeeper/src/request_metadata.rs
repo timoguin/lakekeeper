@@ -9,7 +9,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use http::{HeaderMap, Method};
-use iceberg_ext::catalog::rest::{ErrorModel, IcebergErrorResponse};
+use iceberg_ext::catalog::rest::ErrorModel;
 use limes::Authentication;
 use uuid::Uuid;
 
@@ -283,7 +283,9 @@ pub(crate) async fn create_request_metadata_with_trace_and_project_fn(
         .map_err(|e| e.append_detail(format!("Invalid {X_PROJECT_ID_HEADER} header value.")));
     let project_id = match project_id {
         Ok(ident) => ident,
-        Err(err) => return IcebergErrorResponse::from(err).into_response(),
+        Err(err) => {
+            return iceberg_ext::catalog::rest::IcebergErrorResponse::from(err).into_response()
+        }
     };
 
     let matched_path = request
