@@ -25,7 +25,8 @@ use crate::{
         },
     },
     service::{
-        ErrorModel, ListFlags, NamespaceId, Result, TableIdent, TableInfo, TabularInfo, ViewId,
+        ErrorModel, NamespaceId, Result, TableIdent, TableInfo, TabularInfo, TabularListFlags,
+        ViewId,
     },
     WarehouseId,
 };
@@ -42,7 +43,7 @@ where
     tabular::tabular_ident_to_id(
         warehouse_id,
         &TabularIdentBorrowed::View(table),
-        ListFlags {
+        TabularListFlags {
             include_deleted,
             include_staged: false,
             include_active: true,
@@ -490,7 +491,7 @@ where
         warehouse_id,
         Some(namespace),
         None,
-        ListFlags {
+        TabularListFlags {
             include_deleted,
             include_staged: false,
             include_active: true,
@@ -593,7 +594,7 @@ pub(crate) mod tests {
             CatalogState, PostgresBackend,
         },
         service::{
-            task_queue::{
+            tasks::{
                 tabular_expiration_queue::{TabularExpirationPayload, TabularExpirationTask},
                 EntityId, TaskMetadata,
             },
