@@ -15,6 +15,8 @@ pub(crate) struct DynAppConfig {
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]
 pub(crate) struct DebugConfig {
     pub(crate) migrate_before_serve: bool,
+    /// Run the serve command unless another command is specified.
+    pub(crate) auto_serve: bool,
 }
 
 fn get_config() -> DynAppConfig {
@@ -64,6 +66,22 @@ mod tests {
             jail.set_env("LAKEKEEPER_TEST__DEBUG__MIGRATE_BEFORE_SERVE", "false");
             let config = get_config();
             assert!(!config.debug.migrate_before_serve);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_auto_serve_env_vars() {
+        figment::Jail::expect_with(|_jail| {
+            let config = get_config();
+            assert!(!config.debug.auto_serve);
+            Ok(())
+        });
+
+        figment::Jail::expect_with(|jail| {
+            jail.set_env("LAKEKEEPER_TEST__DEBUG__AUTO_SERVE", "true");
+            let config = get_config();
+            assert!(config.debug.auto_serve);
             Ok(())
         });
     }
