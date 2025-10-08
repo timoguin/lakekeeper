@@ -15,11 +15,6 @@
     "include-component-in-tag": false,
     "extra-files": [
         {
-            "type": "yaml",
-            "path": "docs/docs/api/management-open-api.yaml",
-            "jsonpath": "$.info.version"
-        },
-        {
             "type": "toml",
             "path": "Cargo.toml",
             "jsonpath": "$.workspace.package.version"
