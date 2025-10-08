@@ -420,9 +420,9 @@ dependencies = [
 
 [[package]]
 name = "async-nats"
-version = "0.43.0"
+version = "0.44.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "351fc678084ed17ee61a56285eda9443b10452ed5ea611a35d06b28000bf07fd"
+checksum = "58f1564b878e64608a4fc8ab74c0b499b566400b9ab6e5097f21ba1945dab5bb"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -610,6 +610,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b756939cb2f8dc900aa6dcd505e6e2428e9cae7ff7b028c49e3946efa70878"
 dependencies = [
  "aws-lc-sys",
+ "untrusted 0.7.1",
  "zeroize",
 ]
 
@@ -2246,7 +2247,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2754,7 +2755,7 @@ dependencies = [
  "hex",
  "hmac",
  "home",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "path-clean",
  "percent-encoding",
  "reqwest",
@@ -2779,6 +2780,37 @@ dependencies = [
  "reqwest",
  "thiserror 2.0.16",
  "tokio",
+]
+
+[[package]]
+name = "gcloud-storage"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3515c85ca8d12aaf1104c9765f46d91a9ddd2a62b853fe12db109a40cde06e1"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "bytes",
+ "futures-util",
+ "gcloud-auth",
+ "gcloud-metadata",
+ "hex",
+ "once_cell",
+ "percent-encoding",
+ "pkcs8 0.10.2",
+ "regex",
+ "reqwest",
+ "reqwest-middleware",
+ "ring",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.16",
+ "time",
+ "token-source",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -2851,81 +2883,6 @@ dependencies = [
  "futures-core",
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "google-cloud-auth"
-version = "0.17.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e57a13fbacc5e9c41ded3ad8d0373175a6b7a6ad430d99e89d314ac121b7ab06"
-dependencies = [
- "async-trait",
- "base64 0.21.7",
- "google-cloud-metadata",
- "google-cloud-token",
- "home",
- "jsonwebtoken",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "time",
- "tokio",
- "tracing",
- "urlencoding",
-]
-
-[[package]]
-name = "google-cloud-metadata"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d901aeb453fd80e51d64df4ee005014f6cf39f2d736dd64f7239c132d9d39a6a"
-dependencies = [
- "reqwest",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
-name = "google-cloud-storage"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34a73d9e94d35665909050f02e035d8bdc82e419241b1b027ebf1ea51dc8a470"
-dependencies = [
- "anyhow",
- "async-stream",
- "async-trait",
- "base64 0.21.7",
- "bytes",
- "futures-util",
- "google-cloud-auth",
- "google-cloud-metadata",
- "google-cloud-token",
- "hex",
- "once_cell",
- "percent-encoding",
- "pkcs8 0.10.2",
- "regex",
- "reqwest",
- "reqwest-middleware",
- "ring",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 1.0.69",
- "time",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "google-cloud-token"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f49c12ba8b21d128a2ce8585955246977fbce4415f680ebf9199b6f9d6d725f"
-dependencies = [
- "async-trait",
 ]
 
 [[package]]
@@ -3800,6 +3757,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonwebtoken"
+version = "10.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1417155a38e99d7704ddb3ea7445fe57fdbd5d756d727740a9ed8b9ebaed6e1"
+dependencies = [
+ "aws-lc-rs",
+ "base64 0.22.1",
+ "getrandom 0.2.15",
+ "js-sys",
+ "pem",
+ "serde",
+ "serde_json",
+ "signature 2.2.0",
+ "simple_asn1",
+]
+
+[[package]]
 name = "jwks_client_rs"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3807,7 +3781,7 @@ checksum = "f688d134ca08600e638312d8d442f0c0a5bdabd5ef398f817bb03a7c4eefd97d"
 dependencies = [
  "async-trait",
  "chrono",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "reqwest",
  "serde",
  "serde_json",
@@ -3945,7 +3919,7 @@ dependencies = [
  "iceberg-ext",
  "iso8601",
  "itertools 0.14.0",
- "jsonwebtoken",
+ "jsonwebtoken 10.0.0",
  "jwks_client_rs",
  "lakekeeper",
  "lakekeeper-io",
@@ -4070,7 +4044,7 @@ dependencies = [
  "derive_more",
  "fastrand 2.3.0",
  "futures",
- "google-cloud-storage",
+ "gcloud-storage",
  "moka",
  "paste",
  "reqwest",
@@ -4265,7 +4239,7 @@ checksum = "0d566edade23f0ce72e5abbaefa56e04888ea8eb6fa5a810f8ad130da87cb4e1"
 dependencies = [
  "axum 0.8.4",
  "axum-extra",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "jwks_client_rs",
  "k8s-openapi",
  "kube",
@@ -5939,7 +5913,7 @@ dependencies = [
  "hmac",
  "home",
  "http 1.3.1",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "log",
  "percent-encoding",
  "quick-xml 0.37.5",
@@ -6068,7 +6042,7 @@ dependencies = [
  "cfg-if",
  "getrandom 0.2.15",
  "libc",
- "untrusted",
+ "untrusted 0.9.0",
  "windows-sys 0.52.0",
 ]
 
@@ -6380,7 +6354,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
 dependencies = [
  "ring",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -6390,7 +6364,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64ca1bc8749bd4cf37b5ce386cc146580777b4e8572c7b97baf22c83f444bee9"
 dependencies = [
  "rustls-pki-types",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -6402,7 +6376,7 @@ dependencies = [
  "aws-lc-rs",
  "ring",
  "rustls-pki-types",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -6505,7 +6479,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
 dependencies = [
  "ring",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -7328,7 +7302,7 @@ dependencies = [
  "getrandom 0.3.2",
  "once_cell",
  "rustix 1.0.5",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8019,6 +7993,12 @@ name = "unsafe-libyaml-norway"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39abd59bf32521c7f2301b52d05a6a2c975b6003521cbd0c6dc1582f0a22104"
+
+[[package]]
+name = "untrusted"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "untrusted"

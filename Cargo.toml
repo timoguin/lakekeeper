@@ -21,7 +21,7 @@ anyhow = "^1.0"
 assert-json-diff = "2.0.2"
 async-channel = { version = "2.3.1" }
 async-compression = { version = "^0.4", features = ["tokio", "gzip"] }
-async-nats = "0.43.0"
+async-nats = "0.44.0"
 async-stream = "0.3.6"
 async-trait = "0.1.89"
 aws-config = { version = "1.8.5", features = ["behavior-version-latest"] }
@@ -62,11 +62,12 @@ flate2 = "^1.0"
 futures = "^0.3"
 fxhash = "0.2.1"
 gcloud-token = "1.0.0"
-google-cloud-auth = { package = "gcloud-auth", version = "1.1.0", features = [
+google-cloud-auth = { package = "gcloud-auth", version = "1.1", features = [
     "rustls-tls",
     "external-account",
 ], default-features = false }
 google-cloud-token = { package = "token-source", version = "1.0" }
+google-cloud-storage = { package = "gcloud-storage", version = "1.1" }
 headers = { version = "^0.4" }
 heck = "0.5.0"
 hostname = "0.4.0"
