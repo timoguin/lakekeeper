@@ -18,7 +18,10 @@ use tower_http::{
 
 use crate::{
     api::{
-        iceberg::v1::new_v1_full_router,
+        iceberg::v1::{
+            new_v1_full_router,
+            tables::{DATA_ACCESS_HEADER, ETAG_HEADER, IF_NONE_MATCH_HEADER},
+        },
         management::v1::{api_doc as v1_api_doc, ApiServer},
         ApiContext,
     },
@@ -235,7 +238,10 @@ fn get_cors_layer(
                 header::USER_AGENT,
                 HeaderName::from_static(X_PROJECT_ID_HEADER),
                 HeaderName::from_static("x-user-agent"),
+                HeaderName::from_static(DATA_ACCESS_HEADER),
+                HeaderName::from_static(IF_NONE_MATCH_HEADER),
             ])
+            .expose_headers(vec![HeaderName::from_static(ETAG_HEADER)])
             .allow_methods(vec![
                 Method::GET,
                 Method::HEAD,
