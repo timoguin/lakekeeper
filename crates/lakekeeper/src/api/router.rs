@@ -234,6 +234,7 @@ fn get_cors_layer(
                 header::ACCEPT,
                 header::USER_AGENT,
                 HeaderName::from_static(X_PROJECT_ID_HEADER),
+                HeaderName::from_static("x-user-agent"),
             ])
             .allow_methods(vec![
                 Method::GET,
