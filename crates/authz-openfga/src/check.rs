@@ -28,7 +28,7 @@ use super::{
 use crate::{entities::OpenFgaEntity, relations::ActorExt};
 
 /// Check if a specific action is allowed on the given object
-#[utoipa::path(
+#[cfg_attr(feature = "open-api", utoipa::path(
     post,
     tag = "permissions",
     path = "/management/v1/permissions/check",
@@ -36,7 +36,7 @@ use crate::{entities::OpenFgaEntity, relations::ActorExt};
     responses(
             (status = 200, body = CheckResponse),
     )
-)]
+))]
 pub(super) async fn check<C: CatalogStore, S: SecretStore>(
     AxumState(api_context): AxumState<ApiContext<State<OpenFGAAuthorizer, C, S>>>,
     Extension(metadata): Extension<RequestMetadata>,
@@ -316,7 +316,8 @@ async fn check_view<C: CatalogStore, S: SecretStore>(
     Ok((warehouse_id, view_info.view_id()).to_openfga())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "open-api", derive(utoipa::ToSchema))]
 #[serde(rename_all = "kebab-case")]
 /// Represents an action on an object
 pub(super) enum CheckOperation {
@@ -326,13 +327,13 @@ pub(super) enum CheckOperation {
     #[serde(rename_all = "kebab-case")]
     Project {
         action: ProjectAction,
-        #[schema(value_type = Option<uuid::Uuid>)]
+        #[cfg_attr(feature = "open-api", schema(value_type = Option<uuid::Uuid>))]
         project_id: Option<ProjectId>,
     },
     #[serde(rename_all = "kebab-case")]
     Warehouse {
         action: WarehouseAction,
-        #[schema(value_type = uuid::Uuid)]
+        #[cfg_attr(feature = "open-api", schema(value_type = uuid::Uuid))]
         warehouse_id: WarehouseId,
     },
     Namespace {
@@ -352,50 +353,53 @@ pub(super) enum CheckOperation {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "open-api", derive(utoipa::ToSchema))]
 #[serde(rename_all = "kebab-case", untagged)]
 /// Identifier for a namespace, either a UUID or its name and warehouse ID
 pub(super) enum NamespaceIdentOrUuid {
     #[serde(rename_all = "kebab-case")]
     Id {
-        #[schema(value_type = uuid::Uuid)]
+        #[cfg_attr(feature = "open-api", schema(value_type = uuid::Uuid))]
         namespace_id: NamespaceId,
-        #[schema(value_type = uuid::Uuid)]
+        #[cfg_attr(feature = "open-api", schema(value_type = uuid::Uuid))]
         warehouse_id: WarehouseId,
     },
     #[serde(rename_all = "kebab-case")]
     Name {
-        #[schema(value_type = Vec<String>)]
+        #[cfg_attr(feature = "open-api", schema(value_type = Vec<String>))]
         namespace: NamespaceIdent,
-        #[schema(value_type = uuid::Uuid)]
+        #[cfg_attr(feature = "open-api", schema(value_type = uuid::Uuid))]
         warehouse_id: WarehouseId,
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "open-api", derive(utoipa::ToSchema))]
 #[serde(rename_all = "kebab-case", untagged)]
 /// Identifier for a table or view, either a UUID or its name and namespace
 pub(super) enum TabularIdentOrUuid {
     #[serde(rename_all = "kebab-case")]
     IdInWarehouse {
-        #[schema(value_type = uuid::Uuid)]
+        #[cfg_attr(feature = "open-api", schema(value_type = uuid::Uuid))]
         warehouse_id: WarehouseId,
         #[serde(alias = "view_id")]
         table_id: uuid::Uuid,
     },
     #[serde(rename_all = "kebab-case")]
     Name {
-        #[schema(value_type = Vec<String>)]
+        #[cfg_attr(feature = "open-api", schema(value_type = Vec<String>))]
         namespace: NamespaceIdent,
         /// Name of the table or view
         #[serde(alias = "view")]
         table: String,
-        #[schema(value_type = uuid::Uuid)]
+        #[cfg_attr(feature = "open-api", schema(value_type = uuid::Uuid))]
         warehouse_id: WarehouseId,
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "open-api", derive(utoipa::ToSchema))]
 #[serde(rename_all = "kebab-case")]
 /// Check if a specific action is allowed on the given object
 pub(super) struct CheckRequest {
@@ -405,7 +409,8 @@ pub(super) struct CheckRequest {
     operation: CheckOperation,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "open-api", derive(utoipa::ToSchema))]
 #[serde(rename_all = "kebab-case")]
 pub(super) struct CheckResponse {
     /// Whether the action is allowed.
