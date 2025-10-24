@@ -253,6 +253,10 @@ pub struct DynAppConfig {
     )]
     pub endpoint_stat_flush_interval: Duration,
 
+    // ------------- Caching -------------
+    #[serde(default)]
+    pub(crate) cache: Cache,
+
     // ------------- Testing -------------
     pub skip_storage_validation: bool,
 
@@ -429,6 +433,28 @@ pub struct KV2Config {
     pub secret_mount: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub(crate) struct Cache {
+    /// Short‑Term Credentials cache configuration.
+    pub(crate) stc: STCCache,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct STCCache {
+    pub(crate) enabled: bool,
+    pub(crate) capacity: u64,
+}
+
+impl std::default::Default for STCCache {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            capacity: 10_000,
+        }
+    }
+}
+
 impl Default for DynAppConfig {
     fn default() -> Self {
         Self {
@@ -498,6 +524,7 @@ impl Default for DynAppConfig {
             serve_swagger_ui: true,
             skip_storage_validation: false,
             debug: DebugConfig::default(),
+            cache: Cache::default(),
         }
     }
 }
@@ -1047,6 +1074,32 @@ mod test {
             jail.set_env("LAKEKEEPER_TEST__DEBUG__LOG_REQUEST_BODIES", "false");
             let config = get_config();
             assert!(!config.debug.log_request_bodies);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_stc_cache() {
+        figment::Jail::expect_with(|_jail| {
+            let config = get_config();
+            assert!(config.cache.stc.enabled);
+            assert_eq!(config.cache.stc.capacity, 10_000);
+            Ok(())
+        });
+
+        figment::Jail::expect_with(|jail| {
+            jail.set_env("LAKEKEEPER_TEST__CACHE__STC__ENABLED", "false");
+            let config = get_config();
+            assert!(!config.cache.stc.enabled);
+            Ok(())
+        });
+
+        figment::Jail::expect_with(|jail| {
+            jail.set_env("LAKEKEEPER_TEST__CACHE__STC__ENABLED", "true");
+            jail.set_env("LAKEKEEPER_TEST__CACHE__STC__CAPACITY", "5000");
+            let config = get_config();
+            assert!(config.cache.stc.enabled);
+            assert_eq!(config.cache.stc.capacity, 5000);
             Ok(())
         });
     }
