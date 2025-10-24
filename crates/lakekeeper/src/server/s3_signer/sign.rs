@@ -5,7 +5,6 @@ use aws_sigv4::{
     sign::v4,
     {self},
 };
-use iceberg::{NamespaceIdent, TableIdent};
 use lakekeeper_io::{s3::S3Location, Location};
 
 use super::{super::CatalogServer, error::SignError};
@@ -141,10 +140,14 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
                 .map_err(RequireTableActionError::from)
         };
 
-        let dummy_table_ident = TableIdent::new(
-            NamespaceIdent::new("unknown".to_string()),
-            format!("table at location '{first_location}'"),
-        );
+        let Some(table_info) = table_info? else {
+            return Err(ErrorModel::bad_request(
+                "No table found for the given location",
+                "TableNotFoundByLocation",
+                None,
+            )
+            .into());
+        };
 
         let action = match operation {
             Operation::Read => CatalogTableAction::CanReadData,
@@ -156,8 +159,8 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
             authorizer.require_table_action(
                 &request_metadata,
                 warehouse_id,
-                dummy_table_ident,
-                table_info,
+                table_info.table_ident().clone(),
+                Ok::<_, RequireTableActionError>(Some(table_info)),
                 action,
             ),
             C::require_warehouse_by_id(warehouse_id, state.v1_state.catalog.clone())
