@@ -437,6 +437,8 @@ pub struct KV2Config {
 pub(crate) struct Cache {
     /// Short‑Term Credentials cache configuration.
     pub(crate) stc: STCCache,
+    /// Warehouse cache configuration.
+    pub(crate) warehouse: WarehouseCache,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -451,6 +453,22 @@ impl std::default::Default for STCCache {
         Self {
             enabled: true,
             capacity: 10_000,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub(crate) struct WarehouseCache {
+    pub(crate) enabled: bool,
+    pub(crate) capacity: u64,
+}
+
+impl std::default::Default for WarehouseCache {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            capacity: 1000,
         }
     }
 }
@@ -1100,6 +1118,32 @@ mod test {
             let config = get_config();
             assert!(config.cache.stc.enabled);
             assert_eq!(config.cache.stc.capacity, 5000);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_warehouse_cache() {
+        figment::Jail::expect_with(|_jail| {
+            let config = get_config();
+            assert!(config.cache.warehouse.enabled);
+            assert_eq!(config.cache.warehouse.capacity, 1000);
+            Ok(())
+        });
+
+        figment::Jail::expect_with(|jail| {
+            jail.set_env("LAKEKEEPER_TEST__CACHE__WAREHOUSE__ENABLED", "false");
+            let config = get_config();
+            assert!(!config.cache.warehouse.enabled);
+            Ok(())
+        });
+
+        figment::Jail::expect_with(|jail| {
+            jail.set_env("LAKEKEEPER_TEST__CACHE__WAREHOUSE__ENABLED", "true");
+            jail.set_env("LAKEKEEPER_TEST__CACHE__WAREHOUSE__CAPACITY", "2000");
+            let config = get_config();
+            assert!(config.cache.warehouse.enabled);
+            assert_eq!(config.cache.warehouse.capacity, 2000);
             Ok(())
         });
     }

@@ -1,21 +1,24 @@
+use std::sync::Arc;
+
 use http::StatusCode;
 use iceberg_ext::catalog::rest::{ErrorModel, IcebergErrorResponse};
 
 use super::{CatalogStore, Transaction};
 use crate::{
-    api::management::v1::{
-        warehouse::TabularDeleteProfile, DeleteWarehouseQuery, ProtectionResponse,
-    },
+    api::management::v1::{warehouse::TabularDeleteProfile, DeleteWarehouseQuery},
     service::{
         catalog_store::{
             define_transparent_error, impl_error_stack_methods, impl_from_with_detail,
+            warehouse_cache::{
+                warehouse_cache_get_by_id, warehouse_cache_get_by_name, warehouse_cache_insert,
+            },
             CatalogBackendError,
         },
         define_simple_error,
         storage::StorageProfile,
-        DatabaseIntegrityError, Result as ServiceResult,
+        DatabaseIntegrityError,
     },
-    ProjectId, SecretIdent, WarehouseId,
+    ProjectId, SecretId, WarehouseId,
 };
 
 /// Status of a warehouse
@@ -48,16 +51,10 @@ pub enum WarehouseStatus {
     Inactive,
 }
 
-#[derive(Debug)]
-pub struct GetStorageConfigResponse {
-    pub storage_profile: StorageProfile,
-    pub storage_secret_ident: Option<SecretIdent>,
-}
-
 #[derive(Debug, Clone)]
-pub struct GetWarehouseResponse {
+pub struct ResolvedWarehouse {
     /// ID of the warehouse.
-    pub id: WarehouseId,
+    pub warehouse_id: WarehouseId,
     /// Name of the warehouse.
     pub name: String,
     /// Project ID in which the warehouse is created.
@@ -65,13 +62,15 @@ pub struct GetWarehouseResponse {
     /// Storage profile used for the warehouse.
     pub storage_profile: StorageProfile,
     /// Storage secret ID used for the warehouse.
-    pub storage_secret_id: Option<SecretIdent>,
+    pub storage_secret_id: Option<SecretId>,
     /// Whether the warehouse is active.
     pub status: WarehouseStatus,
     /// Tabular delete profile used for the warehouse.
     pub tabular_delete_profile: TabularDeleteProfile,
     /// Whether the warehouse is protected from being deleted.
     pub protected: bool,
+    /// Timestamp when the warehouse metadata was last updated.
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 // --------------------------- GENERAL ERROR ---------------------------
@@ -177,6 +176,7 @@ define_transparent_error! {
         CatalogBackendError,
         StorageProfileSerializationError,
         ProjectIdNotFoundError,
+        DatabaseIntegrityError,
     ]
 }
 
@@ -310,6 +310,7 @@ define_transparent_error! {
     variants: [
         CatalogBackendError,
         WarehouseIdNotFound,
+        DatabaseIntegrityError,
     ]
 }
 
@@ -351,6 +352,7 @@ define_transparent_error! {
     variants: [
         CatalogBackendError,
         WarehouseIdNotFound,
+        DatabaseIntegrityError,
     ]
 }
 
@@ -361,6 +363,7 @@ define_transparent_error! {
     variants: [
         CatalogBackendError,
         WarehouseIdNotFound,
+        DatabaseIntegrityError,
     ]
 }
 
@@ -372,6 +375,7 @@ define_transparent_error! {
         CatalogBackendError,
         WarehouseIdNotFound,
         StorageProfileSerializationError,
+        DatabaseIntegrityError,
     ]
 }
 
@@ -382,7 +386,20 @@ define_transparent_error! {
     variants: [
         CatalogBackendError,
         WarehouseIdNotFound,
+        DatabaseIntegrityError,
     ]
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum CachePolicy {
+    /// Use cached data if available
+    #[default]
+    Use,
+    /// Only use cached data newer than the specified timestamp.
+    /// `None` refers to the initial state of the entry (never updated).
+    OnlyIfNewerThan(Option<chrono::DateTime<chrono::Utc>>),
+    /// Skip the cache and always fetch from the database
+    Skip,
 }
 
 #[async_trait::async_trait]
@@ -396,10 +413,10 @@ where
         project_id: &ProjectId,
         storage_profile: StorageProfile,
         tabular_delete_profile: TabularDeleteProfile,
-        storage_secret_id: Option<SecretIdent>,
+        storage_secret_id: Option<SecretId>,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
-    ) -> ServiceResult<WarehouseId> {
-        Self::create_warehouse_impl(
+    ) -> Result<Arc<ResolvedWarehouse>, CatalogCreateWarehouseError> {
+        let warehouse = Self::create_warehouse_impl(
             warehouse_name,
             project_id,
             storage_profile,
@@ -407,8 +424,9 @@ where
             storage_secret_id,
             transaction,
         )
-        .await
-        .map_err(Into::into)
+        .await?;
+        let warehouse_ref = Arc::new(warehouse);
+        Ok(warehouse_ref)
     }
 
     /// Delete a warehouse.
@@ -416,10 +434,9 @@ where
         warehouse_id: WarehouseId,
         query: DeleteWarehouseQuery,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
-    ) -> ServiceResult<()> {
-        Self::delete_warehouse_impl(warehouse_id, query, transaction)
-            .await
-            .map_err(Into::into)
+    ) -> Result<(), CatalogDeleteWarehouseError> {
+        Self::delete_warehouse_impl(warehouse_id, query, transaction).await?;
+        Ok(())
     }
 
     /// Rename a warehouse.
@@ -427,8 +444,10 @@ where
         warehouse_id: WarehouseId,
         new_name: &str,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
-    ) -> Result<(), CatalogRenameWarehouseError> {
-        Self::rename_warehouse_impl(warehouse_id, new_name, transaction).await
+    ) -> Result<Arc<ResolvedWarehouse>, CatalogRenameWarehouseError> {
+        Self::rename_warehouse_impl(warehouse_id, new_name, transaction)
+            .await
+            .map(Arc::new)
     }
 
     /// Return a list of all warehouse in a project
@@ -438,26 +457,138 @@ where
         // If Some, returns warehouses with any of the statuses in the set
         include_inactive: Option<Vec<WarehouseStatus>>,
         state: Self::State,
-    ) -> Result<Vec<GetWarehouseResponse>, CatalogListWarehousesError> {
-        Self::list_warehouses_impl(project_id, include_inactive, state).await
+    ) -> Result<Vec<Arc<ResolvedWarehouse>>, CatalogListWarehousesError> {
+        let warehouses = Self::list_warehouses_impl(project_id, include_inactive, state)
+            .await?
+            .into_iter()
+            .map(Arc::new)
+            .collect::<Vec<_>>();
+
+        let mut tasks = Vec::with_capacity(warehouses.len());
+        for warehouse in &warehouses {
+            tasks.push(warehouse_cache_insert(warehouse.clone()));
+        }
+
+        futures::future::join_all(tasks).await;
+
+        Ok(warehouses)
     }
 
-    /// Get the warehouse metadata - should only return active warehouses.
+    /// Get the warehouse metadata.
     ///
     /// Return Ok(None) if the warehouse does not exist.
     async fn get_warehouse_by_id<'a>(
         warehouse_id: WarehouseId,
         state: Self::State,
-    ) -> Result<Option<GetWarehouseResponse>, CatalogGetWarehouseByIdError> {
-        Self::get_warehouse_by_id_impl(warehouse_id, state).await
+    ) -> Result<Option<Arc<ResolvedWarehouse>>, CatalogGetWarehouseByIdError> {
+        let cached_warehouse = warehouse_cache_get_by_id(warehouse_id).await;
+        if let Some(warehouse) = cached_warehouse {
+            return Ok(Some(warehouse));
+        }
+
+        let warehouse = Self::get_warehouse_by_id_impl(warehouse_id, state)
+            .await?
+            .map(Arc::new);
+
+        if let Some(warehouse) = warehouse.clone() {
+            warehouse_cache_insert(warehouse).await;
+        }
+
+        Ok(warehouse)
+    }
+
+    /// Get warehouse by ID, invalidating cache if it's older than the provided timestamp
+    async fn get_warehouse_by_id_cache_aware(
+        warehouse_id: WarehouseId,
+        cache_policy: CachePolicy,
+        state: Self::State,
+    ) -> Result<Option<Arc<ResolvedWarehouse>>, CatalogGetWarehouseByIdError> {
+        let warehouse = match cache_policy {
+            CachePolicy::Skip => {
+                // Skip cache entirely
+                let warehouse = Self::get_warehouse_by_id_impl(warehouse_id, state)
+                    .await?
+                    .map(Arc::new);
+
+                // Update cache with fresh data
+                if let Some(warehouse) = warehouse.clone() {
+                    warehouse_cache_insert(warehouse).await;
+                }
+
+                warehouse
+            }
+            CachePolicy::Use => {
+                // Use cache if available
+                Self::get_warehouse_by_id(warehouse_id, state).await?
+            }
+            CachePolicy::OnlyIfNewerThan(require_updated_after) => {
+                // Check cache first
+                let cached_warehouse = warehouse_cache_get_by_id(warehouse_id).await;
+
+                if let Some(warehouse) = &cached_warehouse {
+                    // Determine if cache is valid based on timestamps
+                    let cache_is_valid = match (warehouse.updated_at, require_updated_after) {
+                        // Both None: cache is valid (warehouse never updated, no requirement)
+                        // OR: Cache has timestamp, no requirement: cache is valid
+                        (None | Some(_), None) => true,
+                        // Cache is None but we require a timestamp: cache is stale
+                        (None, Some(_)) => false,
+                        // Both have timestamps: compare them
+                        (Some(cached_at), Some(required_at)) => cached_at >= required_at,
+                    };
+
+                    if cache_is_valid {
+                        Some(warehouse.clone())
+                    } else {
+                        tracing::debug!(
+                            "Detected stale cache for warehouse {}: cached={:?}, required={:?}. Refreshing.",
+                            warehouse_id,
+                            warehouse.updated_at,
+                            require_updated_after
+                        );
+                        // Cache is stale: fetch fresh data
+                        let warehouse = Self::get_warehouse_by_id_impl(warehouse_id, state)
+                            .await?
+                            .map(Arc::new);
+                        // Update cache with fresh data
+                        if let Some(warehouse) = warehouse.clone() {
+                            warehouse_cache_insert(warehouse).await;
+                        }
+                        warehouse
+                    }
+                } else {
+                    // No cache entry: fetch fresh data
+                    let warehouse = Self::get_warehouse_by_id_impl(warehouse_id, state)
+                        .await?
+                        .map(Arc::new);
+                    // Update cache with fresh data
+                    if let Some(warehouse) = warehouse.clone() {
+                        warehouse_cache_insert(warehouse).await;
+                    }
+                    warehouse
+                }
+            }
+        };
+
+        Ok(warehouse)
     }
 
     /// Wrapper around `get_warehouse` that returns a not-found error if the warehouse does not exist.
     async fn require_warehouse_by_id<'a>(
         warehouse_id: WarehouseId,
         state: Self::State,
-    ) -> Result<GetWarehouseResponse, CatalogGetWarehouseByIdError> {
+    ) -> Result<Arc<ResolvedWarehouse>, CatalogGetWarehouseByIdError> {
         Self::get_warehouse_by_id(warehouse_id, state)
+            .await?
+            .ok_or(WarehouseIdNotFound::new(warehouse_id).into())
+    }
+
+    async fn require_warehouse_by_id_cache_aware(
+        warehouse_id: WarehouseId,
+        cache_policy: CachePolicy,
+        state: Self::State,
+    ) -> Result<Arc<ResolvedWarehouse>, CatalogGetWarehouseByIdError> {
+        Self::get_warehouse_by_id_cache_aware(warehouse_id, cache_policy, state)
             .await?
             .ok_or(WarehouseIdNotFound::new(warehouse_id).into())
     }
@@ -466,8 +597,19 @@ where
         warehouse_name: &str,
         project_id: &ProjectId,
         catalog_state: Self::State,
-    ) -> Result<Option<GetWarehouseResponse>, CatalogGetWarehouseByNameError> {
-        Self::get_warehouse_by_name_impl(warehouse_name, project_id, catalog_state).await
+    ) -> Result<Option<Arc<ResolvedWarehouse>>, CatalogGetWarehouseByNameError> {
+        let cached_warehouse = warehouse_cache_get_by_name(warehouse_name, project_id).await;
+        if let Some(warehouse) = cached_warehouse {
+            return Ok(Some(warehouse));
+        }
+
+        let warehouse = Self::get_warehouse_by_name_impl(warehouse_name, project_id, catalog_state)
+            .await?
+            .map(Arc::new);
+        if let Some(warehouse) = warehouse.clone() {
+            warehouse_cache_insert(warehouse).await;
+        }
+        Ok(warehouse)
     }
 
     /// Wrapper around `get_warehouse_by_name` that returns
@@ -476,7 +618,7 @@ where
         warehouse_name: &str,
         project_id: &ProjectId,
         catalog_state: Self::State,
-    ) -> Result<GetWarehouseResponse, CatalogGetWarehouseByNameError> {
+    ) -> Result<Arc<ResolvedWarehouse>, CatalogGetWarehouseByNameError> {
         Self::get_warehouse_by_name(warehouse_name, project_id, catalog_state)
             .await?
             .ok_or(WarehouseNameNotFound::new(warehouse_name.to_string()).into())
@@ -487,24 +629,28 @@ where
         warehouse_id: WarehouseId,
         deletion_profile: &TabularDeleteProfile,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
-    ) -> Result<(), SetWarehouseDeletionProfileError> {
-        Self::set_warehouse_deletion_profile_impl(warehouse_id, deletion_profile, transaction).await
+    ) -> Result<Arc<ResolvedWarehouse>, SetWarehouseDeletionProfileError> {
+        Self::set_warehouse_deletion_profile_impl(warehouse_id, deletion_profile, transaction)
+            .await
+            .map(Arc::new)
     }
 
     async fn set_warehouse_status<'a>(
         warehouse_id: WarehouseId,
         status: WarehouseStatus,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
-    ) -> Result<(), SetWarehouseStatusError> {
-        Self::set_warehouse_status_impl(warehouse_id, status, transaction).await
+    ) -> Result<Arc<ResolvedWarehouse>, SetWarehouseStatusError> {
+        Self::set_warehouse_status_impl(warehouse_id, status, transaction)
+            .await
+            .map(Arc::new)
     }
 
     async fn update_storage_profile<'a>(
         warehouse_id: WarehouseId,
         storage_profile: StorageProfile,
-        storage_secret_id: Option<SecretIdent>,
+        storage_secret_id: Option<SecretId>,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
-    ) -> Result<(), UpdateWarehouseStorageProfileError> {
+    ) -> Result<Arc<ResolvedWarehouse>, UpdateWarehouseStorageProfileError> {
         Self::update_storage_profile_impl(
             warehouse_id,
             storage_profile,
@@ -512,14 +658,17 @@ where
             transaction,
         )
         .await
+        .map(Arc::new)
     }
 
     async fn set_warehouse_protected(
         warehouse_id: WarehouseId,
         protect: bool,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
-    ) -> std::result::Result<ProtectionResponse, SetWarehouseProtectedError> {
-        Self::set_warehouse_protected_impl(warehouse_id, protect, transaction).await
+    ) -> std::result::Result<Arc<ResolvedWarehouse>, SetWarehouseProtectedError> {
+        Self::set_warehouse_protected_impl(warehouse_id, protect, transaction)
+            .await
+            .map(Arc::new)
     }
 }
 
