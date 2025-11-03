@@ -16,6 +16,7 @@ use crate::{
     service::{
         contract_verification::ContractVerifiers,
         endpoint_hooks::EndpointHookCollection,
+        namespace_cache::NamespaceCacheEndpointHook,
         storage::{StorageCredential, StorageProfile},
         warehouse_cache::WarehouseCacheEndpointHook,
         UserId,
@@ -28,6 +29,8 @@ mod drop_recursive;
 mod drop_warehouse;
 #[cfg(test)]
 mod endpoint_stats;
+#[cfg(test)]
+mod namespace_ops;
 #[cfg(test)]
 mod soft_deletion;
 #[cfg(test)]
@@ -218,7 +221,10 @@ pub(crate) async fn get_api_context<T: Authorizer>(
             catalog: catalog_state,
             secrets: secret_store,
             contract_verifiers: ContractVerifiers::new(vec![]),
-            hooks: EndpointHookCollection::new(vec![Arc::new(WarehouseCacheEndpointHook {})]),
+            hooks: EndpointHookCollection::new(vec![
+                Arc::new(WarehouseCacheEndpointHook {}),
+                Arc::new(NamespaceCacheEndpointHook {}),
+            ]),
             registered_task_queues,
             license_status: &APACHE_LICENSE_STATUS,
         },
