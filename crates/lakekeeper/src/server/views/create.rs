@@ -18,10 +18,10 @@ use crate::{
         views::validate_view_properties,
     },
     service::{
-        authz::{Authorizer, AuthzNamespaceOps, AuthzWarehouseOps, CatalogNamespaceAction},
+        authz::{Authorizer, AuthzNamespaceOps, CatalogNamespaceAction},
         storage::{StorageLocations as _, StoragePermissions},
-        CatalogNamespaceOps, CatalogStore, CatalogViewOps, CatalogWarehouseOps, Result,
-        SecretStore, State, TabularId, Transaction, ViewId,
+        CachePolicy, CatalogStore, CatalogViewOps, Result, SecretStore, State, TabularId,
+        Transaction, ViewId,
     },
 };
 
@@ -58,20 +58,14 @@ pub(crate) async fn create_view<C: CatalogStore, A: Authorizer + Clone, S: Secre
 
     // ------------------- AUTHZ -------------------
     let authorizer = &state.v1_state.authz;
-
-    let (warehouse, namespace) = tokio::join!(
-        C::get_active_warehouse_by_id(warehouse_id, state.v1_state.catalog.clone()),
-        C::get_namespace(warehouse_id, provided_ns, state.v1_state.catalog.clone())
-    );
-    let warehouse = authorizer.require_warehouse_presence(warehouse_id, warehouse)?;
-
-    let namespace = authorizer
-        .require_namespace_action(
+    let (warehouse, ns_hierarchy) = authorizer
+        .load_and_authorize_namespace_action::<C>(
             &request_metadata,
-            &warehouse,
+            warehouse_id,
             provided_ns,
-            namespace,
             CatalogNamespaceAction::CanCreateView,
+            CachePolicy::Use,
+            state.v1_state.catalog.clone(),
         )
         .await?;
 
@@ -82,7 +76,7 @@ pub(crate) async fn create_view<C: CatalogStore, A: Authorizer + Clone, S: Secre
     let view_id: TabularId = TabularId::View(uuid::Uuid::now_v7().into());
 
     let view_location = determine_tabular_location(
-        &namespace.namespace,
+        &ns_hierarchy.namespace.namespace,
         request.location.clone(),
         view_id,
         &warehouse.storage_profile,
@@ -123,7 +117,7 @@ pub(crate) async fn create_view<C: CatalogStore, A: Authorizer + Clone, S: Secre
 
     C::create_view(
         warehouse_id,
-        namespace.namespace_id(),
+        ns_hierarchy.namespace_id(),
         &view,
         &metadata_build_result.metadata,
         &metadata_location,
@@ -173,7 +167,7 @@ pub(crate) async fn create_view<C: CatalogStore, A: Authorizer + Clone, S: Secre
             &request_metadata,
             warehouse_id,
             ViewId::from(metadata_build_result.metadata.uuid()),
-            namespace.namespace_id(),
+            ns_hierarchy.namespace_id(),
         )
         .await?;
 
@@ -288,7 +282,7 @@ pub(crate) mod test {
         let new_ns =
             initialize_namespace(api_context.v1_state.catalog.clone(), whi, &namespace, None)
                 .await
-                .namespace_ident
+                .namespace_ident()
                 .clone();
 
         let _view = Box::pin(create_view(api_context, new_ns, rq, Some(whi.to_string())))

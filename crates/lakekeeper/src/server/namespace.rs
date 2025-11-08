@@ -291,9 +291,7 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
         request.properties = Some(namespace_props.into());
 
         let mut t = C::Transaction::begin_write(state.v1_state.catalog).await?;
-        let r = C::create_namespace(warehouse_id, namespace_id, request, t.transaction())
-            .await
-            .map(Arc::new)?;
+        let r = C::create_namespace(warehouse_id, namespace_id, request, t.transaction()).await?;
         let authz_parent = if let Some(parent_id) = parent_namespace {
             NamespaceParent::Namespace(parent_id)
         } else {
@@ -332,24 +330,15 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
         validate_namespace_ident(&parameters.namespace)?;
 
         // ------------------- AUTHZ -------------------
-        let authorizer = state.v1_state.authz.clone();
-        let (warehouse, namespace) = tokio::join!(
-            C::get_active_warehouse_by_id(warehouse_id, state.v1_state.catalog.clone(),),
-            C::get_namespace_cache_aware(
-                warehouse_id,
-                &parameters.namespace,
-                CachePolicy::Skip,
-                state.v1_state.catalog
-            ),
-        );
-        let warehouse = authorizer.require_warehouse_presence(warehouse_id, warehouse)?;
-        let namespace = authorizer
-            .require_namespace_action(
+        let authorizer = state.v1_state.authz;
+        let (_warehouse, namespace) = authorizer
+            .load_and_authorize_namespace_action::<C>(
                 &request_metadata,
-                &warehouse,
+                warehouse_id,
                 parameters.namespace,
-                namespace,
                 CatalogNamespaceAction::CanGetMetadata,
+                CachePolicy::Skip,
+                state.v1_state.catalog,
             )
             .await?;
 
@@ -370,25 +359,20 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
         state: ApiContext<State<A, C, S>>,
         request_metadata: RequestMetadata,
     ) -> Result<()> {
-        //  ------------------- VALIDATIONS -------------------
         let warehouse_id = require_warehouse_id(parameters.prefix.as_ref())?;
 
-        //  ------------------- AUTHZ -------------------
-        let authorizer = state.v1_state.authz.clone();
-        let (warehouse, namespace) = tokio::join!(
-            C::get_active_warehouse_by_id(warehouse_id, state.v1_state.catalog.clone(),),
-            C::get_namespace(warehouse_id, &parameters.namespace, state.v1_state.catalog),
-        );
-        let warehouse = authorizer.require_warehouse_presence(warehouse_id, warehouse)?;
-        let _namespace = authorizer
-            .require_namespace_action(
+        let authorizer = state.v1_state.authz;
+        let (_warehouse, _namespace) = authorizer
+            .load_and_authorize_namespace_action::<C>(
                 &request_metadata,
-                &warehouse,
+                warehouse_id,
                 parameters.namespace,
-                namespace,
                 CatalogNamespaceAction::CanGetMetadata,
+                CachePolicy::Skip,
+                state.v1_state.catalog,
             )
             .await?;
+
         Ok(())
     }
 
@@ -416,23 +400,15 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
         }
 
         //  ------------------- AUTHZ -------------------
-        let authorizer = state.v1_state.authz.clone();
-        let (warehouse, namespace) = tokio::join!(
-            C::get_active_warehouse_by_id(warehouse_id, state.v1_state.catalog.clone(),),
-            C::get_namespace(
-                warehouse_id,
-                &parameters.namespace,
-                state.v1_state.catalog.clone()
-            ),
-        );
-        let warehouse = authorizer.require_warehouse_presence(warehouse_id, warehouse)?;
-        let namespace = authorizer
-            .require_namespace_action(
+        let authorizer = state.v1_state.authz;
+        let (warehouse, namespace) = authorizer
+            .load_and_authorize_namespace_action::<C>(
                 &request_metadata,
-                &warehouse,
+                warehouse_id,
                 parameters.namespace,
-                namespace,
                 CatalogNamespaceAction::CanDelete,
+                CachePolicy::Skip,
+                state.v1_state.catalog.clone(),
             )
             .await?;
 
@@ -498,24 +474,14 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
         //  ------------------- AUTHZ -------------------
         let authorizer = state.v1_state.authz;
 
-        let (warehouse, namespace) = tokio::join!(
-            C::get_active_warehouse_by_id(warehouse_id, state.v1_state.catalog.clone(),),
-            C::get_namespace_cache_aware(
+        let (_warehouse, namespace) = authorizer
+            .load_and_authorize_namespace_action::<C>(
+                &request_metadata,
                 warehouse_id,
-                &parameters.namespace,
+                parameters.namespace,
+                CatalogNamespaceAction::CanUpdateProperties,
                 CachePolicy::Skip,
                 state.v1_state.catalog.clone(),
-            ),
-        );
-        let warehouse = authorizer.require_warehouse_presence(warehouse_id, warehouse)?;
-
-        let namespace = authorizer
-            .require_namespace_action(
-                &request_metadata,
-                &warehouse,
-                parameters.namespace,
-                namespace,
-                CatalogNamespaceAction::CanUpdateProperties,
             )
             .await?;
 
@@ -531,8 +497,7 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
             updated_properties,
             t.transaction(),
         )
-        .await
-        .map(Arc::new)?;
+        .await?;
         t.commit().await?;
 
         state
@@ -867,11 +832,9 @@ mod tests {
             },
             ApiContext,
         },
-        implementations::postgres::{
-            namespace::get_namespace_by_name, PostgresBackend, SecretsState,
-        },
+        implementations::postgres::{PostgresBackend, SecretsState},
         request_metadata::RequestMetadata,
-        server::{test::impl_pagination_tests, CatalogServer},
+        server::{test::impl_pagination_tests, CatalogServer, NAMESPACE_ID_PROPERTY},
         service::{
             authz::{tests::HidingAuthorizer, AllowAllAuthorizer},
             ListNamespacesQuery, NamespaceId, State, UserId,
@@ -919,15 +882,11 @@ mod tests {
                 if n >= *range_start && n < *range_end {
                     authz.hide(&format!(
                         "namespace:{}",
-                        get_namespace_by_name(
-                            warehouse.warehouse_id,
-                            &ns.namespace,
-                            &ctx.v1_state.catalog.read_pool(),
-                        )
-                        .await
-                        .unwrap()
-                        .unwrap()
-                        .namespace_id()
+                        ns.properties
+                            .as_ref()
+                            .unwrap()
+                            .get(NAMESPACE_ID_PROPERTY)
+                            .unwrap()
                     ));
                 }
             }

@@ -4,7 +4,7 @@ use crate::{
     service::{
         authz::{AuthZViewOps, Authorizer, CatalogViewAction},
         CatalogStore, CatalogTabularOps, SecretStore, State, TabularId, TabularListFlags,
-        Transaction, ViewId, ViewOrTableInfo,
+        Transaction, ViewId,
     },
     WarehouseId,
 };
@@ -28,25 +28,21 @@ where
     ) -> Result<ProtectionResponse> {
         // ------------------- AUTHZ -------------------
         let authorizer = state.v1_state.authz;
-        let view = C::get_view_info(
-            warehouse_id,
-            view_id,
-            TabularListFlags::all(),
-            state.v1_state.catalog.clone(),
-        )
-        .await;
-        authorizer
-            .require_view_action(
+        let state_catalog = state.v1_state.catalog;
+
+        let (_warehouse, _namespace, _view) = authorizer
+            .load_and_authorize_view_operation::<C>(
                 &request_metadata,
                 warehouse_id,
                 view_id,
-                view,
+                TabularListFlags::all(),
                 CatalogViewAction::CanDrop,
+                state_catalog.clone(),
             )
             .await?;
 
         // ------------------- BUSINESS LOGIC -------------------
-        let mut t = C::Transaction::begin_write(state.v1_state.catalog).await?;
+        let mut t = C::Transaction::begin_write(state_catalog).await?;
         let status = C::set_tabular_protected(
             warehouse_id,
             TabularId::View(view_id),
@@ -69,28 +65,22 @@ where
     ) -> Result<ProtectionResponse> {
         let authorizer = state.v1_state.authz.clone();
 
-        let view = C::get_view_info(
-            warehouse_id,
-            view_id,
-            TabularListFlags::all(),
-            state.v1_state.catalog.clone(),
-        )
-        .await;
+        let state_catalog = state.v1_state.catalog;
 
-        let view = ViewOrTableInfo::View(
-            authorizer
-                .require_view_action(
-                    &request_metadata,
-                    warehouse_id,
-                    view_id,
-                    view,
-                    CatalogViewAction::CanGetMetadata,
-                )
-                .await?,
-        );
+        let (_warehouse, _namespace, view) = authorizer
+            .load_and_authorize_view_operation::<C>(
+                &request_metadata,
+                warehouse_id,
+                view_id,
+                TabularListFlags::all(),
+                CatalogViewAction::CanGetMetadata,
+                state_catalog.clone(),
+            )
+            .await?;
+
         Ok(ProtectionResponse {
-            protected: view.protected(),
-            updated_at: view.updated_at(),
+            protected: view.protected,
+            updated_at: view.updated_at,
         })
     }
 }

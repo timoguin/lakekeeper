@@ -20,11 +20,11 @@ use crate::{
     request_metadata::RequestMetadata,
     server::{compression_codec::CompressionCodec, tabular::determine_tabular_location},
     service::{
-        authz::{Authorizer, AuthzNamespaceOps, AuthzWarehouseOps, CatalogNamespaceAction},
+        authz::{Authorizer, AuthzNamespaceOps, CatalogNamespaceAction},
         secrets::SecretStore,
         storage::{StorageLocations as _, StoragePermissions, ValidationError},
-        CatalogNamespaceOps, CatalogStore, CatalogTableOps, CatalogWarehouseOps, State,
-        TableCreation, TableId, TabularId, Transaction,
+        CachePolicy, CatalogStore, CatalogTableOps, State, TableCreation, TableId, TabularId,
+        Transaction,
     },
     WarehouseId,
 };
@@ -152,19 +152,14 @@ async fn create_table_inner<C: CatalogStore, A: Authorizer + Clone, S: SecretSto
     // ------------------- AUTHZ -------------------
     let authorizer = state.v1_state.authz.clone();
 
-    let (namespace, warehouse) = tokio::join!(
-        C::get_namespace(warehouse_id, &provided_ns, state.v1_state.catalog.clone()),
-        C::get_active_warehouse_by_id(warehouse_id, state.v1_state.catalog.clone()),
-    );
-    let warehouse = authorizer.require_warehouse_presence(warehouse_id, warehouse)?;
-
-    let namespace = authorizer
-        .require_namespace_action(
+    let (warehouse, ns_hierarchy) = authorizer
+        .load_and_authorize_namespace_action::<C>(
             &request_metadata,
-            &warehouse,
+            warehouse_id,
             provided_ns,
-            namespace,
             CatalogNamespaceAction::CanCreateTable,
+            CachePolicy::Use,
+            state.v1_state.catalog.clone(),
         )
         .await?;
 
@@ -175,7 +170,7 @@ async fn create_table_inner<C: CatalogStore, A: Authorizer + Clone, S: SecretSto
     let storage_profile = &warehouse.storage_profile;
 
     let table_location = determine_tabular_location(
-        &namespace.namespace,
+        &ns_hierarchy.namespace.namespace,
         request.location.clone(),
         tabular_id,
         storage_profile,
@@ -204,7 +199,7 @@ async fn create_table_inner<C: CatalogStore, A: Authorizer + Clone, S: SecretSto
     let (_table_info, staged_table_id) = C::create_table(
         TableCreation {
             warehouse_id: warehouse.warehouse_id,
-            namespace_id: namespace.namespace_id(),
+            namespace_id: ns_hierarchy.namespace_id(),
             table_ident: &table,
             table_metadata: &table_metadata,
             metadata_location: metadata_location.as_ref(),
@@ -279,7 +274,7 @@ async fn create_table_inner<C: CatalogStore, A: Authorizer + Clone, S: SecretSto
             &request_metadata,
             warehouse_id,
             table_id,
-            namespace.namespace_id(),
+            ns_hierarchy.namespace_id(),
         )
         .await?;
 

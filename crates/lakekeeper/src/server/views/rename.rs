@@ -8,8 +8,9 @@ use crate::{
     server::{require_warehouse_id, tables::validate_table_or_view_ident},
     service::{
         authz::{
-            AuthZViewOps, Authorizer, AuthzNamespaceOps, AuthzWarehouseOps, CatalogNamespaceAction,
-            CatalogViewAction,
+            refresh_warehouse_and_namespace_if_needed, AuthZCannotSeeView, AuthZViewOps,
+            Authorizer, AuthzNamespaceOps, AuthzWarehouseOps, CatalogNamespaceAction,
+            CatalogViewAction, RequireViewActionError,
         },
         contract_verification::ContractVerification,
         AuthZViewInfo as _, CatalogNamespaceOps, CatalogStore, CatalogTabularOps,
@@ -38,46 +39,65 @@ pub(crate) async fn rename_view<C: CatalogStore, A: Authorizer + Clone, S: Secre
     // 2) renaming the old view
     let authorizer = state.v1_state.authz;
 
-    let warehouse =
-        C::get_active_warehouse_by_id(warehouse_id, state.v1_state.catalog.clone()).await;
-    let warehouse = authorizer.require_warehouse_presence(warehouse_id, warehouse)?;
-
-    // Check 1)
-    let destination_namespace = C::get_namespace(
-        warehouse_id,
-        &destination.namespace,
-        state.v1_state.catalog.clone(),
-    )
-    .await;
-    let user_provided_namespace = &destination.namespace;
-    let _ = authorizer
-        .require_namespace_action(
-            &request_metadata,
-            &warehouse,
-            user_provided_namespace,
-            destination_namespace,
-            CatalogNamespaceAction::CanCreateTable,
-        )
-        .await?;
-
-    // Check 2)
-    let source_view_info = C::get_view_info(
-        warehouse_id,
-        source.clone(),
-        TabularListFlags::active(),
-        state.v1_state.catalog.clone(),
-    )
-    .await;
-
-    let source_view_info = authorizer
-        .require_view_action(
-            &request_metadata,
+    let (warehouse, destination_namespace, source_namespace, source_view_info) = tokio::join!(
+        C::get_active_warehouse_by_id(warehouse_id, state.v1_state.catalog.clone(),),
+        C::get_namespace(
+            warehouse_id,
+            &destination.namespace,
+            state.v1_state.catalog.clone(),
+        ),
+        C::get_namespace(
+            warehouse_id,
+            &source.namespace,
+            state.v1_state.catalog.clone(),
+        ),
+        C::get_view_info(
             warehouse_id,
             source.clone(),
-            source_view_info,
+            TabularListFlags::active(),
+            state.v1_state.catalog.clone(),
+        )
+    );
+    let warehouse = authorizer.require_warehouse_presence(warehouse_id, warehouse)?;
+    let source_namespace = authorizer.require_namespace_presence(
+        warehouse_id,
+        source.namespace.clone(),
+        source_namespace,
+    )?;
+    let source_view_info =
+        authorizer.require_view_presence(warehouse_id, source.clone(), source_view_info)?;
+
+    let (warehouse, source_namespace) = refresh_warehouse_and_namespace_if_needed::<C, _, _, _>(
+        &authorizer,
+        &warehouse,
+        &source_view_info,
+        source_namespace,
+        state.v1_state.catalog.clone(),
+        AuthZCannotSeeView::new(warehouse_id, source.clone()),
+    )
+    .await?;
+
+    let (destination_namespace, source_view_info) = tokio::join!(
+        // Check 1)
+        authorizer.require_namespace_action(
+            &request_metadata,
+            &warehouse,
+            &destination.namespace,
+            destination_namespace,
+            CatalogNamespaceAction::CanCreateView,
+        ),
+        // Check 2)
+        authorizer.require_view_action(
+            &request_metadata,
+            &warehouse,
+            &source_namespace,
+            source.clone(),
+            Ok::<_, RequireViewActionError>(Some(source_view_info)),
             CatalogViewAction::CanRename,
         )
-        .await?;
+    );
+    let source_view_info = source_view_info?;
+    let _destination_namespace = destination_namespace?;
 
     // ------------------- BUSINESS LOGIC -------------------
     if source == destination {
@@ -87,7 +107,6 @@ pub(crate) async fn rename_view<C: CatalogStore, A: Authorizer + Clone, S: Secre
     let source_id = source_view_info.view_id();
 
     let mut t = C::Transaction::begin_write(state.v1_state.catalog).await?;
-
     C::rename_tabular(
         warehouse_id,
         source_view_info.view_id(),
@@ -96,7 +115,6 @@ pub(crate) async fn rename_view<C: CatalogStore, A: Authorizer + Clone, S: Secre
         t.transaction(),
     )
     .await?;
-
     state
         .v1_state
         .contract_verifiers
@@ -202,7 +220,7 @@ mod test {
         let new_ns =
             initialize_namespace(api_context.v1_state.catalog.clone(), whi, &namespace, None)
                 .await
-                .namespace_ident
+                .namespace_ident()
                 .clone();
 
         let view_name = "my-view";
