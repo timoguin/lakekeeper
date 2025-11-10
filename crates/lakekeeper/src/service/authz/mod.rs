@@ -76,6 +76,7 @@ pub enum CatalogProjectAction {
     CanCreateRole,
     CanListRoles,
     CanSearchRoles,
+    CanGetEndpointStatistics,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, strum_macros::Display, EnumIter, EnumString)]
@@ -108,6 +109,8 @@ pub enum CatalogWarehouseAction {
     CanModifyTaskQueueConfig,
     CanGetAllTasks,
     CanControlAllTasks,
+    CanSetProtection,
+    CanGetEndpointStatistics,
 }
 
 #[derive(Debug, Hash, Clone, Copy, Eq, PartialEq, strum_macros::Display, EnumIter, EnumString)]
@@ -123,6 +126,7 @@ pub enum CatalogNamespaceAction {
     CanListViews,
     CanListNamespaces,
     CanListEverything,
+    CanSetProtection,
 }
 
 #[derive(Debug, Hash, Clone, Copy, Eq, PartialEq, strum_macros::Display, EnumIter, EnumString)]
@@ -138,6 +142,7 @@ pub enum CatalogTableAction {
     CanUndrop,
     CanGetTasks,
     CanControlTasks,
+    CanSetProtection,
 }
 
 #[derive(Debug, Hash, Clone, Copy, Eq, PartialEq, strum_macros::Display, EnumIter, EnumString)]
@@ -151,6 +156,7 @@ pub enum CatalogViewAction {
     CanUndrop,
     CanGetTasks,
     CanControlTasks,
+    CanSetProtection,
 }
 
 pub trait AsTableId {

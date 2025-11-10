@@ -434,6 +434,7 @@ pub enum ProjectRelation {
     CanGrantProjectAdmin,
     CanGrantSecurityAdmin,
     CanGrantDataAdmin,
+    CanGetEndpointStatistics,
 }
 
 impl ProjectAction for ProjectRelation {}
@@ -577,6 +578,7 @@ pub(super) enum APIProjectAction {
     GrantProjectAdmin,
     GrantSecurityAdmin,
     GrantDataAdmin,
+    GetEndpointStatistics,
 }
 
 impl ReducedRelation for APIProjectRelation {
@@ -617,6 +619,7 @@ impl ReducedRelation for APIProjectAction {
             APIProjectAction::GrantProjectAdmin => ProjectRelation::CanGrantProjectAdmin,
             APIProjectAction::GrantSecurityAdmin => ProjectRelation::CanGrantSecurityAdmin,
             APIProjectAction::GrantDataAdmin => ProjectRelation::CanGrantDataAdmin,
+            APIProjectAction::GetEndpointStatistics => ProjectRelation::CanGetEndpointStatistics,
         }
     }
 }
@@ -635,6 +638,9 @@ impl ReducedRelation for CatalogProjectAction {
             CatalogProjectAction::CanCreateRole => ProjectRelation::CanCreateRole,
             CatalogProjectAction::CanListRoles => ProjectRelation::CanListRoles,
             CatalogProjectAction::CanSearchRoles => ProjectRelation::CanSearchRoles,
+            CatalogProjectAction::CanGetEndpointStatistics => {
+                ProjectRelation::CanGetEndpointStatistics
+            }
         }
     }
 }
@@ -684,6 +690,8 @@ pub enum WarehouseRelation {
     CanModifyTaskQueueConfig,
     CanGetAllTasks,
     CanControlAllTasks,
+    CanSetProtection,
+    CanGetEndpointStatistics,
 }
 impl WarehouseAction for WarehouseRelation {}
 
@@ -827,6 +835,8 @@ pub(super) enum APIWarehouseAction {
     ChangeOwnership,
     GetAllTasks,
     ControlAllTasks,
+    SetProtection,
+    GetEndpointStatistics,
 }
 
 impl ReducedRelation for APIWarehouseRelation {
@@ -874,6 +884,10 @@ impl ReducedRelation for APIWarehouseAction {
             APIWarehouseAction::ChangeOwnership => WarehouseRelation::CanChangeOwnership,
             APIWarehouseAction::GetAllTasks => WarehouseRelation::CanGetAllTasks,
             APIWarehouseAction::ControlAllTasks => WarehouseRelation::CanControlAllTasks,
+            APIWarehouseAction::SetProtection => WarehouseRelation::CanSetProtection,
+            APIWarehouseAction::GetEndpointStatistics => {
+                WarehouseRelation::CanGetEndpointStatistics
+            }
         }
     }
 }
@@ -912,6 +926,10 @@ impl ReducedRelation for CatalogWarehouseAction {
             }
             CatalogWarehouseAction::CanGetAllTasks => WarehouseRelation::CanGetAllTasks,
             CatalogWarehouseAction::CanControlAllTasks => WarehouseRelation::CanControlAllTasks,
+            CatalogWarehouseAction::CanSetProtection => WarehouseRelation::CanSetProtection,
+            CatalogWarehouseAction::CanGetEndpointStatistics => {
+                WarehouseRelation::CanGetEndpointStatistics
+            }
         }
     }
 }
@@ -954,6 +972,7 @@ pub enum NamespaceRelation {
     CanGrantManageGrants,
     CanChangeOwnership,
     CanSetManagedAccess,
+    CanSetProtection,
 }
 
 impl OpenFgaRelation for NamespaceRelation {}
@@ -1095,6 +1114,7 @@ pub(super) enum APINamespaceAction {
     GrantSelect,
     GrantPassGrants,
     GrantManageGrants,
+    SetProtection,
 }
 
 impl ReducedRelation for APINamespaceRelation {
@@ -1131,6 +1151,7 @@ impl ReducedRelation for APINamespaceAction {
             APINamespaceAction::GrantSelect => NamespaceRelation::CanGrantSelect,
             APINamespaceAction::GrantPassGrants => NamespaceRelation::CanGrantPassGrants,
             APINamespaceAction::GrantManageGrants => NamespaceRelation::CanGrantManageGrants,
+            APINamespaceAction::SetProtection => NamespaceRelation::CanSetProtection,
         }
     }
 }
@@ -1150,6 +1171,7 @@ impl ReducedRelation for CatalogNamespaceAction {
             CatalogNamespaceAction::CanListViews => NamespaceRelation::CanListViews,
             CatalogNamespaceAction::CanListEverything => NamespaceRelation::CanListEverything,
             CatalogNamespaceAction::CanListNamespaces => NamespaceRelation::CanListNamespaces,
+            CatalogNamespaceAction::CanSetProtection => NamespaceRelation::CanSetProtection,
         }
     }
 }
@@ -1184,6 +1206,7 @@ pub enum TableRelation {
     CanUndrop,
     CanGetTasks,
     CanControlTasks,
+    CanSetProtection,
 }
 
 impl TableAction for TableRelation {}
@@ -1315,6 +1338,7 @@ pub(super) enum APITableAction {
     ChangeOwnership,
     GetTasks,
     ControlTasks,
+    SetProtection,
 }
 
 impl ReducedRelation for APITableRelation {
@@ -1352,6 +1376,7 @@ impl ReducedRelation for APITableAction {
             APITableAction::ChangeOwnership => TableRelation::CanChangeOwnership,
             APITableAction::GetTasks => TableRelation::CanGetTasks,
             APITableAction::ControlTasks => TableRelation::CanControlTasks,
+            APITableAction::SetProtection => TableRelation::CanSetProtection,
         }
     }
 }
@@ -1371,6 +1396,7 @@ impl ReducedRelation for CatalogTableAction {
             CatalogTableAction::CanUndrop => TableRelation::CanUndrop,
             CatalogTableAction::CanGetTasks => TableRelation::CanGetTasks,
             CatalogTableAction::CanControlTasks => TableRelation::CanControlTasks,
+            CatalogTableAction::CanSetProtection => TableRelation::CanSetProtection,
         }
     }
 }
@@ -1401,6 +1427,7 @@ pub enum ViewRelation {
     CanUndrop,
     CanGetTasks,
     CanControlTasks,
+    CanSetProtection,
 }
 
 impl ViewAction for ViewRelation {}
@@ -1520,6 +1547,7 @@ pub(super) enum APIViewAction {
     ChangeOwnership,
     GetTasks,
     ControlTasks,
+    SetProtection,
 }
 
 impl ReducedRelation for APIViewRelation {
@@ -1553,6 +1581,7 @@ impl ReducedRelation for APIViewAction {
             APIViewAction::ChangeOwnership => ViewRelation::CanChangeOwnership,
             APIViewAction::GetTasks => ViewRelation::CanGetTasks,
             APIViewAction::ControlTasks => ViewRelation::CanControlTasks,
+            APIViewAction::SetProtection => ViewRelation::CanSetProtection,
         }
     }
 }
@@ -1570,6 +1599,7 @@ impl ReducedRelation for CatalogViewAction {
             CatalogViewAction::CanUndrop => ViewRelation::CanUndrop,
             CatalogViewAction::CanGetTasks => ViewRelation::CanGetTasks,
             CatalogViewAction::CanControlTasks => ViewRelation::CanControlTasks,
+            CatalogViewAction::CanSetProtection => ViewRelation::CanSetProtection,
         }
     }
 }
