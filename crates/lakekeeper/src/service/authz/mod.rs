@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use axum::Router;
-use futures::future::try_join_all;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoEnumIterator, VariantArray};
 use strum_macros::EnumString;
@@ -14,8 +13,8 @@ use crate::{
     api::iceberg::v1::Result,
     request_metadata::RequestMetadata,
     service::{
-        build_namespace_hierarchy, AuthZTableInfo, AuthZViewInfo, NamespaceHierarchy,
-        NamespaceWithParent, ResolvedWarehouse, ServerId, TableInfo,
+        Actor, AuthZTableInfo, AuthZViewInfo, NamespaceHierarchy, NamespaceWithParent,
+        ResolvedWarehouse, ServerId, TableInfo,
     },
 };
 
@@ -41,6 +40,59 @@ mod role;
 pub use role::*;
 
 use crate::{api::ApiContext, service::authn::UserId};
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+/// Assignees to a role
+pub struct RoleAssignee(RoleId);
+
+impl RoleAssignee {
+    #[must_use]
+    pub fn from_role(role: RoleId) -> Self {
+        RoleAssignee(role)
+    }
+
+    #[must_use]
+    pub fn role(&self) -> RoleId {
+        self.0
+    }
+}
+
+impl RoleId {
+    #[must_use]
+    pub fn into_assignees(self) -> RoleAssignee {
+        RoleAssignee::from_role(self)
+    }
+}
+
+impl Actor {
+    #[must_use]
+    pub fn to_user_or_role(&self) -> Option<UserOrRole> {
+        match self {
+            Actor::Principal(user) => Some(UserOrRole::User(user.clone())),
+            Actor::Role {
+                assumed_role,
+                principal: _,
+            } => Some(UserOrRole::Role(RoleAssignee::from_role(*assumed_role))),
+            Actor::Anonymous => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, derive_more::From)]
+#[cfg_attr(feature = "open-api", derive(utoipa::ToSchema))]
+#[serde(rename_all = "kebab-case")]
+/// Identifies a user or a role
+pub enum UserOrRole {
+    #[cfg_attr(feature = "open-api", schema(value_type = String))]
+    #[cfg_attr(feature = "open-api", schema(title = "UserOrRoleUser"))]
+    /// Id of the user
+    User(UserId),
+    #[cfg_attr(feature = "open-api", schema(value_type = uuid::Uuid))]
+    #[cfg_attr(feature = "open-api", schema(title = "UserOrRoleRole"))]
+    /// Id of the role
+    Role(RoleAssignee),
+}
 
 pub trait CatalogAction
 where
@@ -333,11 +385,13 @@ impl<T> MustUse<T> {
 }
 #[async_trait::async_trait]
 /// Interface to provide Authorization functions to the catalog.
-/// The provided `Actor` argument of all methods except `check_actor`
-/// are assumed to be valid. Please ensure to call `check_actor` before, preferably
-/// during Authentication.
-/// `check_actor` ensures that the Actor itself is valid, especially that the principal
-/// is allowed to assume the role.
+/// For metadata passed into all methods except `check_actor`, the `actor()` in `RequestMetadata`
+/// has been validate with `check_actor` beforehand during the auth middleware step.
+///
+/// If the `for_user` argument to `is_allowed_x_action` methods is `Some`, then the request user
+/// (from `RequestMetadata`) is requesting to know whether the `for_user` is allowed to perform the action.
+/// Authorizers must return the error `CannotInspectPermissions` if the request user is not authorized to know about the permissions
+/// of `for_user`.
 ///
 /// # Single vs batch checks
 ///
@@ -404,204 +458,48 @@ where
         metadata: &RequestMetadata,
     ) -> Result<bool, AuthorizationBackendUnavailable>;
 
-    /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
-    /// Return Err for internal errors.
-    async fn is_allowed_user_action_impl(
-        &self,
-        metadata: &RequestMetadata,
-        user_id: &UserId,
-        action: Self::UserAction,
-    ) -> Result<bool, AuthorizationBackendUnavailable>;
-
     async fn are_allowed_user_actions_impl(
         &self,
         metadata: &RequestMetadata,
+        for_user: Option<&UserOrRole>,
         users_with_actions: &[(&UserId, Self::UserAction)],
-    ) -> Result<Vec<bool>, AuthorizationBackendUnavailable> {
-        let n_inputs = users_with_actions.len();
-        let futures: Vec<_> = users_with_actions
-            .iter()
-            .map(|(user, a)| async move {
-                self.is_allowed_user_action(metadata, user, *a)
-                    .await
-                    .map(MustUse::into_inner)
-            })
-            .collect();
-        let results = try_join_all(futures).await?;
-        debug_assert_eq!(
-            results.len(),
-            n_inputs,
-            "are_allowed_user_actions_impl to return as many results as provided inputs"
-        );
-        Ok(results)
-    }
-
-    /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
-    /// Return Err for internal errors.
-    async fn is_allowed_role_action_impl(
-        &self,
-        metadata: &RequestMetadata,
-        role_id: RoleId,
-        action: Self::RoleAction,
-    ) -> Result<bool, AuthorizationBackendUnavailable>;
+    ) -> Result<Vec<bool>, IsAllowedActionError>;
 
     async fn are_allowed_role_actions_impl(
         &self,
         metadata: &RequestMetadata,
+        for_user: Option<&UserOrRole>,
         roles_with_actions: &[(RoleId, Self::RoleAction)],
-    ) -> Result<Vec<bool>, AuthorizationBackendUnavailable> {
-        let n_inputs = roles_with_actions.len();
-        let futures: Vec<_> = roles_with_actions
-            .iter()
-            .map(|(role, a)| async move {
-                self.is_allowed_role_action(metadata, *role, *a)
-                    .await
-                    .map(MustUse::into_inner)
-            })
-            .collect();
-        let results = try_join_all(futures).await?;
-        debug_assert_eq!(
-            results.len(),
-            n_inputs,
-            "are_allowed_role_actions_impl to return as many results as provided inputs"
-        );
-        Ok(results)
-    }
-
-    /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
-    /// Return Err for internal errors.
-    async fn is_allowed_server_action_impl(
-        &self,
-        metadata: &RequestMetadata,
-        action: Self::ServerAction,
-    ) -> Result<bool, AuthorizationBackendUnavailable>;
+    ) -> Result<Vec<bool>, IsAllowedActionError>;
 
     async fn are_allowed_server_actions_impl(
         &self,
         metadata: &RequestMetadata,
+        for_user: Option<&UserOrRole>,
         actions: &[Self::ServerAction],
-    ) -> Result<Vec<bool>, AuthorizationBackendUnavailable> {
-        let n_inputs = actions.len();
-        let futures: Vec<_> = actions
-            .iter()
-            .map(|a| async move {
-                self.is_allowed_server_action(metadata, *a)
-                    .await
-                    .map(MustUse::into_inner)
-            })
-            .collect();
-        let results = try_join_all(futures).await?;
-        debug_assert_eq!(
-            results.len(),
-            n_inputs,
-            "are_allowed_server_actions_impl to return as many results as provided inputs"
-        );
-        Ok(results)
-    }
-
-    /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
-    /// Return Err for internal errors.
-    async fn is_allowed_project_action_impl(
-        &self,
-        metadata: &RequestMetadata,
-        project_id: &ProjectId,
-        action: Self::ProjectAction,
-    ) -> Result<bool, AuthorizationBackendUnavailable>;
+    ) -> Result<Vec<bool>, IsAllowedActionError>;
 
     async fn are_allowed_project_actions_impl(
         &self,
         metadata: &RequestMetadata,
+        for_user: Option<&UserOrRole>,
         projects_with_actions: &[(&ProjectId, Self::ProjectAction)],
-    ) -> Result<Vec<bool>, AuthorizationBackendUnavailable> {
-        let n_inputs = projects_with_actions.len();
-        let futures: Vec<_> = projects_with_actions
-            .iter()
-            .map(|(project, a)| async move {
-                self.is_allowed_project_action(metadata, project, *a)
-                    .await
-                    .map(MustUse::into_inner)
-            })
-            .collect();
-        let results = try_join_all(futures).await?;
-        debug_assert_eq!(
-            results.len(),
-            n_inputs,
-            "are_allowed_project_actions_impl to return as many results as provided inputs"
-        );
-        Ok(results)
-    }
-
-    /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
-    /// Return Err for internal errors.
-    async fn is_allowed_warehouse_action_impl(
-        &self,
-        metadata: &RequestMetadata,
-        warehouse: &ResolvedWarehouse,
-        action: Self::WarehouseAction,
-    ) -> Result<bool, AuthorizationBackendUnavailable>;
-
-    /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
-    /// Return Err for internal errors.
-    async fn is_allowed_namespace_action_impl(
-        &self,
-        metadata: &RequestMetadata,
-        warehouse: &ResolvedWarehouse,
-        namespace: &NamespaceHierarchy,
-        action: Self::NamespaceAction,
-    ) -> Result<bool, AuthorizationBackendUnavailable>;
+    ) -> Result<Vec<bool>, IsAllowedActionError>;
 
     async fn are_allowed_warehouse_actions_impl(
         &self,
         metadata: &RequestMetadata,
+        for_user: Option<&UserOrRole>,
         warehouses_with_actions: &[(&ResolvedWarehouse, Self::WarehouseAction)],
-    ) -> Result<Vec<bool>, AuthorizationBackendUnavailable> {
-        let n_inputs = warehouses_with_actions.len();
-        let futures: Vec<_> = warehouses_with_actions
-            .iter()
-            .map(|(warehouse, a)| async move {
-                self.is_allowed_warehouse_action(metadata, warehouse, *a)
-                    .await
-                    .map(MustUse::into_inner)
-            })
-            .collect();
-        let results = try_join_all(futures).await?;
-        debug_assert_eq!(
-            results.len(),
-            n_inputs,
-            "are_allowed_warehouse_actions_impl to return as many results as provided inputs"
-        );
-        Ok(results)
-    }
+    ) -> Result<Vec<bool>, IsAllowedActionError>;
 
     async fn are_allowed_namespace_actions_impl(
         &self,
         metadata: &RequestMetadata,
+        for_user: Option<&UserOrRole>,
         warehouse: &ResolvedWarehouse,
         actions: &[(&NamespaceHierarchy, Self::NamespaceAction)],
-    ) -> Result<Vec<bool>, AuthorizationBackendUnavailable> {
-        let futures: Vec<_> = actions
-            .iter()
-            .map(|(ns, a)| async move {
-                let namespace = (*ns).clone();
-                self.is_allowed_namespace_action(metadata, warehouse, &namespace, *a)
-                    .await
-                    .map(MustUse::into_inner)
-            })
-            .collect();
-
-        try_join_all(futures).await
-    }
-
-    /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
-    /// Return Err for internal errors.
-    async fn is_allowed_table_action_impl(
-        &self,
-        metadata: &RequestMetadata,
-        warehouse: &ResolvedWarehouse,
-        namespace: &NamespaceHierarchy,
-        table: &impl AuthZTableInfo,
-        action: Self::TableAction,
-    ) -> Result<bool, AuthorizationBackendUnavailable>;
+    ) -> Result<Vec<bool>, IsAllowedActionError>;
 
     /// Checks if actions are allowed on tables. If supported by the concrete implementation, these
     /// checks may happen in batches to avoid sending a separate request for each tuple.
@@ -614,6 +512,7 @@ where
     async fn are_allowed_table_actions_impl(
         &self,
         metadata: &RequestMetadata,
+        for_user: Option<&UserOrRole>,
         warehouse: &ResolvedWarehouse,
         parent_namespaces: &HashMap<NamespaceId, NamespaceWithParent>,
         actions: &[(
@@ -621,31 +520,7 @@ where
             &impl AuthZTableInfo,
             Self::TableAction,
         )],
-    ) -> Result<Vec<bool>, AuthorizationBackendUnavailable> {
-        // Build lookup map once for efficiency
-        let futures: Vec<_> = actions
-            .iter()
-            .map(|(namespace_with_parent, table, action)| async {
-                // Build the hierarchy for this table's namespace
-                let hierarchy = build_namespace_hierarchy(namespace_with_parent, parent_namespaces);
-                self.is_allowed_table_action_impl(metadata, warehouse, &hierarchy, *table, *action)
-                    .await
-            })
-            .collect();
-
-        try_join_all(futures).await
-    }
-
-    /// Return Ok(true) if the action is allowed, otherwise return Ok(false).
-    /// Return Err for internal errors.
-    async fn is_allowed_view_action_impl(
-        &self,
-        metadata: &RequestMetadata,
-        warehouse: &ResolvedWarehouse,
-        namespace: &NamespaceHierarchy,
-        view: &impl AuthZViewInfo,
-        action: Self::ViewAction,
-    ) -> Result<bool, AuthorizationBackendUnavailable>;
+    ) -> Result<Vec<bool>, IsAllowedActionError>;
 
     /// Checks if actions are allowed on views. If supported by the concrete implementation, these
     /// checks may happen in batches to avoid sending a separate request for each tuple.
@@ -658,23 +533,11 @@ where
     async fn are_allowed_view_actions_impl(
         &self,
         metadata: &RequestMetadata,
+        for_user: Option<&UserOrRole>,
         warehouse: &ResolvedWarehouse,
         parent_namespaces: &HashMap<NamespaceId, NamespaceWithParent>,
         views_with_actions: &[(&NamespaceWithParent, &impl AuthZViewInfo, Self::ViewAction)],
-    ) -> Result<Vec<bool>, AuthorizationBackendUnavailable> {
-        // Build lookup map once for efficiency
-        let futures: Vec<_> = views_with_actions
-            .iter()
-            .map(|(namespace_with_parent, view, action)| async {
-                // Build the hierarchy for this table's namespace
-                let hierarchy = build_namespace_hierarchy(namespace_with_parent, parent_namespaces);
-                self.is_allowed_view_action_impl(metadata, warehouse, &hierarchy, *view, *action)
-                    .await
-            })
-            .collect();
-
-        try_join_all(futures).await
-    }
+    ) -> Result<Vec<bool>, IsAllowedActionError>;
 
     /// Hook that is called when a user is deleted.
     async fn delete_user(&self, metadata: &RequestMetadata, user_id: UserId) -> Result<()>;
@@ -989,104 +852,145 @@ pub(crate) mod tests {
             Ok(true)
         }
 
-        async fn is_allowed_user_action_impl(
+        async fn are_allowed_user_actions_impl(
             &self,
             _metadata: &RequestMetadata,
-            _user_id: &UserId,
-            _action: CatalogUserAction,
-        ) -> Result<bool, AuthorizationBackendUnavailable> {
-            Ok(true)
+            _for_user: Option<&UserOrRole>,
+            users_with_actions: &[(&UserId, Self::UserAction)],
+        ) -> Result<Vec<bool>, IsAllowedActionError> {
+            Ok(vec![true; users_with_actions.len()])
         }
 
-        async fn is_allowed_role_action_impl(
+        async fn are_allowed_role_actions_impl(
             &self,
             _metadata: &RequestMetadata,
-            role_id: RoleId,
-            action: CatalogRoleAction,
-        ) -> Result<bool, AuthorizationBackendUnavailable> {
-            if self.action_is_blocked(format!("role:{action}").as_str()) {
-                return Ok(false);
-            }
-            Ok(self.check_available(format!("role:{role_id}").as_str()))
+            _for_user: Option<&UserOrRole>,
+            roles_with_actions: &[(RoleId, Self::RoleAction)],
+        ) -> Result<Vec<bool>, IsAllowedActionError> {
+            let results: Vec<bool> = roles_with_actions
+                .iter()
+                .map(|(role_id, action)| {
+                    if self.action_is_blocked(format!("role:{action}").as_str()) {
+                        return false;
+                    }
+                    self.check_available(format!("role:{role_id}").as_str())
+                })
+                .collect();
+            Ok(results)
         }
 
-        async fn is_allowed_server_action_impl(
+        async fn are_allowed_server_actions_impl(
             &self,
             _metadata: &RequestMetadata,
-            _action: CatalogServerAction,
-        ) -> Result<bool, AuthorizationBackendUnavailable> {
-            Ok(true)
+            _for_user: Option<&UserOrRole>,
+            actions: &[Self::ServerAction],
+        ) -> Result<Vec<bool>, IsAllowedActionError> {
+            Ok(vec![true; actions.len()])
         }
 
-        async fn is_allowed_project_action_impl(
+        async fn are_allowed_project_actions_impl(
             &self,
             _metadata: &RequestMetadata,
-            project_id: &ProjectId,
-            action: CatalogProjectAction,
-        ) -> Result<bool, AuthorizationBackendUnavailable> {
-            if self.action_is_blocked(format!("project:{action}").as_str()) {
-                return Ok(false);
-            }
-            Ok(self.check_available(format!("project:{project_id}").as_str()))
+            _for_user: Option<&UserOrRole>,
+            projects_with_actions: &[(&ProjectId, Self::ProjectAction)],
+        ) -> Result<Vec<bool>, IsAllowedActionError> {
+            let results: Vec<bool> = projects_with_actions
+                .iter()
+                .map(|(project_id, action)| {
+                    if self.action_is_blocked(format!("project:{action}").as_str()) {
+                        return false;
+                    }
+                    self.check_available(format!("project:{project_id}").as_str())
+                })
+                .collect();
+            Ok(results)
         }
 
-        async fn is_allowed_warehouse_action_impl(
+        async fn are_allowed_warehouse_actions_impl(
             &self,
             _metadata: &RequestMetadata,
-            warehouse: &ResolvedWarehouse,
-            action: Self::WarehouseAction,
-        ) -> Result<bool, AuthorizationBackendUnavailable> {
-            if self.action_is_blocked(format!("warehouse:{action}").as_str()) {
-                return Ok(false);
-            }
-            let warehouse_id = warehouse.warehouse_id;
-            Ok(self.check_available(format!("warehouse:{warehouse_id}").as_str()))
+            _for_user: Option<&UserOrRole>,
+            warehouses_with_actions: &[(&ResolvedWarehouse, Self::WarehouseAction)],
+        ) -> Result<Vec<bool>, IsAllowedActionError> {
+            let results: Vec<bool> = warehouses_with_actions
+                .iter()
+                .map(|(warehouse, action)| {
+                    if self.action_is_blocked(format!("warehouse:{action}").as_str()) {
+                        return false;
+                    }
+                    let warehouse_id = warehouse.warehouse_id;
+                    self.check_available(format!("warehouse:{warehouse_id}").as_str())
+                })
+                .collect();
+            Ok(results)
         }
 
-        async fn is_allowed_namespace_action_impl(
+        async fn are_allowed_namespace_actions_impl(
             &self,
             _metadata: &RequestMetadata,
+            _for_user: Option<&UserOrRole>,
             _warehouse: &ResolvedWarehouse,
-            namespace: &NamespaceHierarchy,
-            action: Self::NamespaceAction,
-        ) -> Result<bool, AuthorizationBackendUnavailable> {
-            if self.action_is_blocked(format!("namespace:{action}").as_str()) {
-                return Ok(false);
-            }
-            let namespace_id = namespace.namespace_id();
-            Ok(self.check_available(format!("namespace:{namespace_id}").as_str()))
+            actions: &[(&NamespaceHierarchy, Self::NamespaceAction)],
+        ) -> Result<Vec<bool>, IsAllowedActionError> {
+            let results: Vec<bool> = actions
+                .iter()
+                .map(|(namespace, action)| {
+                    if self.action_is_blocked(format!("namespace:{action}").as_str()) {
+                        return false;
+                    }
+                    let namespace_id = namespace.namespace_id();
+                    self.check_available(format!("namespace:{namespace_id}").as_str())
+                })
+                .collect();
+            Ok(results)
         }
 
-        async fn is_allowed_table_action_impl(
+        async fn are_allowed_table_actions_impl(
             &self,
             _metadata: &RequestMetadata,
+            _for_user: Option<&UserOrRole>,
             _warehouse: &ResolvedWarehouse,
-            _namespace: &NamespaceHierarchy,
-            table: &impl AuthZTableInfo,
-            action: Self::TableAction,
-        ) -> Result<bool, AuthorizationBackendUnavailable> {
-            if self.action_is_blocked(format!("table:{action}").as_str()) {
-                return Ok(false);
-            }
-            let table_id = table.table_id();
-            let warehouse_id = table.warehouse_id();
-            Ok(self.check_available(format!("table:{warehouse_id}/{table_id}").as_str()))
+            _parent_namespaces: &HashMap<NamespaceId, NamespaceWithParent>,
+            actions: &[(
+                &NamespaceWithParent,
+                &impl AuthZTableInfo,
+                Self::TableAction,
+            )],
+        ) -> Result<Vec<bool>, IsAllowedActionError> {
+            let results: Vec<bool> = actions
+                .iter()
+                .map(|(_parent_namespace, table, action)| {
+                    if self.action_is_blocked(format!("table:{action}").as_str()) {
+                        return false;
+                    }
+                    let table_id = table.table_id();
+                    let warehouse_id = table.warehouse_id();
+                    self.check_available(format!("table:{warehouse_id}/{table_id}").as_str())
+                })
+                .collect();
+            Ok(results)
         }
 
-        async fn is_allowed_view_action_impl(
+        async fn are_allowed_view_actions_impl(
             &self,
             _metadata: &RequestMetadata,
+            _for_user: Option<&UserOrRole>,
             _warehouse: &ResolvedWarehouse,
-            _namespace: &NamespaceHierarchy,
-            view: &impl AuthZViewInfo,
-            action: Self::ViewAction,
-        ) -> Result<bool, AuthorizationBackendUnavailable> {
-            if self.action_is_blocked(format!("view:{action}").as_str()) {
-                return Ok(false);
-            }
-            let view_id = view.view_id();
-            let warehouse_id = view.warehouse_id();
-            Ok(self.check_available(format!("view:{warehouse_id}/{view_id}").as_str()))
+            _parent_namespaces: &HashMap<NamespaceId, NamespaceWithParent>,
+            views_with_actions: &[(&NamespaceWithParent, &impl AuthZViewInfo, Self::ViewAction)],
+        ) -> Result<Vec<bool>, IsAllowedActionError> {
+            let results: Vec<bool> = views_with_actions
+                .iter()
+                .map(|(_parent_namespace, view, action)| {
+                    if self.action_is_blocked(format!("view:{action}").as_str()) {
+                        return false;
+                    }
+                    let view_id = view.view_id();
+                    let warehouse_id = view.warehouse_id();
+                    self.check_available(format!("view:{warehouse_id}/{view_id}").as_str())
+                })
+                .collect();
+            Ok(results)
         }
 
         async fn delete_user(&self, _metadata: &RequestMetadata, _user_id: UserId) -> Result<()> {
@@ -1196,6 +1100,7 @@ pub(crate) mod tests {
                     assert!(authz
                         .[<is_allowed_ $entity _action>](
                             &RequestMetadata::new_unauthenticated(),
+                            None,
                             $($check_arguments),+,
                             $action
                         )
@@ -1211,6 +1116,7 @@ pub(crate) mod tests {
                     assert!(!authz
                         .[<is_allowed_ $entity _action>](
                             &RequestMetadata::new_unauthenticated(),
+                            None,
                             $($check_arguments),+,
                             $action
                         )
@@ -1273,7 +1179,7 @@ pub(crate) mod tests {
             },
             parents: vec![]
         },
-        &crate::service::TableInfo::new_random()
+        &crate::service::TableInfo::new_random(Uuid::nil().into())
     );
     test_block_action!(
         view,
@@ -1295,6 +1201,6 @@ pub(crate) mod tests {
             },
             parents: vec![]
         },
-        &crate::service::ViewInfo::new_random()
+        &crate::service::ViewInfo::new_random(Uuid::nil().into())
     );
 }

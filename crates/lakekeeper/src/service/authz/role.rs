@@ -3,7 +3,11 @@ use iceberg_ext::catalog::rest::{ErrorModel, IcebergErrorResponse};
 use crate::{
     api::RequestMetadata,
     service::{
-        authz::{AuthorizationBackendUnavailable, Authorizer, CatalogRoleAction, MustUse},
+        authz::{
+            AuthorizationBackendUnavailable, AuthorizationCountMismatch, Authorizer,
+            BackendUnavailableOrCountMismatch, CannotInspectPermissions, CatalogRoleAction,
+            MustUse, UserOrRole,
+        },
         Actor, RoleId,
     },
 };
@@ -59,12 +63,25 @@ impl From<AuthZRoleActionForbidden> for IcebergErrorResponse {
 pub enum RequireRoleActionError {
     AuthZRoleActionForbidden(AuthZRoleActionForbidden),
     AuthorizationBackendUnavailable(AuthorizationBackendUnavailable),
+    CannotInspectPermissions(CannotInspectPermissions),
+    AuthorizationCountMismatch(AuthorizationCountMismatch),
+}
+impl From<BackendUnavailableOrCountMismatch> for RequireRoleActionError {
+    fn from(err: BackendUnavailableOrCountMismatch) -> Self {
+        match err {
+            BackendUnavailableOrCountMismatch::AuthorizationBackendUnavailable(e) => e.into(),
+            BackendUnavailableOrCountMismatch::CannotInspectPermissions(e) => e.into(),
+            BackendUnavailableOrCountMismatch::AuthorizationCountMismatch(e) => e.into(),
+        }
+    }
 }
 impl From<RequireRoleActionError> for ErrorModel {
     fn from(err: RequireRoleActionError) -> Self {
         match err {
             RequireRoleActionError::AuthZRoleActionForbidden(e) => e.into(),
             RequireRoleActionError::AuthorizationBackendUnavailable(e) => e.into(),
+            RequireRoleActionError::CannotInspectPermissions(e) => e.into(),
+            RequireRoleActionError::AuthorizationCountMismatch(e) => e.into(),
         }
     }
 }
@@ -79,24 +96,27 @@ pub trait AuthZRoleOps: Authorizer {
     async fn is_allowed_role_action(
         &self,
         metadata: &RequestMetadata,
+        for_user: Option<&UserOrRole>,
         role_id: RoleId,
-        action: impl Into<Self::RoleAction> + Send,
-    ) -> Result<MustUse<bool>, AuthorizationBackendUnavailable> {
-        if metadata.has_admin_privileges() {
-            Ok(true)
-        } else {
-            self.is_allowed_role_action_impl(metadata, role_id, action.into())
-                .await
-        }
-        .map(MustUse::from)
+        action: impl Into<Self::RoleAction> + Send + Copy + Sync,
+    ) -> Result<MustUse<bool>, BackendUnavailableOrCountMismatch> {
+        let [decision] = self
+            .are_allowed_role_actions_arr(metadata, for_user, &[(role_id, action)])
+            .await?
+            .into_inner();
+        Ok(decision.into())
     }
 
     async fn are_allowed_role_actions_vec<A: Into<Self::RoleAction> + Send + Copy + Sync>(
         &self,
         metadata: &RequestMetadata,
+        mut for_user: Option<&UserOrRole>,
         roles_with_actions: &[(RoleId, A)],
-    ) -> Result<MustUse<Vec<bool>>, AuthorizationBackendUnavailable> {
-        if metadata.has_admin_privileges() {
+    ) -> Result<MustUse<Vec<bool>>, BackendUnavailableOrCountMismatch> {
+        if metadata.actor().to_user_or_role().as_ref() == for_user {
+            for_user = None;
+        }
+        if metadata.has_admin_privileges() && for_user.is_none() {
             Ok(vec![true; roles_with_actions.len()])
         } else {
             let converted: Vec<(RoleId, Self::RoleAction)> = roles_with_actions
@@ -104,7 +124,7 @@ pub trait AuthZRoleOps: Authorizer {
                 .map(|(id, action)| (*id, (*action).into()))
                 .collect();
             let decisions = self
-                .are_allowed_role_actions_impl(metadata, &converted)
+                .are_allowed_role_actions_impl(metadata, for_user, &converted)
                 .await?;
 
             debug_assert!(
@@ -117,6 +137,26 @@ pub trait AuthZRoleOps: Authorizer {
         .map(MustUse::from)
     }
 
+    async fn are_allowed_role_actions_arr<
+        const N: usize,
+        A: Into<Self::RoleAction> + Send + Copy + Sync,
+    >(
+        &self,
+        metadata: &RequestMetadata,
+        for_user: Option<&UserOrRole>,
+        roles_with_actions: &[(RoleId, A); N],
+    ) -> Result<MustUse<[bool; N]>, BackendUnavailableOrCountMismatch> {
+        let result = self
+            .are_allowed_role_actions_vec(metadata, for_user, roles_with_actions)
+            .await?
+            .into_inner();
+        let n_returned = result.len();
+        let arr: [bool; N] = result
+            .try_into()
+            .map_err(|_| AuthorizationCountMismatch::new(N, n_returned, "role"))?;
+        Ok(MustUse::from(arr))
+    }
+
     async fn require_role_action(
         &self,
         metadata: &RequestMetadata,
@@ -125,7 +165,7 @@ pub trait AuthZRoleOps: Authorizer {
     ) -> Result<(), RequireRoleActionError> {
         let action = action.into();
         if self
-            .is_allowed_role_action(metadata, role_id, action)
+            .is_allowed_role_action(metadata, None, role_id, action)
             .await?
             .into_inner()
         {

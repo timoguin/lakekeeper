@@ -443,6 +443,7 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
         let warehouses = authorizer
             .are_allowed_warehouse_actions_vec(
                 &request_metadata,
+                None,
                 &warehouses
                     .iter()
                     .map(|w| (&**w, CatalogWarehouseAction::CanIncludeInList))
@@ -1064,6 +1065,7 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
         let [can_use, can_list_deleted_tabulars, can_list_everything] = authorizer
             .are_allowed_warehouse_actions_arr(
                 &request_metadata,
+                None,
                 &[
                     (&warehouse, CatalogWarehouseAction::CanUse),
                     (&warehouse, CatalogWarehouseAction::CanListDeletedTabulars),
@@ -1094,6 +1096,7 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
             authorizer
                 .is_allowed_namespace_action(
                     &request_metadata,
+                    None,
                     &warehouse,
                     &namespace,
                     CatalogNamespaceAction::CanListEverything,
@@ -1161,6 +1164,7 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
                         authorizer
                             .are_allowed_tabular_actions_vec(
                                 &request_metadata,
+                                None,
                                 &warehouse,
                                 &namespaces,
                                 &actions,
