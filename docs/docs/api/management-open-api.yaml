@@ -3399,6 +3399,12 @@ components:
             - string
             - 'null'
           description: Subpath in the filesystem to use.
+        sas-enabled:
+          type: boolean
+          description: |-
+            Enable SAS (Shared Access Signature) token generation for Azure Data Lake Storage.
+            When disabled, clients cannot use vended credentials for this storage profile.
+            Defaults to true.
         sas-token-validity-seconds:
           type:
             - integer
@@ -4152,6 +4158,12 @@ components:
             - string
             - 'null'
           description: Subpath in the bucket to use.
+        sts-enabled:
+          type: boolean
+          description: |-
+            Enable STS (Security Token Service) downscoped token generation for GCS.
+            When disabled, clients cannot use vended credentials for this storage profile.
+            Defaults to true.
     GcsServiceKey:
       type: object
       required:
@@ -5512,6 +5524,12 @@ components:
         region:
           type: string
           description: Region to use for S3 requests.
+        remote-signing-enabled:
+          type: boolean
+          description: |-
+            Enable remote signing for S3 requests.
+            When disabled, clients cannot use remote signing even if STS is disabled.
+            Defaults to true.
         remote-signing-url-style:
           $ref: '#/components/schemas/S3UrlStyleDetectionMode'
           description: |-
