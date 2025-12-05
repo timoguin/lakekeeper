@@ -345,15 +345,16 @@ impl GcsProfile {
     ) -> Result<TableConfig, TableConfigError> {
         let mut table_properties = TableProperties::default();
 
-        if !data_access.provide_credentials() {
+        if !data_access.provide_credentials() || !self.sts_enabled {
+            tracing::debug!(
+                "Not providing GCS credentials - provide_credentials: {}, sts_enabled: {}",
+                data_access.provide_credentials(),
+                self.sts_enabled
+            );
             return Ok(TableConfig {
                 creds: table_properties.clone(),
                 config: table_properties,
             });
-        }
-
-        if !self.sts_enabled {
-            return Err(TableConfigError::VendedCredentialsDisabled);
         }
 
         let cache_key = STCCacheKey::new(stc_request.clone(), self.into(), Some(credential.into()));

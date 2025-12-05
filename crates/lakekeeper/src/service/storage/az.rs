@@ -258,15 +258,16 @@ impl AdlsProfile {
         credential: &AzCredential,
         stc_request: ShortTermCredentialsRequest,
     ) -> Result<TableConfig, TableConfigError> {
-        if !data_access.provide_credentials() {
+        if !data_access.provide_credentials() || !self.sas_enabled {
+            tracing::debug!(
+                "Not providing Azure SAS credentials - provide_credentials: {}, sas_enabled: {}",
+                data_access.provide_credentials(),
+                self.sas_enabled
+            );
             return Ok(TableConfig {
                 creds: TableProperties::default(),
                 config: TableProperties::default(),
             });
-        }
-
-        if !self.sas_enabled {
-            return Err(TableConfigError::VendedCredentialsDisabled);
         }
 
         let cache_key = STCCacheKey::new(stc_request.clone(), self.into(), Some(credential.into()));
