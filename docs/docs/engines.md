@@ -24,6 +24,7 @@ When using Lakekeeper with authentication enabled, remember that you can follow 
 DuckDB WASM allows you to query Lakekeeper directly from your browser. If you are using the Lakekeeper UI, DuckDB WASM is pre-configured. To use DuckDB WASM from the Lakekeeper UI, there are two important requirements due to browser security restrictions:
 
 **Requirements:**
+
 1. **Same-Origin Access**: The S3 endpoint must be accessible from your browser at the same URL/origin that Lakekeeper uses to access it. For example, if Lakekeeper accesses S3 at `http://my-s3-endpoint:9000`, your browser must also be able to reach it at `http://my-s3-endpoint:9000`. This means the Docker Compose examples won't work with DuckDB WASM out of the box, as the S3 endpoint is typically only accessible within the Docker network, while your browser is not in this network.
 2. **CORS Policy**: Your S3 storage must be configured with a CORS policy that allows requests from the Lakekeeper origin.
 
