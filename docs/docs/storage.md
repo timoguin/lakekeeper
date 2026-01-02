@@ -278,6 +278,43 @@ We are now ready to create the Warehouse using the system identity:
 
 The specified `assume-role-arn` is used for Lakekeeper's reads and writes of the object store. It is also used as a default for `sts-role-arn`, which is the role that is assumed when generating vended credentials for clients (with an attached policy for the accessed table).
 
+##### CORS Configuration
+
+For browser-based access to S3 buckets (required for [DuckDB WASM](engines.md#-duckdb-wasm)), you need to configure CORS (Cross-Origin Resource Sharing) on your S3 bucket.
+
+To configure CORS for your S3 bucket:
+
+3. In the AWS S3 Configuration Menu, klick on the name of your bucket
+4. Choose **Permissions** Tab
+5. In the **Cross-origin resource sharing (CORS)** section, choose **Edit**
+6. In the CORS configuration editor text box, type or copy and paste a new CORS configuration, or edit an existing configuration. The CORS configuration is a JSON file. The text that you type in the editor must be valid JSON. See below for an example.
+7. Choose **Save changes**
+
+Example CORS policy:
+
+```json
+[
+    {
+        "AllowedHeaders": [
+            "*"
+        ],
+        "AllowedMethods": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "HEAD"
+        ],
+        "AllowedOrigins": [
+            "https://lakekeeper.example.com"
+        ],
+        "ExposeHeaders": []
+    }
+]
+```
+
+Replace `https://lakekeeper.example.com` with the origin where your Lakekeeper instance is hosted.
+
 ##### STS Session Tags
 The optional `sts-session-tags` setting can be used to provide Session Tags when assuming roles via STS. Doing so requires that the IAM Role's Trust Relationship also allow `sts:TagSession`. Here's the above example with this addition:
 
