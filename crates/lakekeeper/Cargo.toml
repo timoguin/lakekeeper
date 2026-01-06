@@ -61,7 +61,6 @@ figment = { workspace = true }
 figment_file_provider_adapter = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
-fxhash = { workspace = true }
 google-cloud-auth = { workspace = true }
 google-cloud-token = { workspace = true }
 hostname = { workspace = true }
@@ -83,7 +82,7 @@ lazy_static = { workspace = true }
 limes = { workspace = true }
 middle = { workspace = true }
 moka = { workspace = true }
-paste = { workspace = true }
+pastey = { workspace = true }
 percent-encoding = { workspace = true }
 quick-xml = { workspace = true }
 rdkafka = { workspace = true, optional = true }
@@ -118,6 +117,7 @@ uuid = { workspace = true }
 vaultrs = "0.7.2"
 vaultrs-login = "0.2.1"
 veil = { workspace = true }
+xxhash-rust = { workspace = true, features = ["xxh3"] }
 
 [dev-dependencies]
 assert-json-diff = { workspace = true }
