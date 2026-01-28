@@ -233,7 +233,7 @@ Authorization is only effective if [Authentication](#authentication) is enabled.
 | <nobr>`LAKEKEEPER__OPENFGA__MAX_BATCH_CHECK_SIZE`</nobr> | `50`                                                                       | p The maximum number of checks than can be handled by a batch check request. This is a [configuration option](https://openfga.dev/docs/getting-started/setup-openfga/configuration#OPENFGA_MAX_CHECKS_PER_BATCH_CHECK) of the `OpenFGA` server with default value 50. |
 
 
-##### Cedar
+##### Cedar <span class="lkp"></span>
 
 | Variable                                                 | Example                                               | Description |
 |----------------------------------------------------------|-------------------------------------------------------|-----|
@@ -246,9 +246,10 @@ Authorization is only effective if [Authentication](#authentication) is enabled.
 | `LAKEKEEPER__CEDAR__SCHEMA_FILE`                         | `/path/to/custom/schema.cedarschema`                  | Optional path to a custom Cedar schema file. If provided, this schema will be used instead of the embedded default schema. Useful for extending or customizing the Cedar schema. Compatibility with the Lakekeeper schema must be ensured for all entities provided by Lakekeeper (Server, Project, Namespace, Table, View. User & Role if externally managed roles is `false`). |
 
 **Debug configurations for Cedar**
-| Variable                                 | Example | Description             |
-|------------------------------------------|---------|-------------------------|
-| `LAKEKEEPER__CEDAR__DEBUG__LOG_ENTITIES` | `false` | If `true`, logs all internal entities (excluding externally managed entities) for each authorization request at debug level. This is useful for debugging authorization issues but can be verbose and impacts performance. Logging only occurs when both this flag is `true` AND debug logging is enabled (`RUST_LOG=debug`). Default: `false`. |
+
+| Variable                                              | Example | Description |
+|-------------------------------------------------------|---------|------------|
+| <nobr>`LAKEKEEPER__CEDAR__DEBUG__LOG_ENTITIES`</nobr> | `false` | If `true`, logs all internal entities (excluding externally managed entities) for each authorization request at debug level. This is useful for debugging authorization issues but can be verbose and impacts performance. Logging only occurs when both this flag is `true` AND debug logging is enabled (`RUST_LOG=debug`). Default: `false`. |
 
 ### UI
 
