@@ -8,7 +8,11 @@
 #![allow(clippy::module_name_repetitions, clippy::similar_names)]
 
 use clap::{Parser, Subcommand};
-use lakekeeper::{CONFIG, tokio, tracing};
+use lakekeeper::{
+    CONFIG,
+    implementations::{CatalogState, postgres::PostgresBackend},
+    tokio, tracing,
+};
 use tracing_subscriber::{EnvFilter, filter::LevelFilter};
 
 mod authorizer;
@@ -159,10 +163,15 @@ async fn main() -> anyhow::Result<()> {
 
             let queue_configs_ref = &lakekeeper::service::tasks::BUILT_IN_API_CONFIGS;
             let queue_configs: Vec<&_> = queue_configs_ref.iter().collect();
+            let project_queue_configs_ref =
+                &lakekeeper::service::tasks::BUILT_IN_PROJECT_API_CONFIGS;
+            let project_queue_configs: Vec<&_> = project_queue_configs_ref.iter().collect();
             let doc = match &CONFIG.authz_backend {
-                AuthZBackend::AllowAll => api_doc::<AllowAllAuthorizer>(&queue_configs),
+                AuthZBackend::AllowAll => {
+                    api_doc::<AllowAllAuthorizer>(&queue_configs, &project_queue_configs)
+                }
                 AuthZBackend::External(e) if e == "openfga" => {
-                    api_doc::<OpenFGAAuthorizer>(&queue_configs)
+                    api_doc::<OpenFGAAuthorizer>(&queue_configs, &project_queue_configs)
                 }
                 AuthZBackend::External(e) => anyhow::bail!("Unsupported authz backend `{e}`"),
             };
@@ -192,7 +201,7 @@ async fn serve_and_maybe_migrate(force_start: bool) -> anyhow::Result<()> {
 }
 
 async fn migrate() -> anyhow::Result<()> {
-    println!("Migrating database...");
+    tracing::info!("Migrating database...");
     let write_pool = lakekeeper::implementations::postgres::get_writer_pool(
         CONFIG
             .to_pool_opts()
@@ -203,11 +212,15 @@ async fn migrate() -> anyhow::Result<()> {
     // This embeds database migrations in the application binary so we can ensure the database
     // is migrated correctly on startup
     let server_id = lakekeeper::implementations::postgres::migrations::migrate(&write_pool).await?;
-    println!("Database migration complete.");
+    tracing::info!("Database migration complete.");
 
-    println!("Migrating authorizer...");
+    tracing::info!("Migrating authorizer...");
     authorizer::migrate(server_id).await?;
-    println!("Authorizer migration complete.");
+    tracing::info!("Authorizer migration complete.");
+    tracing::info!("Running post-migration hooks...");
+    let catalog_state = CatalogState::from_pools(write_pool.clone(), write_pool.clone());
+    lakekeeper::service::run_post_migration_hooks::<PostgresBackend>(catalog_state).await?;
+    tracing::info!("Post-migration hooks complete.");
 
     Ok(())
 }

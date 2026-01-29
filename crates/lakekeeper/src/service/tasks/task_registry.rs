@@ -98,6 +98,7 @@ impl std::fmt::Debug for RegisteredTaskQueueWorker {
 pub struct TaskQueueRegistry {
     // Mapping of queue names to their configurations
     registered_queues: Arc<RwLock<HashMap<&'static TaskQueueName, RegisteredQueue>>>,
+
     // Mapping of queue names to their worker configuration
     task_workers: Arc<RwLock<HashMap<&'static TaskQueueName, RegisteredTaskQueueWorker>>>,
 }
@@ -116,6 +117,8 @@ pub struct QueueRegistration {
     pub worker_fn: TaskQueueWorkerFn,
     /// Number of workers that run locally for this queue
     pub num_workers: usize,
+    /// Scope of the queue configuration
+    pub scope: QueueScope,
 }
 
 impl std::fmt::Debug for QueueRegistration {
@@ -124,6 +127,7 @@ impl std::fmt::Debug for QueueRegistration {
             .field("queue_name", &self.queue_name)
             .field("worker_fn", &"Fn(...)")
             .field("num_workers", &self.num_workers)
+            .field("scope", &self.scope)
             .finish()
     }
 }
@@ -142,6 +146,7 @@ impl TaskQueueRegistry {
             queue_name,
             worker_fn,
             num_workers,
+            scope,
         } = task_queue;
         let schema_validator_fn = |v| serde_json::from_value::<T>(v).map(|_| ());
         let schema_validator_fn = Arc::new(schema_validator_fn) as ValidatorFn;
@@ -157,6 +162,7 @@ impl TaskQueueRegistry {
             utoipa_type_name: (),
             #[cfg(not(feature = "open-api"))]
             utoipa_schema: (),
+            scope,
         };
 
         if let Some(_prev) = self.registered_queues.write().await.insert(
@@ -186,19 +192,19 @@ impl TaskQueueRegistry {
         authorizer: A,
         poll_interval: Duration,
     ) -> &Self {
-        use super::{tabular_expiration_queue, tabular_purge_queue};
+        use super::{tabular_expiration_queue, tabular_purge_queue, task_log_cleanup_queue};
 
-        let catalog_state_clone = catalog_state.clone();
+        let catalog_state_clone_for_tabular_expiration = catalog_state.clone();
         self.register_queue::<tabular_expiration_queue::TabularExpirationQueueConfig>(
             QueueRegistration {
                 queue_name: &tabular_expiration_queue::QUEUE_NAME,
                 worker_fn: Arc::new(move |cancellation_token| {
                     let authorizer = authorizer.clone();
-                    let catalog_state_clone = catalog_state_clone.clone();
+                    let catalog_state_clone = catalog_state_clone_for_tabular_expiration.clone();
                     Box::pin({
                         async move {
                             tabular_expiration_queue::tabular_expiration_worker::<C, A>(
-                                catalog_state_clone.clone(),
+                                catalog_state_clone,
                                 authorizer.clone(),
                                 poll_interval,
                                 cancellation_token,
@@ -208,19 +214,21 @@ impl TaskQueueRegistry {
                     })
                 }),
                 num_workers: CONFIG.task_tabular_expiration_workers,
+                scope: QueueScope::Warehouse,
             },
         )
         .await;
 
+        let catalog_state_clone_for_tabular_purge = catalog_state.clone();
         self.register_queue::<tabular_purge_queue::PurgeQueueConfig>(QueueRegistration {
             queue_name: &tabular_purge_queue::QUEUE_NAME,
             worker_fn: Arc::new(move |cancellation_token| {
-                let catalog_state_clone = catalog_state.clone();
+                let catalog_state_clone = catalog_state_clone_for_tabular_purge.clone();
                 let secret_store = secret_store.clone();
                 Box::pin(async move {
                     tabular_purge_queue::tabular_purge_worker::<C, S>(
-                        catalog_state_clone.clone(),
-                        secret_store.clone(),
+                        catalog_state_clone,
+                        secret_store,
                         poll_interval,
                         cancellation_token,
                     )
@@ -228,6 +236,26 @@ impl TaskQueueRegistry {
                 })
             }),
             num_workers: CONFIG.task_tabular_purge_workers,
+            scope: QueueScope::Warehouse,
+        })
+        .await;
+
+        let catalog_state_for_task_log_cleanup = catalog_state.clone();
+        self.register_queue::<task_log_cleanup_queue::TaskLogCleanupConfig>(QueueRegistration {
+            queue_name: &task_log_cleanup_queue::QUEUE_NAME,
+            worker_fn: Arc::new(move |cancellation_token| {
+                let catalog_state_clone = catalog_state_for_task_log_cleanup.clone();
+                Box::pin(async move {
+                    task_log_cleanup_queue::log_cleanup_worker::<C>(
+                        catalog_state_clone,
+                        poll_interval,
+                        cancellation_token,
+                    )
+                    .await;
+                })
+            }),
+            num_workers: CONFIG.task_log_cleanup_workers,
+            scope: QueueScope::Project,
         })
         .await;
 
@@ -285,6 +313,14 @@ impl TaskQueueRegistry {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum QueueScope {
+    /// Warehouse-specific configuration
+    Warehouse,
+    /// Project-specific configuration
+    Project,
+}
+
 #[derive(Clone)]
 /// Contains all required information to dynamically generate API documentation
 /// for the warehouse-specific configuration of a task queue.
@@ -301,6 +337,7 @@ pub struct QueueApiConfig {
     pub utoipa_schema: utoipa::openapi::RefOr<utoipa::openapi::Schema>,
     #[cfg(not(feature = "open-api"))]
     pub utoipa_schema: (),
+    pub scope: QueueScope,
 }
 
 impl std::fmt::Debug for QueueApiConfig {
@@ -309,6 +346,7 @@ impl std::fmt::Debug for QueueApiConfig {
             .field("queue_name", &self.queue_name)
             .field("utoipa_type_name", &self.utoipa_type_name)
             .field("utoipa_schema", &"<schema>")
+            .field("scope", &self.scope)
             .finish()
     }
 }
@@ -386,6 +424,7 @@ mod test {
                     })
                 }),
                 num_workers: 1,
+                scope: QueueScope::Warehouse,
             })
             .await;
 
@@ -440,6 +479,7 @@ mod test {
                     })
                 }),
                 num_workers: 2,
+                scope: QueueScope::Warehouse,
             })
             .await;
 

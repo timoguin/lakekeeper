@@ -1,3 +1,5 @@
+#[cfg(feature = "open-api")]
+use std::collections::HashMap;
 use std::{fmt::Debug, marker::PhantomData, ops::Deref, time::Duration};
 
 use chrono::Utc;
@@ -20,10 +22,12 @@ mod task_queues_runner;
 mod task_registry;
 pub use task_queues_runner::{TaskQueueWorkerFn, TaskQueuesRunner};
 pub use task_registry::{
-    QueueApiConfig, QueueRegistration, RegisteredTaskQueues, TaskQueueRegistry, ValidatorFn,
+    QueueApiConfig, QueueRegistration, QueueScope, RegisteredTaskQueues, TaskQueueRegistry,
+    ValidatorFn,
 };
 pub mod tabular_expiration_queue;
 pub mod tabular_purge_queue;
+pub mod task_log_cleanup_queue;
 
 #[cfg(test)]
 pub(crate) const DEFAULT_MAX_TIME_SINCE_LAST_HEARTBEAT: chrono::Duration =
@@ -39,6 +43,16 @@ pub static BUILT_IN_API_CONFIGS: std::sync::LazyLock<Vec<QueueApiConfig>> =
             tabular_purge_queue::API_CONFIG.clone(),
         ]
     });
+
+#[cfg(feature = "open-api")]
+#[allow(clippy::declare_interior_mutable_const)]
+pub static BUILT_IN_PROJECT_API_CONFIGS: std::sync::LazyLock<Vec<QueueApiConfig>> =
+    std::sync::LazyLock::new(|| vec![task_log_cleanup_queue::API_CONFIG.clone()]);
+
+#[cfg(feature = "open-api")]
+pub static BUILT_IN_DEPENDENT_SCHEMAS: std::sync::LazyLock<
+    HashMap<String, utoipa::openapi::RefOr<utoipa::openapi::Schema>>,
+> = std::sync::LazyLock::new(HashMap::new);
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(transparent)]
@@ -203,6 +217,19 @@ pub enum TaskFilter {
     WarehouseId {
         warehouse_id: WarehouseId,
         project_id: ProjectId,
+    },
+    TaskIds(Vec<TaskId>),
+    ProjectId {
+        project_id: ProjectId,
+        include_sub_tasks: bool,
+    },
+    All,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CancelTasksFilter {
+    WarehouseId {
+        warehouse_id: WarehouseId,
     },
     TaskIds(Vec<TaskId>),
     ProjectId {
@@ -716,7 +743,7 @@ impl<Q: TaskConfig, D: TaskData, E: TaskExecutionDetails> SpecializedTask<Q, D, 
     /// Returns an error on DB errors
     #[tracing::instrument(level = "info", skip(transaction), fields(queue_name = %Self::queue_name(), filter = ?filter, cancel_running_and_should_stop))]
     pub async fn cancel_scheduled_tasks<C: CatalogStore>(
-        filter: TaskFilter,
+        filter: CancelTasksFilter,
         transaction: <C::Transaction as Transaction<C::State>>::Transaction<'_>,
         cancel_running_and_should_stop: bool,
     ) -> Result<(), IcebergErrorResponse> {

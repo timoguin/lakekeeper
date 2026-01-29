@@ -1,8 +1,10 @@
 #![allow(clippy::needless_for_each)]
 
+use std::{collections::HashMap, sync::LazyLock};
+
 use utoipa::{
     OpenApi, PartialSchema, ToSchema,
-    openapi::{KnownFormat, RefOr, security::SecurityScheme},
+    openapi::{ComponentsBuilder, KnownFormat, RefOr, Schema, security::SecurityScheme},
 };
 
 use crate::{
@@ -10,7 +12,10 @@ use crate::{
         endpoints::ManagementV1Endpoint,
         management::v1::task_queue::{GetTaskQueueConfigResponse, SetTaskQueueConfigRequest},
     },
-    service::{authz::Authorizer, tasks::QueueApiConfig},
+    service::{
+        authz::Authorizer,
+        tasks::{BUILT_IN_DEPENDENT_SCHEMAS, QueueApiConfig, QueueScope},
+    },
 };
 
 #[derive(Debug, OpenApi)]
@@ -138,20 +143,34 @@ impl utoipa::Modify for SecurityAddon {
 /// Never fails, but returns warnings if components cannot be patched.
 #[allow(clippy::too_many_lines)]
 #[must_use]
-pub fn api_doc<A: Authorizer>(queue_api_configs: &[&QueueApiConfig]) -> utoipa::openapi::OpenApi {
+pub fn api_doc<A: Authorizer>(
+    queue_api_configs: &[&QueueApiConfig],
+    project_queue_api_configs: &[&QueueApiConfig],
+) -> utoipa::openapi::OpenApi {
     let mut doc = ManagementApiDoc::openapi();
     doc.merge(A::api_doc());
 
-    fix_warehouse_task_queue_config_paths(&mut doc, queue_api_configs);
-    fix_project_task_queue_config_paths(&mut doc);
+    add_dependent_schemas(&mut doc, &BUILT_IN_DEPENDENT_SCHEMAS);
+
+    fix_task_queue_config_paths(
+        &mut doc,
+        queue_api_configs,
+        ManagementV1Endpoint::SetTaskQueueConfig.path(),
+    );
+    fix_task_queue_config_paths(
+        &mut doc,
+        project_queue_api_configs,
+        ManagementV1Endpoint::SetProjectTaskQueueConfig.path(),
+    );
 
     doc
 }
 
 #[allow(clippy::too_many_lines)]
-fn fix_warehouse_task_queue_config_paths(
+fn fix_task_queue_config_paths(
     doc: &mut utoipa::openapi::OpenApi,
     queue_api_configs: &[&QueueApiConfig],
+    set_task_queue_config_path: &str,
 ) {
     let Some(comps) = doc.components.as_mut() else {
         tracing::warn!(
@@ -160,8 +179,10 @@ fn fix_warehouse_task_queue_config_paths(
         return;
     };
     let paths = &mut doc.paths.paths;
-    let Some(config_path) = paths.remove(ManagementV1Endpoint::SetTaskQueueConfig.path()) else {
-        tracing::warn!("No path found for SetTaskQueueConfig, not patching queue configs in.");
+    let Some(config_path) = paths.remove(set_task_queue_config_path) else {
+        tracing::warn!(
+            "No path found for SetTaskQueueConfigRequest, not patching queue configs in."
+        );
         return;
     };
 
@@ -169,8 +190,14 @@ fn fix_warehouse_task_queue_config_paths(
         queue_name,
         utoipa_type_name,
         utoipa_schema,
+        scope,
     } in queue_api_configs
     {
+        let operation_object = match scope {
+            QueueScope::Project => "project_task_queue_config",
+            QueueScope::Warehouse => "task_queue_config",
+        };
+
         let mut set_queue_config_schema = SetTaskQueueConfigRequest::schema();
         let mut get_queue_config_schema = GetTaskQueueConfigResponse::schema();
         let set_queue_config_type_name = format!("Set{utoipa_type_name}");
@@ -235,16 +262,14 @@ fn fix_warehouse_task_queue_config_paths(
             },
         }
 
-        let path = ManagementV1Endpoint::SetTaskQueueConfig
-            .path()
-            .replace("{queue_name}", queue_name);
+        let path = set_task_queue_config_path.replace("{queue_name}", queue_name);
 
         let mut p = config_path.clone();
 
         let Some(post) = p.post.as_mut() else {
             tracing::warn!(
                 "No post method found for '{}', not patching queue configs into the ApiDoc.",
-                ManagementV1Endpoint::SetTaskQueueConfig.path()
+                set_task_queue_config_path
             );
             return;
         };
@@ -255,13 +280,13 @@ fn fix_warehouse_task_queue_config_paths(
                 .collect()
         });
         post.operation_id = Some(format!(
-            "set_task_queue_config_{}",
+            "set_{operation_object}_{}",
             queue_name.replace('-', "_")
         ));
         let Some(body) = post.request_body.as_mut() else {
             tracing::warn!(
                 "No request body found for the '{}', not patching queue configs into the ApiDoc.",
-                ManagementV1Endpoint::SetTaskQueueConfig.path()
+                set_task_queue_config_path
             );
             return;
         };
@@ -274,7 +299,7 @@ fn fix_warehouse_task_queue_config_paths(
         let Some(get) = p.get.as_mut() else {
             tracing::warn!(
                 "No get method found for '{}', not patching queue configs into the ApiDoc.",
-                ManagementV1Endpoint::SetTaskQueueConfig.path()
+                set_task_queue_config_path
             );
             return;
         };
@@ -285,7 +310,7 @@ fn fix_warehouse_task_queue_config_paths(
                 .collect()
         });
         get.operation_id = Some(format!(
-            "get_task_queue_config_{}",
+            "get_{operation_object}_{}",
             queue_name.replace('-', "_")
         ));
         let response = utoipa::openapi::response::ResponseBuilder::new()
@@ -336,15 +361,18 @@ fn fix_warehouse_task_queue_config_paths(
     }
 }
 
-fn fix_project_task_queue_config_paths(doc: &mut utoipa::openapi::OpenApi) {
-    let paths = &mut doc.paths.paths;
-    if paths
-        .remove(ManagementV1Endpoint::SetProjectTaskQueueConfig.path())
-        .is_none()
-    {
-        tracing::warn!(
-            "No path found for SetProjectTaskQueueConfig, not patching queue configs in."
-        );
-        // return;
-    }
+fn add_dependent_schemas(
+    doc: &mut utoipa::openapi::OpenApi,
+    dependent_schemas: &LazyLock<HashMap<String, RefOr<Schema>>>,
+) {
+    let dependent_schemas = dependent_schemas
+        .iter()
+        .map(|(name, schema)| (name.clone(), (*schema).clone()));
+    let Some(comps) = doc.components.as_mut() else {
+        let mut comps = ComponentsBuilder::new().build();
+        comps.schemas.extend(dependent_schemas);
+        doc.components = Some(comps);
+        return;
+    };
+    comps.schemas.extend(dependent_schemas);
 }

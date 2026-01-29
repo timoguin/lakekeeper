@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use chrono::Duration;
 use iceberg::spec::ViewMetadata;
 use iceberg_ext::catalog::rest::ErrorModel;
 pub use iceberg_ext::catalog::rest::{CommitTableResponse, CreateTableRequest};
@@ -35,8 +36,8 @@ use crate::{
         health::HealthExt,
         task_configs::TaskQueueConfigFilter,
         tasks::{
-            Task, TaskAttemptId, TaskCheckState, TaskDetailsScope, TaskFilter, TaskId, TaskInput,
-            TaskQueueName, TaskResolveScope,
+            CancelTasksFilter, Task, TaskAttemptId, TaskCheckState, TaskDetailsScope, TaskFilter,
+            TaskId, TaskInput, TaskQueueName, TaskResolveScope,
         },
     },
 };
@@ -637,7 +638,7 @@ where
     /// If `queue_name` is `None`, cancel tasks in all queues.
     async fn cancel_scheduled_tasks_impl(
         queue_name: Option<&TaskQueueName>,
-        filter: TaskFilter,
+        filter: CancelTasksFilter,
         cancel_running_and_should_stop: bool,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
     ) -> Result<()>;
@@ -681,4 +682,10 @@ where
         queue_name: &TaskQueueName,
         state: Self::State,
     ) -> Result<Option<GetTaskQueueConfigResponse>>;
+
+    async fn cleanup_task_logs_older_than(
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+        retention_period: Duration,
+        project_id: &ProjectId,
+    ) -> Result<()>;
 }

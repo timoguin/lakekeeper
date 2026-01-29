@@ -114,16 +114,17 @@ pub(crate) async fn list_tasks(
         TaskFilter::WarehouseId {
             warehouse_id,
             project_id,
-        } => (Some(warehouse_id), project_id, false),
+        } => (Some(warehouse_id), Some(project_id), false),
         TaskFilter::ProjectId {
             project_id,
             include_sub_tasks,
-        } => (None, project_id, *include_sub_tasks),
+        } => (None, Some(project_id), *include_sub_tasks),
         TaskFilter::TaskIds(_) => Err(ErrorModel::internal(
             "TaskFilter for TaskIds not implemented for list_tasks.",
             "InternalError",
             None,
         ))?,
+        TaskFilter::All => (None, None, true),
     };
 
     let page_size = CONFIG.page_size_or_pagination_default(page_size);
@@ -195,7 +196,7 @@ pub(crate) async fn list_tasks(
                 t.entity_id IS NOT DISTINCT FROM se.entity_id 
                 AND t.entity_type = se.entity_type
             )
-            WHERE project_id = $15
+            WHERE ($18 OR project_id = $15)
                 AND CASE
                     WHEN $16 THEN $17 OR warehouse_id IS NULL -- project-level tasks
                     ELSE warehouse_id = $1 -- warehouse-level tasks
@@ -234,7 +235,7 @@ pub(crate) async fn list_tasks(
                 tl.entity_id IS NOT DISTINCT FROM se.entity_id 
                 AND tl.entity_type = se.entity_type
             )
-            WHERE project_id = $15
+            WHERE ($18 OR project_id = $15)
                 AND CASE
                     WHEN $16 THEN $17 OR warehouse_id IS NULL -- project-level tasks
                     ELSE warehouse_id = $1
@@ -288,9 +289,10 @@ pub(crate) async fn list_tasks(
         entities_filter_is_none, // 12
         created_after, // 13
         created_before, // 14
-        project_id.as_str(), // 15
+        &project_id.map(ProjectId::as_str).unwrap_or_default(), // 15
         warehouse_id.is_none(), // 16
         include_sub_tasks, // 17
+        project_id.is_none(), // 18
     )
     .fetch_all(&mut *transaction)
     .await
@@ -1080,7 +1082,7 @@ mod tests {
         // Cancel some tasks (next 2)
         super::super::cancel_scheduled_tasks(
             &mut conn,
-            crate::service::tasks::TaskFilter::TaskIds(task_ids[6..8].to_vec()),
+            crate::service::tasks::CancelTasksFilter::TaskIds(task_ids[6..8].to_vec()),
             Some(&tq_name),
             false,
         )
@@ -1323,7 +1325,7 @@ mod tests {
         // Task 3: Cancel while scheduled
         super::super::cancel_scheduled_tasks(
             &mut conn,
-            crate::service::tasks::TaskFilter::TaskIds(vec![task_ids[3]]),
+            crate::service::tasks::CancelTasksFilter::TaskIds(vec![task_ids[3]]),
             Some(&tq_name),
             false,
         )
@@ -1980,10 +1982,12 @@ mod tests {
         )
         .await
         .unwrap();
-        // Queue project task
 
-        // Try to list tasks from wrong warehouse
-        let request = ListTasksRequest::default();
+        // Try to list tasks - filter by queue_name to exclude bootstrap tasks
+        let request = ListTasksRequest {
+            queue_name: Some(vec![tq_name.clone()]),
+            ..Default::default()
+        };
         let result = list_tasks(
             &TaskFilter::ProjectId {
                 project_id,
@@ -1999,6 +2003,7 @@ mod tests {
         let Some(task) = task else {
             panic!("Expected to find a task");
         };
+
         assert_eq!(task.task_metadata.warehouse_id(), None);
         assert_eq!(result.tasks.len(), 1);
     }
@@ -2067,10 +2072,12 @@ mod tests {
         )
         .await
         .unwrap();
-        // Queue project task
 
-        // Try to list tasks from wrong warehouse
-        let request = ListTasksRequest::default();
+        // List tasks - filter by queue_name to exclude bootstrap tasks
+        let request = ListTasksRequest {
+            queue_name: Some(vec![tq_name.clone()]),
+            ..Default::default()
+        };
         let result = list_tasks(
             &TaskFilter::ProjectId {
                 project_id: project_id.clone(),
