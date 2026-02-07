@@ -27,6 +27,7 @@ use crate::{
         CachePolicy, CatalogStore, CatalogTableOps, State, TableCreation, TableId, TabularId,
         Transaction,
         authz::{Authorizer, AuthzNamespaceOps, CatalogNamespaceAction},
+        endpoint_hooks::events::CreateTableEvent,
         secrets::SecretStore,
         storage::{StorageLocations as _, StoragePermissions, ValidationError},
     },
@@ -314,15 +315,15 @@ async fn create_table_inner<C: CatalogStore, A: Authorizer + Clone, S: SecretSto
     state
         .v1_state
         .hooks
-        .create_table(
+        .create_table(CreateTableEvent {
             warehouse_id,
             parameters,
-            Arc::new(request),
-            table_metadata.clone(),
-            metadata_location.map(Arc::new),
+            request: Arc::new(request),
+            metadata: table_metadata.clone(),
+            metadata_location: metadata_location.map(Arc::new),
             data_access,
-            Arc::new(request_metadata),
-        )
+            request_metadata: Arc::new(request_metadata),
+        })
         .await;
 
     Ok(load_table_result)
