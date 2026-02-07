@@ -6,7 +6,7 @@ use moka::{future::Cache, notification::RemovalCause};
 use unicase::UniCase;
 
 #[cfg(feature = "router")]
-use crate::service::endpoint_hooks::{EndpointHook, events};
+use crate::service::events::{self, EventListener};
 use crate::{
     CONFIG, WarehouseId,
     service::{NamespaceId, NamespaceWithParent, catalog_store::namespace::NamespaceHierarchy},
@@ -95,7 +95,7 @@ async fn namespace_cache_invalidate(namespace_id: NamespaceId) {
     }
 }
 
-#[allow(dead_code)] // Only required for hooks which are behind a feature flag
+#[allow(dead_code)] // Only required for listeners which are behind a feature flag
 pub(super) async fn namespace_cache_insert(namespace: NamespaceWithParent) {
     if CONFIG.cache.namespace.enabled {
         let namespace_id = namespace.namespace.namespace_id;
@@ -262,19 +262,19 @@ fn is_parent_ident(child_ident: &NamespaceIdent, found_parent_ident: &NamespaceI
 
 #[cfg(feature = "router")]
 #[derive(Debug, Clone)]
-pub(crate) struct NamespaceCacheEndpointHook;
+pub(crate) struct NamespaceCacheEventListener;
 
 #[cfg(feature = "router")]
-impl std::fmt::Display for NamespaceCacheEndpointHook {
+impl std::fmt::Display for NamespaceCacheEventListener {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "NamespaceCacheEndpointHook")
+        write!(f, "NamespaceCacheEventListener")
     }
 }
 
 #[cfg(feature = "router")]
 #[async_trait::async_trait]
-impl EndpointHook for NamespaceCacheEndpointHook {
-    async fn create_namespace(&self, event: events::CreateNamespaceEvent) -> anyhow::Result<()> {
+impl EventListener for NamespaceCacheEventListener {
+    async fn namespace_created(&self, event: events::CreateNamespaceEvent) -> anyhow::Result<()> {
         let events::CreateNamespaceEvent {
             warehouse_id: _warehouse_id,
             namespace,
@@ -284,7 +284,7 @@ impl EndpointHook for NamespaceCacheEndpointHook {
         Ok(())
     }
 
-    async fn drop_namespace(&self, event: events::DropNamespaceEvent) -> anyhow::Result<()> {
+    async fn namespace_dropped(&self, event: events::DropNamespaceEvent) -> anyhow::Result<()> {
         let events::DropNamespaceEvent {
             warehouse_id: _warehouse_id,
             namespace_id,
@@ -296,7 +296,7 @@ impl EndpointHook for NamespaceCacheEndpointHook {
         Ok(())
     }
 
-    async fn update_namespace_properties(
+    async fn namespace_properties_updated(
         &self,
         event: events::UpdateNamespacePropertiesEvent,
     ) -> anyhow::Result<()> {
@@ -310,7 +310,7 @@ impl EndpointHook for NamespaceCacheEndpointHook {
         Ok(())
     }
 
-    async fn set_namespace_protection(
+    async fn namespace_protection_set(
         &self,
         event: events::SetNamespaceProtectionEvent,
     ) -> anyhow::Result<()> {

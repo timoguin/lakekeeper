@@ -42,7 +42,7 @@ use crate::{
             CatalogNamespaceAction, CatalogProjectAction, CatalogTableAction, CatalogViewAction,
             CatalogWarehouseAction,
         },
-        endpoint_hooks::events::{
+        events::{
             CreateWarehouseEvent, DeleteWarehouseEvent, RenameWarehouseEvent,
             SetWarehouseProtectionEvent, UndropTabularEvent, UpdateWarehouseDeleteProfileEvent,
             UpdateWarehouseStorageCredentialEvent, UpdateWarehouseStorageEvent,
@@ -423,8 +423,8 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
 
         context
             .v1_state
-            .hooks
-            .create_warehouse(CreateWarehouseEvent {
+            .events
+            .warehouse_created(CreateWarehouseEvent {
                 warehouse: resolved_warehouse.clone(),
                 request_metadata: Arc::new(request_metadata),
             })
@@ -578,8 +578,8 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
 
         context
             .v1_state
-            .hooks
-            .delete_warehouse(DeleteWarehouseEvent {
+            .events
+            .warehouse_deleted(DeleteWarehouseEvent {
                 warehouse_id,
                 request_metadata: Arc::new(request_metadata),
             })
@@ -622,8 +622,8 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
 
         context
             .v1_state
-            .hooks
-            .set_warehouse_protection(SetWarehouseProtectionEvent {
+            .events
+            .warehouse_protection_set(SetWarehouseProtectionEvent {
                 requested_protected: protection,
                 updated_warehouse: resolved_warehouse.clone(),
                 request_metadata: Arc::new(request_metadata),
@@ -672,8 +672,8 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
 
         context
             .v1_state
-            .hooks
-            .rename_warehouse(RenameWarehouseEvent {
+            .events
+            .warehouse_renamed(RenameWarehouseEvent {
                 request: Arc::new(request),
                 updated_warehouse: updated_warehouse.clone(),
                 request_metadata: Arc::new(request_metadata),
@@ -715,8 +715,8 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
 
         context
             .v1_state
-            .hooks
-            .update_warehouse_delete_profile(UpdateWarehouseDeleteProfileEvent {
+            .events
+            .warehouse_delete_profile_updated(UpdateWarehouseDeleteProfileEvent {
                 request: Arc::new(request),
                 updated_warehouse: updated_warehouse.clone(),
                 request_metadata: Arc::new(request_metadata),
@@ -875,8 +875,8 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
 
         context
             .v1_state
-            .hooks
-            .update_warehouse_storage(UpdateWarehouseStorageEvent {
+            .events
+            .warehouse_storage_updated(UpdateWarehouseStorageEvent {
                 request: request_for_hook,
                 updated_warehouse: updated_warehouse.clone(),
                 request_metadata: Arc::new(request_metadata),
@@ -963,8 +963,8 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
 
         context
             .v1_state
-            .hooks
-            .update_warehouse_storage_credential(UpdateWarehouseStorageCredentialEvent {
+            .events
+            .warehouse_storage_credential_updated(UpdateWarehouseStorageCredentialEvent {
                 request: request_for_hook,
                 old_secret_id,
                 updated_warehouse: updated_warehouse.clone(),
@@ -1054,8 +1054,8 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
 
         context
             .v1_state
-            .hooks
-            .undrop_tabular(UndropTabularEvent {
+            .events
+            .tabular_undropped(UndropTabularEvent {
                 warehouse_id,
                 request: Arc::new(request),
                 responses: Arc::new(

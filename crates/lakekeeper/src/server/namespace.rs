@@ -28,9 +28,7 @@ use crate::{
             AuthZCannotListNamespaces, AuthZCannotUseWarehouseId, Authorizer, AuthzNamespaceOps,
             AuthzWarehouseOps, CatalogNamespaceAction, CatalogWarehouseAction, NamespaceParent,
         },
-        endpoint_hooks::events::{
-            CreateNamespaceEvent, DropNamespaceEvent, UpdateNamespacePropertiesEvent,
-        },
+        events::{CreateNamespaceEvent, DropNamespaceEvent, UpdateNamespacePropertiesEvent},
         secrets::SecretStore,
         tasks::{
             CancelTasksFilter, ScheduleTaskMetadata, TaskEntity, WarehouseTaskEntityId,
@@ -319,8 +317,8 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
 
         state
             .v1_state
-            .hooks
-            .create_namespace(CreateNamespaceEvent {
+            .events
+            .namespace_created(CreateNamespaceEvent {
                 warehouse_id,
                 namespace: r.clone(),
                 request_metadata: Arc::new(request_metadata),
@@ -457,8 +455,8 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
             Ok(()) => {
                 state
                     .v1_state
-                    .hooks
-                    .drop_namespace(DropNamespaceEvent {
+                    .events
+                    .namespace_dropped(DropNamespaceEvent {
                         warehouse_id,
                         namespace_id,
                         request_metadata: Arc::new(request_metadata),
@@ -528,8 +526,8 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
 
         state
             .v1_state
-            .hooks
-            .update_namespace_properties(UpdateNamespacePropertiesEvent {
+            .events
+            .namespace_properties_updated(UpdateNamespacePropertiesEvent {
                 warehouse_id,
                 namespace: updated_namespace,
                 updated_properties: Arc::new(r.clone()),

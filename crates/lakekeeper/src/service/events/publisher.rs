@@ -1,6 +1,6 @@
 use std::{
     fmt::{Debug, Display},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use anyhow::Context;
@@ -9,24 +9,36 @@ use cloudevents::Event;
 use iceberg::TableIdent;
 use uuid::Uuid;
 
-use super::{TableId, WarehouseId};
+use super::{dispatch::EventListener, types};
 use crate::{
     CONFIG,
-    api::iceberg::{
-        types::Prefix,
-        v1::{NamespaceParameters, TableParameters},
+    api::{
+        RequestMetadata,
+        iceberg::{
+            types::Prefix,
+            v1::{NamespaceParameters, TableParameters},
+        },
     },
     server::tables::maybe_body_to_json,
-    service::{
-        TabularId,
-        endpoint_hooks::{EndpointHook, events},
-    },
+    service::{TableId, TabularId, WarehouseId},
 };
 
-#[cfg(feature = "kafka")]
-pub mod kafka;
-#[cfg(feature = "nats")]
-pub mod nats;
+/// Cached hostname for CloudEvents source URI. Resolved once at first access.
+static HOSTNAME: LazyLock<String> = LazyLock::new(|| {
+    hostname::get().map_or_else(
+        |_| "hostname-unavailable".into(),
+        |os| os.to_string_lossy().to_string(),
+    )
+});
+
+/// Serializes the actor from request metadata to a JSON string.
+///
+/// # Errors
+/// Returns an error if the actor cannot be serialized.
+fn serialize_actor(request_metadata: &RequestMetadata) -> anyhow::Result<String> {
+    serde_json::to_string(request_metadata.actor())
+        .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))
+}
 
 /// Builds the default cloud event backends from the configuration.
 ///
@@ -38,12 +50,12 @@ pub async fn get_default_cloud_event_backends_from_config()
     let mut cloud_event_sinks = vec![];
 
     #[cfg(feature = "nats")]
-    if let Some(nats_publisher) = nats::build_nats_publisher_from_config().await? {
+    if let Some(nats_publisher) = super::backends::nats::build_nats_publisher_from_config().await? {
         cloud_event_sinks
             .push(Arc::new(nats_publisher) as Arc<dyn CloudEventBackend + Sync + Send>);
     }
     #[cfg(feature = "kafka")]
-    if let Some(kafka_publisher) = kafka::build_kafka_publisher_from_config()? {
+    if let Some(kafka_publisher) = super::backends::kafka::build_kafka_publisher_from_config()? {
         cloud_event_sinks
             .push(Arc::new(kafka_publisher) as Arc<dyn CloudEventBackend + Sync + Send>);
     }
@@ -65,12 +77,12 @@ pub async fn get_default_cloud_event_backends_from_config()
 }
 
 #[async_trait::async_trait]
-impl EndpointHook for CloudEventsPublisher {
-    async fn commit_transaction(
+impl EventListener for CloudEventsPublisher {
+    async fn transaction_committed(
         &self,
-        event: events::CommitTransactionEvent,
+        event: types::CommitTransactionEvent,
     ) -> anyhow::Result<()> {
-        let events::CommitTransactionEvent {
+        let types::CommitTransactionEvent {
             warehouse_id,
             request,
             commits: _commits,
@@ -93,25 +105,22 @@ impl EndpointHook for CloudEventsPublisher {
         for (event_sequence_number, (body, (table_ident, table_id))) in
             events.into_iter().zip(event_table_ids).enumerate()
         {
-            futs.push(
-                self.publish(
-                    Uuid::now_v7(),
-                    "updateTable",
-                    body,
-                    EventMetadata {
-                        tabular_id: TabularId::Table(table_id),
-                        warehouse_id,
-                        name: table_ident.name,
-                        namespace: table_ident.namespace.to_url_string(),
-                        prefix: String::new(),
-                        num_events: number_of_events,
-                        sequence_number: event_sequence_number,
-                        trace_id: request_metadata.request_id(),
-                        actor: serde_json::to_string(request_metadata.actor())
-                            .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))?,
-                    },
-                ),
-            );
+            futs.push(self.publish(
+                Uuid::now_v7(),
+                "updateTable",
+                body,
+                EventMetadata {
+                    tabular_id: TabularId::Table(table_id),
+                    warehouse_id,
+                    name: table_ident.name,
+                    namespace: table_ident.namespace.to_url_string(),
+                    prefix: String::new(),
+                    num_events: number_of_events,
+                    sequence_number: event_sequence_number,
+                    trace_id: request_metadata.request_id(),
+                    actor: serialize_actor(&request_metadata)?,
+                },
+            ));
         }
         futures::future::try_join_all(futs)
             .await
@@ -119,8 +128,8 @@ impl EndpointHook for CloudEventsPublisher {
         Ok(())
     }
 
-    async fn drop_table(&self, event: events::DropTableEvent) -> anyhow::Result<()> {
-        let events::DropTableEvent {
+    async fn table_dropped(&self, event: types::DropTableEvent) -> anyhow::Result<()> {
+        let types::DropTableEvent {
             warehouse_id,
             parameters: TableParameters { prefix, table },
             drop_params: _drop_params,
@@ -140,16 +149,16 @@ impl EndpointHook for CloudEventsPublisher {
                 num_events: 1,
                 sequence_number: 0,
                 trace_id: request_metadata.request_id(),
-                actor: serde_json::to_string(request_metadata.actor())
-                    .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))?,
+                actor: serialize_actor(&request_metadata)?,
             },
         )
         .await
         .context("Failed to publish `dropTable` event")?;
         Ok(())
     }
-    async fn register_table(&self, event: events::RegisterTableEvent) -> anyhow::Result<()> {
-        let events::RegisterTableEvent {
+
+    async fn table_registered(&self, event: types::RegisterTableEvent) -> anyhow::Result<()> {
+        let types::RegisterTableEvent {
             warehouse_id,
             parameters: NamespaceParameters { prefix, namespace },
             request,
@@ -170,8 +179,7 @@ impl EndpointHook for CloudEventsPublisher {
                 num_events: 1,
                 sequence_number: 0,
                 trace_id: request_metadata.request_id(),
-                actor: serde_json::to_string(request_metadata.actor())
-                    .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))?,
+                actor: serialize_actor(&request_metadata)?,
             },
         )
         .await
@@ -179,8 +187,8 @@ impl EndpointHook for CloudEventsPublisher {
         Ok(())
     }
 
-    async fn create_table(&self, event: events::CreateTableEvent) -> anyhow::Result<()> {
-        let events::CreateTableEvent {
+    async fn table_created(&self, event: types::CreateTableEvent) -> anyhow::Result<()> {
+        let types::CreateTableEvent {
             warehouse_id,
             parameters: NamespaceParameters { prefix, namespace },
             request,
@@ -202,8 +210,7 @@ impl EndpointHook for CloudEventsPublisher {
                 num_events: 1,
                 sequence_number: 0,
                 trace_id: request_metadata.request_id(),
-                actor: serde_json::to_string(request_metadata.actor())
-                    .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))?,
+                actor: serialize_actor(&request_metadata)?,
             },
         )
         .await
@@ -211,8 +218,8 @@ impl EndpointHook for CloudEventsPublisher {
         Ok(())
     }
 
-    async fn rename_table(&self, event: events::RenameTableEvent) -> anyhow::Result<()> {
-        let events::RenameTableEvent {
+    async fn table_renamed(&self, event: types::RenameTableEvent) -> anyhow::Result<()> {
+        let types::RenameTableEvent {
             warehouse_id,
             table_id: table_ident_uuid,
             request,
@@ -231,8 +238,7 @@ impl EndpointHook for CloudEventsPublisher {
                 num_events: 1,
                 sequence_number: 0,
                 trace_id: request_metadata.request_id(),
-                actor: serde_json::to_string(request_metadata.actor())
-                    .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))?,
+                actor: serialize_actor(&request_metadata)?,
             },
         )
         .await
@@ -240,8 +246,8 @@ impl EndpointHook for CloudEventsPublisher {
         Ok(())
     }
 
-    async fn create_view(&self, event: events::CreateViewEvent) -> anyhow::Result<()> {
-        let events::CreateViewEvent {
+    async fn view_created(&self, event: types::CreateViewEvent) -> anyhow::Result<()> {
+        let types::CreateViewEvent {
             warehouse_id,
             parameters,
             request,
@@ -266,8 +272,7 @@ impl EndpointHook for CloudEventsPublisher {
                 num_events: 1,
                 sequence_number: 0,
                 trace_id: request_metadata.request_id(),
-                actor: serde_json::to_string(request_metadata.actor())
-                    .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))?,
+                actor: serialize_actor(&request_metadata)?,
             },
         )
         .await
@@ -275,8 +280,8 @@ impl EndpointHook for CloudEventsPublisher {
         Ok(())
     }
 
-    async fn commit_view(&self, event: events::CommitViewEvent) -> anyhow::Result<()> {
-        let events::CommitViewEvent {
+    async fn view_committed(&self, event: types::CommitViewEvent) -> anyhow::Result<()> {
+        let types::CommitViewEvent {
             warehouse_id,
             parameters,
             request,
@@ -287,7 +292,7 @@ impl EndpointHook for CloudEventsPublisher {
         self.publish(
             Uuid::now_v7(),
             "updateView",
-            maybe_body_to_json(&request),
+            maybe_body_to_json(request),
             EventMetadata {
                 tabular_id: TabularId::View(metadata.new_metadata.uuid().into()),
                 warehouse_id,
@@ -300,8 +305,7 @@ impl EndpointHook for CloudEventsPublisher {
                 num_events: 1,
                 sequence_number: 0,
                 trace_id: request_metadata.request_id(),
-                actor: serde_json::to_string(request_metadata.actor())
-                    .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))?,
+                actor: serialize_actor(&request_metadata)?,
             },
         )
         .await
@@ -309,8 +313,8 @@ impl EndpointHook for CloudEventsPublisher {
         Ok(())
     }
 
-    async fn drop_view(&self, event: events::DropViewEvent) -> anyhow::Result<()> {
-        let events::DropViewEvent {
+    async fn view_dropped(&self, event: types::DropViewEvent) -> anyhow::Result<()> {
+        let types::DropViewEvent {
             warehouse_id,
             parameters,
             drop_params: _drop_params,
@@ -333,8 +337,7 @@ impl EndpointHook for CloudEventsPublisher {
                 num_events: 1,
                 sequence_number: 0,
                 trace_id: request_metadata.request_id(),
-                actor: serde_json::to_string(request_metadata.actor())
-                    .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))?,
+                actor: serialize_actor(&request_metadata)?,
             },
         )
         .await
@@ -342,8 +345,8 @@ impl EndpointHook for CloudEventsPublisher {
         Ok(())
     }
 
-    async fn rename_view(&self, event: events::RenameViewEvent) -> anyhow::Result<()> {
-        let events::RenameViewEvent {
+    async fn view_renamed(&self, event: types::RenameViewEvent) -> anyhow::Result<()> {
+        let types::RenameViewEvent {
             warehouse_id,
             view_id: view_ident_uuid,
             request,
@@ -362,8 +365,7 @@ impl EndpointHook for CloudEventsPublisher {
                 num_events: 1,
                 sequence_number: 0,
                 trace_id: request_metadata.request_id(),
-                actor: serde_json::to_string(request_metadata.actor())
-                    .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))?,
+                actor: serialize_actor(&request_metadata)?,
             },
         )
         .await
@@ -371,8 +373,8 @@ impl EndpointHook for CloudEventsPublisher {
         Ok(())
     }
 
-    async fn undrop_tabular(&self, event: events::UndropTabularEvent) -> anyhow::Result<()> {
-        let events::UndropTabularEvent {
+    async fn tabular_undropped(&self, event: types::UndropTabularEvent) -> anyhow::Result<()> {
+        let types::UndropTabularEvent {
             warehouse_id,
             request: _request,
             responses,
@@ -381,25 +383,22 @@ impl EndpointHook for CloudEventsPublisher {
         let num_tabulars = responses.len();
         let mut futs = Vec::with_capacity(responses.len());
         for (idx, tabular_info) in responses.iter().enumerate() {
-            futs.push(
-                self.publish(
-                    Uuid::now_v7(),
-                    "undropTabulars",
-                    serde_json::Value::Null,
-                    EventMetadata {
-                        tabular_id: tabular_info.tabular_id(),
-                        warehouse_id,
-                        name: tabular_info.tabular_ident().name.clone(),
-                        namespace: tabular_info.tabular_ident().namespace.to_url_string(),
-                        prefix: String::new(),
-                        num_events: num_tabulars,
-                        sequence_number: idx,
-                        trace_id: request_metadata.request_id(),
-                        actor: serde_json::to_string(request_metadata.actor())
-                            .map_err(|e| anyhow::anyhow!(e).context("Failed to serialize actor"))?,
-                    },
-                ),
-            );
+            futs.push(self.publish(
+                Uuid::now_v7(),
+                "undropTabulars",
+                serde_json::Value::Null,
+                EventMetadata {
+                    tabular_id: tabular_info.tabular_id(),
+                    warehouse_id,
+                    name: tabular_info.tabular_ident().name.clone(),
+                    namespace: tabular_info.tabular_ident().namespace.to_url_string(),
+                    prefix: String::new(),
+                    num_events: num_tabulars,
+                    sequence_number: idx,
+                    trace_id: request_metadata.request_id(),
+                    actor: serialize_actor(&request_metadata)?,
+                },
+            ));
         }
         futures::future::try_join_all(futs)
             .await
@@ -516,12 +515,7 @@ impl CloudEventsPublisherBackgroundTask {
 
             let event_builder = EventBuilderV10::new()
                 .id(id.to_string())
-                .source(format!(
-                    "uri:iceberg-catalog-service:{}",
-                    hostname::get()
-                        .map(|os| os.to_string_lossy().to_string())
-                        .unwrap_or("hostname-unavailable".into())
-                ))
+                .source(format!("uri:iceberg-catalog-service:{}", &*HOSTNAME))
                 .ty(typ)
                 .data("application/json", data);
 
@@ -537,7 +531,7 @@ impl CloudEventsPublisherBackgroundTask {
                 actor,
             } = metadata;
             // TODO: this could be more elegant with a proc macro to give us IntoIter for EventMetadata
-            let event = event_builder
+            let event = match event_builder
                 .extension("tabular-type", tabular_id.typ_str())
                 .extension("tabular-id", tabular_id.to_string())
                 .extension("warehouse-id", warehouse_id.to_string())
@@ -552,7 +546,14 @@ impl CloudEventsPublisherBackgroundTask {
                 // Implement distributed tracing: https://github.com/lakekeeper/lakekeeper/issues/63
                 .extension("trace-id", trace_id.to_string())
                 .extension("actor", actor)
-                .build()?;
+                .build()
+            {
+                Ok(event) => event,
+                Err(e) => {
+                    tracing::warn!("Failed to build CloudEvent with id '{id}': {e}");
+                    continue;
+                }
+            };
 
             let publish_futures = self.sinks.iter().map(|sink| {
                 let event = event.clone();
