@@ -3,7 +3,7 @@
 !!! important "Using the Correct Cedar Schema Version"
     Always use the Cedar schema version that exactly matches your Lakekeeper deployment when developing policies. Schema mismatches can cause policy validation failures or unexpected authorization behavior. Download the schema from the Lakekeeper UI (Lakekeeper Plus 0.11.2+) or retrieve it via the `/management/v1/permissions/cedar/schema` endpoint.
 
-<a href="api/lakekeeper.cedarschema" download class="md-button md-button--primary">
+<a href="../api/lakekeeper.cedarschema" download class="md-button md-button--primary">
   :material-download: Download Cedar Schema
 </a>
 
