@@ -165,6 +165,14 @@ Access-control property values must be a JSON array of typed entity references:
 
 The `provider` in `role-full:` must match one of the configured Authenticator IDs. When there is exactly one OIDC provider, `role:` (short form) automatically resolves to it; when there are multiple, you must use the full form.
 
+The entire property value is a **JSON-encoded string** containing an array of these references. For example:
+
+```
+'["role:analysts", "role-full:oidc~data-admins", "user:oidc~alice@example.com"]'
+```
+
+A property with a single entry is still a JSON array, and an empty array (`'[]'`) is valid — it effectively grants access to nobody via that property.
+
 ### Configuration
 
 | Environment variable                                      | Default                  | Description |
