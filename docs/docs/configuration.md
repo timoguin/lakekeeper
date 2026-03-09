@@ -496,7 +496,7 @@ If the database record is older than `SYNC_INTERVAL_SECS`, Lakekeeper contacts L
 |---------------------------|--------------|-----------------------------------|
 | <nobr>`…__IDP_IDS`</nobr> | *(all IDPs)* | Comma-separated list of identity provider IDs. When set, only users from these IDPs are resolved via this provider. Omit to allow all IDPs. |
 
-**Example — minimal LDAP provider:**
+**Example — minimal LDAP provider (env vars):**
 ```bash
 LAKEKEEPER__ROLE_PROVIDER__MY_LDAP__TYPE=ldap
 LAKEKEEPER__ROLE_PROVIDER__MY_LDAP__URL=ldaps://ldap.corp.example.com:636
@@ -505,6 +505,56 @@ LAKEKEEPER__ROLE_PROVIDER__MY_LDAP__USER_BASE_DN=ou=people,dc=corp,dc=example,dc
 LAKEKEEPER__ROLE_PROVIDER__MY_LDAP__BIND_DN=cn=svc-lakekeeper,ou=service-accounts,dc=corp,dc=example,dc=com
 LAKEKEEPER__ROLE_PROVIDER__MY_LDAP__BIND_PASSWORD_FILE=/run/secrets/ldap-password
 ```
+
+#### File-based configuration
+
+All providers can alternatively be configured through a single TOML file. This is convenient when secrets management or config management tools produce a single artefact (e.g. Vault agent, Kubernetes projected volumes, Ansible templates).
+
+Point `LAKEKEEPER__ROLE_PROVIDER_FILE` at a standard TOML file. Each provider is a section `[role_provider.<id>]` where `<id>` is the provider ID you choose. Multiple providers can be defined in the same file.
+
+**Example — two LDAP providers in one file:**
+
+`/etc/lakekeeper/role-providers.toml`:
+```toml
+[role_provider.corporate]
+type = "Ldap"
+url = "ldaps://ldap.corp.example.com:636"
+domains = ["corp.example.com"]
+user_base_dn = "ou=people,dc=corp,dc=example,dc=com"
+bind_dn = "cn=svc-lakekeeper,ou=service-accounts,dc=corp,dc=example,dc=com"
+bind_password = "s3cr3t"
+
+[role_provider.subsidiary]
+type = "Ldap"
+url = "ldaps://ldap.subsidiary.example.com:636"
+domains = ["subsidiary.example.com"]
+user_base_dn = "ou=users,dc=subsidiary,dc=example,dc=com"
+bind_dn = "cn=svc-lakekeeper,ou=service-accounts,dc=subsidiary,dc=example,dc=com"
+bind_password = "s3cr3t"
+```
+
+Then set the single environment variable:
+```bash
+LAKEKEEPER__ROLE_PROVIDER_FILE=/etc/lakekeeper/role-providers.toml
+```
+
+> **Combining file and environment variables:** The file and env-var approaches can be combined. The file is loaded first and env vars are merged on top — env vars override individual fields for the same provider while unset fields are preserved from the file. This makes it easy to store non-sensitive configuration in the file and inject secrets via env vars:
+>
+> ```toml
+> # /etc/lakekeeper/role-providers.toml (checked in, no secrets)
+> [role_provider.corporate]
+> type = "Ldap"
+> url = "ldaps://ldap.corp.example.com:636"
+> domains = ["corp.example.com"]
+> user_base_dn = "ou=people,dc=corp,dc=example,dc=com"
+> bind_dn = "cn=svc-lakekeeper,ou=service-accounts,dc=corp,dc=example,dc=com"
+> ```
+>
+> ```bash
+> # Injected at runtime (e.g. from a secrets manager)
+> LAKEKEEPER__ROLE_PROVIDER_FILE=/etc/lakekeeper/role-providers.toml
+> LAKEKEEPER__ROLE_PROVIDER__CORPORATE__BIND_PASSWORD=s3cr3t
+> ```
 
 ### Debug
 
