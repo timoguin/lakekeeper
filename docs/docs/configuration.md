@@ -410,15 +410,15 @@ Lakekeeper can generate detailed audit logs for all authorization events. Audit 
 
 ### Role Provider
 
-Some <span class="lkp"></span> Authorizers support pluggable role providers that resolve a user's group or role memberships from an external directory (e.g. LDAP / Active Directory). Multiple providers can be configured simultaneously; each is assigned a unique identifier.
+Authorizers such as `Cedar` support pluggable role providers that resolve a user's group memberships from an external directory (e.g. LDAP / Active Directory). Multiple providers can be configured in parallel, each with a unique identifier. `OpenFGA` does not use role providers — roles are stored directly in OpenFGA.
 
-#### Chain settings
+##### Chain settings
 
 | Variable                                                            | Default | Description |
 |---------------------------------------------------------------------|---------|-----|
 | <nobr>`LAKEKEEPER__ROLE_PROVIDER_CHAIN__LOG_UNHANDLED_USERS`</nobr> | `true`  | When `true`, an audit event is emitted whenever a user is not matched by any configured role provider. Useful for detecting misconfigured domain filters. Set to `false` to suppress these events for deployments where some users are intentionally not covered by any provider. |
 
-#### Token role provider
+##### Token role provider
 
 When `LAKEKEEPER__OPENID_ROLES_CLAIM` is set, Lakekeeper extracts roles directly from the authenticated user's JWT. A built-in token role provider is added to the chain **automatically** — no additional configuration is required.
 
@@ -426,7 +426,7 @@ The token role provider only applies to OIDC-authenticated users (those whose id
 
 The provider uses the reserved identifier `oidc`. If you declare a role provider with this identifier in your configuration, the automatic provider is suppressed and your custom provider takes its place.
 
-#### LDAP role provider
+##### LDAP role provider
 
 Each LDAP provider is configured under a unique `<ID>` of your choosing. All variables below use the prefix `LAKEKEEPER__ROLE_PROVIDER__<ID>__`.
 
@@ -506,7 +506,7 @@ LAKEKEEPER__ROLE_PROVIDER__MY_LDAP__BIND_DN=cn=svc-lakekeeper,ou=service-account
 LAKEKEEPER__ROLE_PROVIDER__MY_LDAP__BIND_PASSWORD_FILE=/run/secrets/ldap-password
 ```
 
-#### File-based configuration
+##### File-based configuration
 
 All providers can alternatively be configured through a single TOML file. This is convenient when secrets management or config management tools produce a single artefact (e.g. Vault agent, Kubernetes projected volumes, Ansible templates).
 
