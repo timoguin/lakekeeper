@@ -210,6 +210,8 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
             parameters.namespace.clone(),
             // Preliminary action, updated after Metadata is read
             CatalogNamespaceAction::CreateTable {
+                name: Some(request.name.clone()),
+                table_id: None,
                 properties: Arc::new(BTreeMap::new()),
             },
         );
@@ -244,6 +246,8 @@ impl<C: CatalogStore, A: Authorizer + Clone, S: SecretStore>
         storage_profile.require_allowed_location(&table_location)?;
 
         let action = CatalogNamespaceAction::CreateTable {
+            name: Some(request.name.clone()),
+            table_id: Some(TableId::from(table_metadata.uuid())),
             properties: Arc::new(
                 table_metadata
                     .properties()
@@ -1822,10 +1826,7 @@ pub(crate) mod test {
         },
         service::{
             SecretStore, State, TableId, TabularListFlags, UserId,
-            authz::{
-                AllowAllAuthorizer, CatalogNamespaceAction, CatalogTableAction,
-                tests::HidingAuthorizer,
-            },
+            authz::{AllowAllAuthorizer, CatalogTableAction, tests::HidingAuthorizer},
         },
         tests::{create_table_request as create_request, random_request_metadata},
     };
@@ -4171,15 +4172,8 @@ pub(crate) mod test {
         .unwrap();
 
         // Not authorized to create a table in the destination namepsace
-        authz.block_action(
-            format!(
-                "namespace:{:?}",
-                CatalogNamespaceAction::CreateTable {
-                    properties: Arc::default(),
-                }
-            )
-            .as_str(),
-        );
+        // Block any CreateTable namespace action (prefix match — fields are dynamic).
+        authz.block_action("namespace:CreateTable");
         let response = CatalogServer::rename_table(
             prefix,
             RenameTableRequest {
