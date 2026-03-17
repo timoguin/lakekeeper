@@ -417,6 +417,7 @@ Authorizers such as `Cedar` support pluggable role providers that resolve a user
 | Variable                                                            | Default | Description |
 |---------------------------------------------------------------------|---------|-----|
 | <nobr>`LAKEKEEPER__ROLE_PROVIDER_CHAIN__LOG_UNHANDLED_USERS`</nobr> | `true`  | When `true`, an audit event is emitted whenever a user is not matched by any configured role provider. Useful for detecting misconfigured domain filters. Set to `false` to suppress these events for deployments where some users are intentionally not covered by any provider. |
+| <nobr>`LAKEKEEPER__ROLE_PROVIDER_CHAIN__LOG_ROLE_ASSIGNMENTS`</nobr> | `false` | When `true`, an audit event listing every resolved role name is emitted after each successful role resolution. Very noisy — intended for debugging role-provider configuration only. See [Logging — Operational Audit Events](./logging.md) for the event schema. |
 
 ##### Token role provider
 

@@ -90,6 +90,9 @@ when {
 !!! tip "Monitoring role providers"
     Role provider availability is tracked via Prometheus metrics (`lakekeeper_role_provider_up`, `lakekeeper_role_provider_get_roles_duration_seconds`). Lakekeeper deliberately excludes role provider health from the pod liveness probe — an unreachable provider causes graceful fallback to cached roles from Postgres rather than a pod restart. See [Monitoring — Role Provider Metrics](./monitoring.md#role-provider-metrics) for details and alerting guidance.
 
+!!! tip "Debugging role assignments"
+    To see which roles are resolved for each user, temporarily set `LAKEKEEPER__ROLE_PROVIDER_CHAIN__LOG_ROLE_ASSIGNMENTS=true`. This emits an audit event listing every resolved role name after each request. The event is noisy and contains PII — disable it after debugging. See [Logging — Operational Audit Events](./logging.md) for the event schema and example output.
+
 ### Policy example — `global_role_ids`
 
 Use this simpler form when all your role providers are server-wide and use unique group names (e.g. a single LDAP directory). Requires `LAKEKEEPER__CEDAR__GLOBAL_ROLE_IDS_ENABLED=true`.
@@ -1011,10 +1014,13 @@ All property contexts use the `ResourceProperties` entity type (same structure a
 
 | Action                                    | Context fields                   |
 |-------------------------------------------|----------------------------------|
-| `CreateNamespaceInWarehouse`              | `initial_namespace_properties: ResourceProperties` |
-| <nobr>`CreateNamespaceInNamespace`</nobr> | `initial_namespace_properties: ResourceProperties` |
-| `CreateTable`                             | `initial_table_properties: ResourceProperties` |
-| `CreateView`                              | `initial_view_properties: ResourceProperties` |
+| `CreateProject`                           | `project_name?: String`, `project_id?: String` |
+| `CreateWarehouse`                         | `warehouse_name?: String` |
+| `CreateRole`                              | `role_name?: String` |
+| `CreateNamespaceInWarehouse`              | `namespace_name?: String`, `initial_namespace_properties: ResourceProperties` |
+| <nobr>`CreateNamespaceInNamespace`</nobr> | `namespace_name?: String`, `initial_namespace_properties: ResourceProperties` |
+| `CreateTable`                             | `table_name?: String`, `table_id?: String`, `initial_table_properties: ResourceProperties` |
+| `CreateView`                              | `view_name?: String`, `initial_view_properties: ResourceProperties` |
 | `UpdateNamespaceProperties`               | `namespace_properties_updates: ResourceProperties`, `namespace_properties_removal: Set<String>` |
 | `CommitTable`                             | `table_properties_updates: ResourceProperties`, `table_properties_removal: Set<String>` |
 | `CommitView`                              | `view_properties_updates: ResourceProperties`, `view_properties_removal: Set<String>` |
