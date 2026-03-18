@@ -43,21 +43,21 @@ Lakekeeper populates this set automatically from the user's token (when `LAKEKEE
 
 The `Lakekeeper::User` entity also carries `provider_id` and `source_id` attributes identifying the user's own authentication provider and their ID within it:
 
-| Attribute                       | Example value                                  | Description |
-|---------------------------------|------------------------------------------------|-----|
-| `provider_id`                   | `"oidc"`                                       | Authentication provider of the user |
-| `source_id`                     | `"2f268e8b-8cc1-4edd-a9df-87d69f7e9deb"`       | User's ID within the provider |
-| <nobr>`project_roles`</nobr>    | `[{provider_id: "oidc", source_id: "admins"}]` | Provider-resolved role memberships as `{provider_id, source_id}` records. Includes roles from token claims and role providers (e.g. LDAP) relevant to the current project. |
-| <nobr>`global_role_ids`</nobr>  | `["admins", "developers"]`                     | `source_id` of every provider-resolved role as a plain `Set<String>`. Only populated when `LAKEKEEPER__CEDAR__GLOBAL_ROLE_IDS_ENABLED=true`. See below. |
+| Attribute                      | Example value                                  | Description |
+|--------------------------------|------------------------------------------------|-----|
+| `provider_id`                  | `"oidc"`                                       | Authentication provider of the user |
+| `source_id`                    | `"2f268e8b-8cc1-4edd-a9df-87d69f7e9deb"`       | User's ID within the provider |
+| <nobr>`project_roles`</nobr>   | `[{provider_id: "oidc", source_id: "admins"}]` | Provider-resolved role memberships as `{provider_id, source_id}` records. Includes roles from token claims and role providers (e.g. LDAP) relevant to the current project. |
+| <nobr>`global_role_ids`</nobr> | `["admins", "developers"]`                     | `source_id` of every provider-resolved role as a plain `Set<String>`. Only populated when `LAKEKEEPER__CEDAR__GLOBAL_ROLE_IDS_ENABLED=true`. See below. |
 
 ### When to use `project_roles` vs `global_role_ids` vs `principal in Role::...`
 
-| Scenario                                                 | Recommended approach |
-|----------------------------------------------------------|-------------------|
+| Scenario                                                         | Recommended approach |
+|------------------------------------------------------------------|-----------|
 | Roles come from OIDC/token claims or a role provider (e.g. LDAP) | `principal.project_roles.contains({provider_id: "oidc", source_id: "my-group"})` |
 | Role `source_id` values are globally unique across all providers | `principal.global_role_ids.contains("my-group")` *(requires `GLOBAL_ROLE_IDS_ENABLED`)* |
-| Roles are managed in Lakekeeper (via the management API) | `principal in Lakekeeper::Role::"<project-id>/oidc~my-role"` |
-| Roles come from an external entities file                | Either approach works; `project_roles` is simpler |
+| Roles are managed in Lakekeeper (via the management API)         | `principal in Lakekeeper::Role::"<project-id>/oidc~my-role"` |
+| Roles come from an external entities file                        | Either approach works; `project_roles` is simpler |
 
 `project_roles` simplifies policies especially in single-project setups: to use `principal in Lakekeeper::Role::...` you need to know the project ID, which is an identifier that is inconvenient to embed in policy files. `project_roles` lets you match by provider and role name alone, with no project ID required.
 
@@ -220,6 +220,81 @@ A property with a single entry is still a JSON array, and an empty array (`'[]'`
 !!! tip
     Because malformed access-control values are rejected on write, you can rely on the `roles`/`users` sets being accurate and complete during read-path authorization.
 
+## User Identity Derivations
+
+User derivations let you extract parts of a user's identity (`source_id` or `provider_id`) using regex named capture groups, and expose them as Cedar tags on a `UserDerivedAttributes` sub-entity. This enables policies that match users to resources based on identity patterns — for example, granting a user full access to namespaces that match their username.
+
+### How It Works
+
+Each derivation rule specifies:
+
+- **`source`**: which identity field to match against — `source_id` (the user's subject in the IdP) or `provider_id` (e.g. `oidc`, `kubernetes`)
+- **`pattern`**: a regex with [named capture groups](https://docs.rs/regex/latest/regex/#grouping-and-flags) (`(?<name>...)`)
+
+Every named group that matches a non-empty substring becomes a string tag on the `UserDerivedAttributes` entity. Empty captures are silently skipped.
+
+### Configuration
+
+Derivations are configured as a map under `LAKEKEEPER__CEDAR__USER_DERIVATIONS`. Each key is a human-readable name (used in error messages), and the value specifies `source` and `pattern`.
+
+**Environment variables:**
+
+```sh
+# Extract "username" and "domain" from source_id (e.g. "alice@example.com")
+LAKEKEEPER__CEDAR__USER_DERIVATIONS__EMAIL_PARTS__SOURCE=source_id
+LAKEKEEPER__CEDAR__USER_DERIVATIONS__EMAIL_PARTS__PATTERN=^(?<username>[^@]+)@(?<domain>.+)$
+
+# Extract Kubernetes service account parts from source_id
+LAKEKEEPER__CEDAR__USER_DERIVATIONS__K8S_SA__SOURCE=source_id
+LAKEKEEPER__CEDAR__USER_DERIVATIONS__K8S_SA__PATTERN=^system:serviceaccount:(?<namespace>[^:]+):(?<sa_name>.+)$
+```
+
+**TOML (file-based config):**
+
+```toml
+[cedar.user_derivations.email_parts]
+source  = "source_id"
+pattern = "^(?<username>[^@]+)@(?<domain>.+)$"
+
+[cedar.user_derivations.k8s_sa]
+source  = "source_id"
+pattern = "^system:serviceaccount:(?<namespace>[^:]+):(?<sa_name>.+)$"
+```
+
+Regex patterns are compiled once at startup. Invalid patterns cause a startup error with a clear message including the derivation name.
+
+### Accessing Derived Attributes in Policies
+
+Derived attributes are stored on a `UserDerivedAttributes` entity linked from the `User` via the optional `derived_attributes` field. Access tags using Cedar's `hasTag()` and `getTag()` functions:
+
+```cedar
+// Guard with `has` since derived_attributes is optional
+principal has derived_attributes &&
+principal.derived_attributes.hasTag("username") &&
+principal.derived_attributes.getTag("username")
+```
+
+### Policy Examples
+
+**Grant users full access to their personal namespace in the `dev` warehouse:**
+
+If users authenticate with an OIDC provider where `source_id` is an email (e.g. `alice@example.com`), and you configure a derivation to extract `username`, this policy lets each user perform any action on the namespace resource itself (e.g. list tables, create tables) — but only within the `dev` warehouse. It does not automatically grant access to tables, views, or child namespaces within it; those require separate policies:
+
+```cedar
+permit(
+  principal is Lakekeeper::User,
+  action,
+  resource is Lakekeeper::Namespace
+) when {
+  resource.warehouse.name == "dev" &&
+  principal has derived_attributes &&
+  principal.derived_attributes.hasTag("username") &&
+  resource.name == principal.derived_attributes.getTag("username")
+};
+```
+
+This allows user `alice@example.com` to perform any action on namespace `alice` in warehouse `dev`.
+
 ## Entity Hierarchy and Context
 
 For each authorization request, Lakekeeper provides Cedar with the complete entity hierarchy from the requested resource to the server root. This hierarchical context ensures policies have full visibility into the resource's location and relationships.
@@ -239,16 +314,17 @@ This hierarchy allows policies to reference any level in the path — you can gr
 
 The following table documents the ID format used for each Cedar entity type. These IDs appear as the `id` field inside `uid` in entity JSON, and as the string literal in policy rules (e.g. `Lakekeeper::User::"oidc~alice"`).
 
-| Entity type                          | ID format                                   | Example |
-|--------------------------------------|---------------------------------------------|-----|
-| `Lakekeeper::Server`                 | UUIDv7 (auto-assigned, one per deployment)  | `019c192e-cc20-7a13-a1ac-2e3390f81908` |
-| `Lakekeeper::Project`                | String (alphanumeric, hyphens, underscores) | `my-project` or `019c192f-0613-7422-90f1-7dd6b09f033c` |
-| `Lakekeeper::Warehouse`              | UUIDv7 (assigned at warehouse creation)     | `d08dca76-ff69-11f0-9aa6-ab201d553ec5` |
-| <nobr>`Lakekeeper::Namespace`</nobr> | UUIDv7 (assigned at namespace creation)     | `019c192f-18c2-7f93-848f-542d8f32bc3c` |
-| `Lakekeeper::Table`                  | `<warehouse-uuid>/<table-uuid>`             | `d08dca76-.../019c192f-...` |
-| `Lakekeeper::View`                   | `<warehouse-uuid>/<view-uuid>`              | `d08dca76-.../019c192f-...` |
-| `Lakekeeper::User`                   | `<provider_id>~<subject_in_idp>`            | `oidc~alice@example.com` |
-| `Lakekeeper::Role`                   | `<project-id>/<provider_id>~<source_id>`    | `my-project/oidc~data-admins` |
+| Entity type                                      | ID format                                   | Example |
+|--------------------------------------------------|---------------------------------------------|-----|
+| `Lakekeeper::Server`                             | UUIDv7 (auto-assigned, one per deployment)  | `019c192e-cc20-7a13-a1ac-2e3390f81908` |
+| `Lakekeeper::Project`                            | String (alphanumeric, hyphens, underscores) | `my-project` or `019c192f-0613-7422-90f1-7dd6b09f033c` |
+| `Lakekeeper::Warehouse`                          | UUIDv7 (assigned at warehouse creation)     | `d08dca76-ff69-11f0-9aa6-ab201d553ec5` |
+| <nobr>`Lakekeeper::Namespace`</nobr>             | UUIDv7 (assigned at namespace creation)     | `019c192f-18c2-7f93-848f-542d8f32bc3c` |
+| `Lakekeeper::Table`                              | `<warehouse-uuid>/<table-uuid>`             | `d08dca76-.../019c192f-...` |
+| `Lakekeeper::View`                               | `<warehouse-uuid>/<view-uuid>`              | `d08dca76-.../019c192f-...` |
+| `Lakekeeper::User`                               | `<provider_id>~<subject_in_idp>`            | `oidc~alice@example.com` |
+| `Lakekeeper::Role`                               | `<project-id>/<provider_id>~<source_id>`    | `my-project/oidc~data-admins` |
+| <nobr>`Lakekeeper::UserDerivedAttributes`</nobr> | Same ID as the owning `User` (1:1)          | `oidc~alice@example.com` |
 
 **Notes:**
 
@@ -1015,8 +1091,8 @@ All property contexts use the `ResourceProperties` entity type (same structure a
 | Action                                    | Context fields                   |
 |-------------------------------------------|----------------------------------|
 | `CreateProject`                           | `project_name?: String`, `project_id?: String` |
-| `CreateWarehouse`                         | `warehouse_name?: String` |
-| `CreateRole`                              | `role_name?: String` |
+| `CreateWarehouse`                         | `warehouse_name?: String`        |
+| `CreateRole`                              | `role_name?: String`             |
 | `CreateNamespaceInWarehouse`              | `namespace_name?: String`, `initial_namespace_properties: ResourceProperties` |
 | <nobr>`CreateNamespaceInNamespace`</nobr> | `namespace_name?: String`, `initial_namespace_properties: ResourceProperties` |
 | `CreateTable`                             | `table_name?: String`, `table_id?: String`, `initial_table_properties: ResourceProperties` |
