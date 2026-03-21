@@ -230,8 +230,11 @@ Each derivation rule specifies:
 
 - **`source`**: which identity field to match against — `source_id` (the user's subject in the IdP) or `provider_id` (e.g. `oidc`, `kubernetes`)
 - **`pattern`**: a regex with [named capture groups](https://docs.rs/regex/latest/regex/#grouping-and-flags) (`(?<name>...)`)
+- **`transform`** *(optional)*: a transformation applied to every captured value before it becomes a tag — `none` (default), `lowercase`, or `uppercase`
 
 Every named group that matches a non-empty substring becomes a string tag on the `UserDerivedAttributes` entity. Empty captures are silently skipped.
+
+Because Cedar has no built-in case-insensitive string comparison or `toLowerCase()` function, use `transform = "lowercase"` to normalize captured values so that policies can compare them against known-case literals. If different capture groups need different transforms, define separate derivation entries with distinct regexes.
 
 ### Configuration
 
@@ -240,11 +243,13 @@ Derivations are configured as a map under `LAKEKEEPER__CEDAR__USER_DERIVATIONS`.
 **Environment variables:**
 
 ```sh
-# Extract "username" and "domain" from source_id (e.g. "alice@example.com")
+# Extract "username" and "domain" from source_id (e.g. "Alice@Example.COM"),
+# lowercased so policies can compare against known-case literals.
 LAKEKEEPER__CEDAR__USER_DERIVATIONS__EMAIL_PARTS__SOURCE=source_id
 LAKEKEEPER__CEDAR__USER_DERIVATIONS__EMAIL_PARTS__PATTERN=^(?<username>[^@]+)@(?<domain>.+)$
+LAKEKEEPER__CEDAR__USER_DERIVATIONS__EMAIL_PARTS__TRANSFORM=lowercase
 
-# Extract Kubernetes service account parts from source_id
+# Extract Kubernetes service account parts from source_id (no transform needed)
 LAKEKEEPER__CEDAR__USER_DERIVATIONS__K8S_SA__SOURCE=source_id
 LAKEKEEPER__CEDAR__USER_DERIVATIONS__K8S_SA__PATTERN=^system:serviceaccount:(?<namespace>[^:]+):(?<sa_name>.+)$
 ```
@@ -253,8 +258,9 @@ LAKEKEEPER__CEDAR__USER_DERIVATIONS__K8S_SA__PATTERN=^system:serviceaccount:(?<n
 
 ```toml
 [cedar.user_derivations.email_parts]
-source  = "source_id"
-pattern = "^(?<username>[^@]+)@(?<domain>.+)$"
+source    = "source_id"
+pattern   = "^(?<username>[^@]+)@(?<domain>.+)$"
+transform = "lowercase"   # "none" (default), "lowercase", "uppercase"
 
 [cedar.user_derivations.k8s_sa]
 source  = "source_id"
@@ -278,7 +284,7 @@ principal.derived_attributes.getTag("username")
 
 **Grant users full access to their personal namespace in the `dev` warehouse:**
 
-If users authenticate with an OIDC provider where `source_id` is an email (e.g. `alice@example.com`), and you configure a derivation to extract `username`, this policy lets each user perform any action on the namespace resource itself (e.g. list tables, create tables) — but only within the `dev` warehouse. It does not automatically grant access to tables, views, or child namespaces within it; those require separate policies:
+If users authenticate with an OIDC provider where `source_id` is an email (e.g. `Alice@Example.COM`), and you configure a derivation with `transform = "lowercase"` to extract `username`, this policy lets each user perform any action on the namespace resource itself (e.g. list tables, create tables) — but only within the `dev` warehouse. The `lowercase` transform ensures the comparison works regardless of the casing in the IdP's subject claim. It does not automatically grant access to tables, views, or child namespaces within it; those require separate policies:
 
 ```cedar
 permit(
