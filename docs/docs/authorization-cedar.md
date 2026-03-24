@@ -114,6 +114,24 @@ when {
 };
 ```
 
+### Property-based `global_role_ids` matching
+
+When `GLOBAL_ROLE_IDS_ENABLED` is set, both `User` and `ResourcePropertyValue` expose `global_role_ids` as plain `Set<String>`. This enables provider-agnostic property-based access control — no need to align provider prefixes between the user's roles and the property tag references:
+
+```cedar
+// Grant read access when the user shares any role with the table's access_read tag.
+// Works regardless of whether roles come from OIDC, LDAP, or any other provider.
+permit (
+    principal is Lakekeeper::User,
+    action in [Lakekeeper::Action::"TableSelectActions"],
+    resource is Lakekeeper::Table
+)
+when {
+    resource.properties.hasTag("access_read") &&
+    resource.properties.getTag("access_read").global_role_ids.containsAny(principal.global_role_ids)
+};
+```
+
 ## Property-Based Access Control
 
 Lakekeeper can parse roles and users directly from Table, Namespace, and View properties. This enables a powerful ABAC pattern where access control lists are stored as resource metadata, and Cedar policies grant access based on those lists — without maintaining a separate role-assignment file.
@@ -124,9 +142,10 @@ Every Table, Namespace, and View entity carries a `properties` attribute of type
 
 ```
 type ResourcePropertyValue = {
-    raw:   String,        // original value as stored
-    roles: Set<Role>,     // parsed Lakekeeper::Role entity references
-    users: Set<User>,     // parsed Lakekeeper::User entity references
+    raw:            String,        // original value as stored
+    roles:          Set<Role>,     // parsed Lakekeeper::Role entity references
+    users:          Set<User>,     // parsed Lakekeeper::User entity references
+    global_role_ids: Set<String>,  // source_id of each parsed role (requires GLOBAL_ROLE_IDS_ENABLED)
 }
 ```
 
@@ -189,12 +208,12 @@ Access-control property values must be a JSON array of typed entity references:
 
 | Format                                          | Description                |
 |-------------------------------------------------|----------------------------|
-| `role:<source-id>`                              | Short form — uses the default identity provider. Requires exactly one Authenticator to be configured. |
-| `role-full:<provider>~<source-id>`              | Full form — provider name is explicit. Works with any configured identity provider. |
+| `role:<source-id>`                              | Short form — uses the default role provider. |
+| `role-full:<provider>~<source-id>`              | Full form — provider name is explicit. Works with any configured role or identity provider. |
 | `role-full:<project-id>/<provider>~<source-id>` | Full form with an explicit project scope. Useful in multi-project setups when referencing a role from a different project. |
 | `user:<user-id>`                                | References a specific user by their identity-provider ID (e.g. `user:oidc~alice@example.com`). |
 
-The `provider` in `role-full:` must match one of the configured Authenticator IDs. When there is exactly one OIDC provider, `role:` (short form) automatically resolves to it; when there are multiple, you must use the full form.
+The default provider for the `role:` short form is determined as follows: if a role provider (e.g. LDAP) is configured, its provider ID is used; otherwise, if exactly one identity provider (e.g. OIDC) is registered, it becomes the default. When there are multiple providers and no single default can be determined, you must use the `role-full:` form.
 
 The entire property value is a **JSON-encoded string** containing an array of these references. For example:
 
