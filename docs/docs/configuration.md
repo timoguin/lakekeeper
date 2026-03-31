@@ -15,7 +15,7 @@ Some Lakekeeper endpoints return links pointing at Lakekeeper itself. By default
 | <nobr>`LAKEKEEPER__BASE_URI`</nobr>                | <nobr>`https://example.com:8181`<nobr> | Optional base-URL where the catalog is externally reachable. Default: `None`. See [Routing and Base-URL](#routing-and-base-url). |
 | <nobr>`LAKEKEEPER__ENABLE_DEFAULT_PROJECT`<nobr>   | `true`                                 | If `true`, the NIL Project ID ("00000000-0000-0000-0000-000000000000") is used as a default if the user does not specify a project when connecting. This option is enabled by default, which we recommend for all single-project (single-tenant) setups. Default: `true`. |
 | `LAKEKEEPER__RESERVED_NAMESPACES`                  | `system,examples,information_schema`   | Reserved Namespaces that cannot be created via the REST interface |
-| `LAKEKEEPER__METRICS_PORT`                         | `9000`                                 | Port where the Prometheus metrics endpoint is reachable. Default: `9000` |
+| `LAKEKEEPER__METRICS__PORT`                        | `9000`                                 | Port where the Prometheus metrics endpoint is reachable. Default: `9000` |
 | `LAKEKEEPER__LISTEN_PORT`                          | `8181`                                 | Port Lakekeeper listens on. Default: `8181` |
 | `LAKEKEEPER__BIND_IP`                              | `0.0.0.0`, `::1`, `::`                 | IP Address Lakekeeper binds to. Default: `0.0.0.0` (listen to all incoming IPv4 packages) |
 | `LAKEKEEPER__SECRET_BACKEND`                       | `postgres`                             | The secret backend to use. If `kv2` (Hashicorp KV Version 2) is chosen, you need to provide [additional parameters](#vault-kv-version-2) Default: `postgres`, one-of: [`postgres`, `kv2`] |
@@ -253,6 +253,8 @@ Please check the [Authorization User Guide](./authorization.md#authorization-wit
 | `LAKEKEEPER__CEDAR__USER_DERIVATIONS__<NAME>__SOURCE`  | `source_id`                                             | Source field for a user identity derivation rule. Supported values: `source_id` (the user's subject in the IdP) or `provider_id` (e.g. `oidc`, `kubernetes`). `<NAME>` is a human-readable key (e.g. `EMAIL_PARTS`) used in error messages. See [User Identity Derivations](./authorization.md#user-identity-derivations). |
 | `LAKEKEEPER__CEDAR__USER_DERIVATIONS__<NAME>__PATTERN` | <nobr>`^(?<username>[^@]+)`<br>`@(?<domain>.+)$`</nobr> | Regex pattern with named capture groups for a user identity derivation rule. Each named group that matches a non-empty substring becomes a string tag on the `UserDerivedAttributes` entity, accessible in policies via `principal.derived_attributes.hasTag("…")` / `principal.derived_attributes.getTag("…")`. Invalid patterns cause a startup error. See [User Identity Derivations](./authorization.md#user-identity-derivations). |
 | `LAKEKEEPER__CEDAR__USER_DERIVATIONS__<NAME>__TRANSFORM` | `lowercase` | Optional transformation applied to all captured values before they become Cedar tags. Supported values: `none` (default — keep as-is), `lowercase`, `uppercase`. Because Cedar string comparison is case-sensitive, use `lowercase` to normalize captured values so policies can compare against a known-case literal (e.g. `getTag("domain") == "example.com"`). If different capture groups need different transforms, use separate derivation entries with distinct regexes. See [User Identity Derivations](./authorization.md#user-identity-derivations). |
+
+
 
 **Debug configurations for Cedar**
 
@@ -570,6 +572,14 @@ LAKEKEEPER__ROLE_PROVIDER_FILE=/etc/lakekeeper/role-providers.toml
 > LAKEKEEPER__ROLE_PROVIDER_FILE=/etc/lakekeeper/role-providers.toml
 > LAKEKEEPER__ROLE_PROVIDER__CORPORATE__BIND_PASSWORD=s3cr3t
 > ```
+
+### Tokio Runtime Metrics
+
+Lakekeeper emits [Tokio Runtime Metrics](https://github.com/tokio-rs/tokio-metrics?tab=readme-ov-file#runtime-metrics) with a default report interval of 30 seconds. If necessary, this interval can be fine-tuned.
+
+| Variable                                                   | Example | Description                                                                                  |
+|------------------------------------------------------------|---------|----------------------------------------------------------------------------------------------|
+| <nobr>`LAKEKEEPER__METRICS__TOKIO__REPORT_INTERVAL`</nobr> | `30s`   | Length of interval for which Tokio Runtime Metrics are collected and emitted. Default: `30s` |
 
 ### Debug
 
