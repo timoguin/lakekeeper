@@ -1950,6 +1950,7 @@ pub(crate) mod tests {
                 version: 0.into(),
             }),
             parent: None,
+            requested_ident: None,
         }
     );
     test_block_action!(
@@ -1969,6 +1970,7 @@ pub(crate) mod tests {
                     version: 0.into(),
                 }),
                 parent: None,
+                requested_ident: None,
             },
             parents: vec![]
         },
@@ -1991,6 +1993,7 @@ pub(crate) mod tests {
                     version: 0.into(),
                 }),
                 parent: None,
+                requested_ident: None,
             },
             parents: vec![]
         },

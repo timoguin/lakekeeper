@@ -3,7 +3,6 @@ use std::{sync::LazyLock, time::Duration};
 use axum_prometheus::metrics;
 use iceberg::NamespaceIdent;
 use moka::{future::Cache, notification::RemovalCause};
-use unicase::UniCase;
 
 #[cfg(feature = "router")]
 use crate::service::events::{self, EventListener};
@@ -77,12 +76,12 @@ pub(crate) static NAMESPACE_CACHE: LazyLock<Cache<NamespaceId, NamespaceWithPare
             .build()
     });
 
-// WarehouseId, Case Insensitive NamespaceIdent
-type NamespaceCacheKey = (WarehouseId, Vec<UniCase<String>>);
+// WarehouseId, NamespaceIdent components (plain strings, case-sensitive key).
+// Same case → cache hit. Different case → cache miss → DB lookup → new cache entry.
+// No Rust-side case folding: the DB (ICU collation) is the sole authority for case-insensitive matching.
+type NamespaceCacheKey = (WarehouseId, Vec<String>);
 
 // Secondary index: (warehouse_id, namespace_ident) → namespace_id
-// Uses Vec<UniCase<String>> for case-insensitive namespace identifier lookups
-// Each component of the namespace path is stored as UniCase to handle dots in names correctly
 pub(crate) static IDENT_TO_ID_CACHE: LazyLock<Cache<NamespaceCacheKey, NamespaceId>> =
     LazyLock::new(|| {
         Cache::builder()
@@ -128,11 +127,33 @@ pub(super) async fn namespace_cache_insert(namespace: NamespaceWithParent) {
         }
 
         tracing::debug!("Inserting namespace id {namespace_id} into cache");
-        let cache_key = namespace_ident_to_cache_key(&namespace.namespace.namespace_ident);
-        tokio::join!(
-            NAMESPACE_CACHE.insert(namespace_id, namespace.clone()),
-            IDENT_TO_ID_CACHE.insert((warehouse_id, cache_key), namespace_id),
-        );
+        // The NAMESPACE_CACHE (id → data) always stores canonical case only. This
+        // guarantees id-based lookups return deterministic case, independent of
+        // which earlier caller (with whatever case variant) populated the cache.
+        let canonical_entry = NamespaceWithParent {
+            namespace: namespace.namespace.clone(),
+            parent: namespace.parent,
+            requested_ident: None,
+        };
+        // The IDENT_TO_ID_CACHE (ident → id) is keyed by the caller's case, so the
+        // same caller's next lookup hits. Different case → cache miss → DB lookup
+        // (case-insensitive via ICU collation) → new cache entry for that case.
+        // The canonical-ident entry is also inserted so that looking up a namespace
+        // by its canonical case (e.g. after creation) hits the cache.
+        let user_key = namespace_ident_to_cache_key(namespace.namespace_ident());
+        let canonical_key = namespace_ident_to_cache_key(&namespace.namespace.namespace_ident);
+        if user_key == canonical_key {
+            tokio::join!(
+                NAMESPACE_CACHE.insert(namespace_id, canonical_entry),
+                IDENT_TO_ID_CACHE.insert((warehouse_id, user_key), namespace_id),
+            );
+        } else {
+            tokio::join!(
+                NAMESPACE_CACHE.insert(namespace_id, canonical_entry),
+                IDENT_TO_ID_CACHE.insert((warehouse_id, user_key), namespace_id),
+                IDENT_TO_ID_CACHE.insert((warehouse_id, canonical_key), namespace_id),
+            );
+        }
 
         update_cache_size_metric();
     }
@@ -253,33 +274,20 @@ async fn build_hierarchy_from_cache(namespace: &NamespaceWithParent) -> Option<N
 
 /// Convert a `NamespaceIdent` to a Vec<`UniCase`<String>> for case-insensitive comparison.
 /// This uses the inner Vec<String> to avoid issues with dots in namespace names.
-pub(crate) fn namespace_ident_to_cache_key(ident: &NamespaceIdent) -> Vec<UniCase<String>> {
-    ident
-        .clone()
-        .inner()
-        .into_iter()
-        .map(UniCase::new)
-        .collect()
+pub(crate) fn namespace_ident_to_cache_key(ident: &NamespaceIdent) -> Vec<String> {
+    ident.as_ref().clone()
 }
 
 fn is_parent_ident(child_ident: &NamespaceIdent, found_parent_ident: &NamespaceIdent) -> bool {
-    let child_ident_unicase = child_ident
-        .as_ref()
-        .iter()
-        .map(UniCase::new)
-        .collect::<Vec<_>>();
-    let found_parent_ident_unicase = found_parent_ident
-        .as_ref()
-        .iter()
-        .map(UniCase::new)
-        .collect::<Vec<_>>();
+    let child = child_ident.as_ref();
+    let parent = found_parent_ident.as_ref();
 
-    // Get the expected parent by removing the last element from child
-    let expected_parent_ident_unicase =
-        &child_ident_unicase[..child_ident_unicase.len().saturating_sub(1)];
-
-    // Compare the expected parent with the found parent
-    expected_parent_ident_unicase == found_parent_ident_unicase.as_slice()
+    // Both idents come from NAMESPACE_CACHE which only stores canonical case
+    // (requested_ident is stripped at insertion), so child_canonical[:-1] and
+    // parent_canonical are byte-identical by construction for any valid
+    // hierarchy. A mismatch here indicates stale cache state (e.g. rename).
+    let expected_parent = &child[..child.len().saturating_sub(1)];
+    expected_parent == parent
 }
 
 #[cfg(feature = "router")]
@@ -383,6 +391,7 @@ mod tests {
         NamespaceWithParent {
             namespace,
             parent: parent.map(|(id, version)| (id, version.into())),
+            requested_ident: None,
         }
     }
 
@@ -440,7 +449,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_namespace_cache_case_insensitive_lookup() {
+    async fn test_namespace_cache_case_sensitive_key() {
         let namespace_id = NamespaceId::new_random();
         let warehouse_id = WarehouseId::new_random();
         let namespace_ident = NamespaceIdent::from_vec(vec!["Test_Namespace".to_string()]).unwrap();
@@ -457,30 +466,25 @@ mod tests {
         // Insert namespace with mixed-case ident
         namespace_cache_insert_multiple(vec![namespace_with_parent]).await;
 
-        // Verify we can retrieve it with different case variations
+        // Same case → cache hit
+        let cached_exact = namespace_cache_get_by_ident(&namespace_ident, warehouse_id).await;
+        assert!(cached_exact.is_some());
+        assert_eq!(cached_exact.unwrap().namespace_id(), namespace_id);
+
+        // Different case → cache miss (DB handles case-insensitive matching)
         let cached_lower = namespace_cache_get_by_ident(
             &NamespaceIdent::from_vec(vec!["test_namespace".to_string()]).unwrap(),
             warehouse_id,
         )
         .await;
-        assert!(cached_lower.is_some());
-        assert_eq!(cached_lower.unwrap().namespace_id(), namespace_id);
+        assert!(cached_lower.is_none());
 
         let cached_upper = namespace_cache_get_by_ident(
             &NamespaceIdent::from_vec(vec!["TEST_NAMESPACE".to_string()]).unwrap(),
             warehouse_id,
         )
         .await;
-        assert!(cached_upper.is_some());
-        assert_eq!(cached_upper.unwrap().namespace_id(), namespace_id);
-
-        let cached_mixed = namespace_cache_get_by_ident(
-            &NamespaceIdent::from_vec(vec!["TeSt_NaMeSpAcE".to_string()]).unwrap(),
-            warehouse_id,
-        )
-        .await;
-        assert!(cached_mixed.is_some());
-        assert_eq!(cached_mixed.unwrap().namespace_id(), namespace_id);
+        assert!(cached_upper.is_none());
     }
 
     #[tokio::test]
