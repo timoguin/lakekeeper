@@ -5,6 +5,7 @@ use lakekeeper::{
     service::{
         NamespaceId, ProjectId, RoleId, ServerId, TableId, ViewId, WarehouseId,
         authn::{Actor, UserId},
+        authz::{RoleAssignee as AuthzRoleAssignee, UserOrRole as AuthzUserOrRole},
     },
 };
 
@@ -53,6 +54,32 @@ impl OpenFgaEntity for RoleAssignee {
 
     fn openfga_type(&self) -> FgaType {
         FgaType::Role
+    }
+}
+
+impl OpenFgaEntity for AuthzRoleAssignee {
+    fn to_openfga(&self) -> String {
+        format!("{}#assignee", self.role().id.to_openfga())
+    }
+
+    fn openfga_type(&self) -> FgaType {
+        FgaType::Role
+    }
+}
+
+impl OpenFgaEntity for AuthzUserOrRole {
+    fn to_openfga(&self) -> String {
+        match self {
+            AuthzUserOrRole::User(user) => user.to_openfga(),
+            AuthzUserOrRole::Role(role) => role.to_openfga(),
+        }
+    }
+
+    fn openfga_type(&self) -> FgaType {
+        match self {
+            AuthzUserOrRole::User(_) => FgaType::User,
+            AuthzUserOrRole::Role(_) => FgaType::Role,
+        }
     }
 }
 
