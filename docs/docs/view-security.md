@@ -136,7 +136,16 @@ Views expose two authorization checkpoints:
 - `get_metadata` (control-plane) — listing the view, reading its definition, returning it from `loadView`.
 - `select` (data-plane) — executing the view to produce rows, including traversing a DEFINER chain into the underlying table.
 
-In the default OpenFGA model both actions resolve to the same underlying grant (the `describe` relation), so a user who can inspect a view can also execute it — no extra grant is needed. The split is a *policy* distinction, not a grant distinction: it lets policies that differentiate the data and control planes react appropriately. For example, the instance-admin bypass applies to `get_metadata` but not to `select`, matching the same carve-out that already excludes `read_data` / `write_data` on tables. Operator-style identities can list and manage views they have no explicit access to, but cannot execute them through a referenced-by chain unless the authorizer grants `select` against that view.
+`get_metadata` and `select` are **distinct actions** that an authorizer evaluates independently. By convention, a principal who can `select` a view can also `get_metadata` on it (someone allowed to query must also be allowed to inspect); the reverse does not hold. How you grant each is authorizer-specific — see the [OpenFGA](./authorization-openfga.md) or [Cedar](./authorization-cedar.md) docs for the concrete grant names.
+
+**When does the split matter in practice?**
+
+- **View with no downstream objects** (e.g. `SELECT 1`). No referenced-by chain is built, so `select` is never checked via the chain. `get_metadata` on the view is enough for `loadView` (reading the SQL). `select` is only required if the engine actually executes the view (which it does via the OPA bridge, see below).
+- **INVOKER view referencing other objects.** The referenced-by chain emits `select` on the view. Downstream objects are checked against the **caller**. The caller needs `select` on the view to traverse the chain plus `read_data` / `write_data` on downstream tables.
+- **DEFINER view.** Same `select`-on-view requirement for the caller, but downstream objects are checked against the **owner**. `select` on the view is what gates the caller from entering the owner's context without explicit permission. This is also the boundary where the instance-admin `get_metadata` bypass stops short — admins cannot traverse a DEFINER chain they weren't granted `select` on.
+- **OPA bridge.** When the engine is fronted by the [OPA bridge](./opa.md), the bridge issues a `select` check on the view for every query that returns data (via Trino's `SelectFromColumns`). Under the OPA bridge, `select` on the view is always required to read data.
+
+The data-plane / control-plane split lets policies differentiate the two dimensions — for example, the instance-admin bypass applies to `get_metadata` but not to `select`, matching the carve-out that already excludes `read_data` / `write_data` on tables. Operator-style identities can list and manage views they have no explicit access to, but cannot execute them through a referenced-by chain without `select` on that view.
 
 Every view in a referenced-by chain is checked for *both* actions. The target of `loadView` is checked only for `get_metadata`.
 
