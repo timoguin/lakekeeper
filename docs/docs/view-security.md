@@ -86,6 +86,23 @@ LAKEKEEPER__TRUSTED_ENGINES__TRINO__OWNER_PROPERTY=trino.run-as-owner
 LAKEKEEPER__TRUSTED_ENGINES__TRINO__IDENTITIES__OIDC__AUDIENCES=[trino]
 ```
 
+Matching is **scoped to the IdP** the token was issued by. Each engine's `IDENTITIES` block is keyed per IdP (e.g. `IDENTITIES__OIDC__...`), and a token is only tested against the block matching its own IdP. Within that block, a request is matched when **either** its audience appears in `AUDIENCES` **or** its subject appears in `SUBJECTS`. Use `SUBJECTS` when the IdP does not mint a distinguishing audience — for example, to trust a specific service-account's subject UUID directly:
+
+```bash
+LAKEKEEPER__TRUSTED_ENGINES__TRINO__IDENTITIES__OIDC__SUBJECTS=["<trino-service-account-subject>"]
+```
+
+**What happens when a request is not matched as a trusted engine:**
+
+- `loadTable` / `loadView` requests that include a `referenced-by` parameter are **silently ignored** with respect to that parameter — the load still succeeds, but the DEFINER chain is not resolved and permissions are evaluated against the caller only. This is logged at debug level; no error is returned.
+- Only **commits that actually attempt to set or remove a protected owner property** (`create-view` or `commit-view` writing `trino.run-as-owner`) are rejected with `403 ProtectedPropertyModification`. An ignored `referenced-by` on a load does **not** trigger this error.
+
+!!! note "When using the OPA bridge"
+
+    The [OPA bridge](./opa.md) authenticates to Lakekeeper with its own client credentials to evaluate permission checks. We recommend it runs under a **dedicated** Keycloak client with narrower privileges than the Trino catalog client — not a shared one.
+
+    If the OPA bridge issues `loadTable` / `loadView` requests with `referenced-by` on behalf of Trino, its client must be matched as a trusted engine so DEFINER chains are resolved rather than ignored. Add its service-account subject under `SUBJECTS` (or its audience under `AUDIENCES` if your IdP mints distinguishing audiences). Permission-check traffic itself is not gated by trusted-engine status — the `ProtectedPropertyModification` rejection only applies to DDL that writes a protected owner property, not to the OPA bridge's routine check calls.
+
 ### Creating DEFINER Views
 
 Once trusted engines are configured, only matched engines can set the owner property on views. In Trino, DEFINER views are created with:
@@ -122,6 +139,8 @@ Trino automatically sets the `trino.run-as-owner` property on the view with the 
 Once a trusted engine is configured, the owner property (e.g. `trino.run-as-owner`) becomes **protected**: only requests from a matched engine can set or remove it. This prevents privilege escalation — without this protection, any user who can commit to a view could set themselves as the DEFINER owner and gain access to tables they shouldn't see.
 
 Non-engine requests that attempt to modify a protected property receive a `403 Forbidden` error with type `ProtectedPropertyModification`.
+
+Protection is **case-insensitive on the match, case-sensitive on the accepted value**: a property key that differs from the configured owner property only in casing (e.g. `Trino.Run-As-Owner` when the admin configured `trino.run-as-owner`) is also rejected. Most engines read the owner property with fixed casing, so a case variant would silently have no effect on the security model while appearing to set it — only the exact key configured by the admin is accepted.
 
 ## Security Considerations
 
