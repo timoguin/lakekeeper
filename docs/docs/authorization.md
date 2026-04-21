@@ -19,16 +19,21 @@ Check the [Authorization Configuration](./configuration.md#authorization) for se
 
 *Available since Lakekeeper 0.12.1.*
 
-"Instance admins" are principals granted privileged access via deployment
-configuration rather than through the selected Authorizer. They exist so that
-deployment-time operators — typically a Kubernetes Operator reconciling
-Lakekeeper resources — can always administer the catalog, even if users
-misconfigure their authz backend (for example by deleting the last OpenFGA
-admin tuple or deploying a restrictive Cedar policy that denies everything).
+**Instance admins** are principals listed directly in Lakekeeper's static
+configuration. They bypass the configured Authorizer for administrative
+actions, so they can always manage the catalog — even if the Authorizer
+itself is broken or misconfigured.
+
+The typical instance admin is an automation account: a Kubernetes Operator
+reconciling Lakekeeper resources, for example, or an infrastructure admin
+responsible for operating the deployment. Without this mechanism, common
+failure modes would lock everyone out — for instance, deleting the last
+OpenFGA admin tuple, or deploying a Cedar policy that denies everything.
 
 ### Scope
 
 Instance admins bypass authorization for **control-plane** operations:
+
 - Bootstrap.
 - Project, role, warehouse, namespace management.
 - Table / view metadata operations, including `GetMetadata`, `Commit`,
@@ -36,6 +41,7 @@ Instance admins bypass authorization for **control-plane** operations:
 - User management.
 
 Instance admins do **not** bypass authorization for:
+
 - **Data-plane operations** — `CatalogTableAction::ReadData`,
   `CatalogTableAction::WriteData`, and `CatalogViewAction::Select` still
   route through the configured Authorizer. If the instance admin does not
