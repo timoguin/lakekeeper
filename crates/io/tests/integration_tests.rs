@@ -1,9 +1,9 @@
 use core::panic;
-use std::{future::Future, str::FromStr, sync::LazyLock};
+use std::{future::Future, sync::LazyLock};
 
 use bytes::Bytes;
 use futures::StreamExt;
-use lakekeeper_io::{LakekeeperStorage, Location, StorageBackend, execute_with_parallelism};
+use lakekeeper_io::{LakekeeperStorage, StorageBackend, execute_with_parallelism};
 use tokio::{
     runtime::Runtime,
     time::{Duration, Instant, sleep},
@@ -1052,18 +1052,13 @@ async fn test_special_characters_impl(
     let base_dir = config.test_dir_path("special-chars-test");
     let mut written_paths = Vec::new();
 
-    // Write files with special characters. Note: `Location::from_str`
-    // canonicalises filenames (literal space → `%20`, non-ASCII →
-    // percent-encoded UTF-8 bytes), so we record the canonical form to
-    // compare against the cloud's `list` output below — the cloud stores
-    // and returns the canonical bytes.
+    // Write files with special characters
     for filename in &special_files {
-        let raw_path = format!("{base_dir}{filename}");
+        let path = format!("{base_dir}{filename}");
         storage
-            .write(&raw_path, Bytes::from(format!("Content of {filename}")))
+            .write(&path, Bytes::from(format!("Content of {filename}")))
             .await?;
-        let canonical_path = Location::from_str(&raw_path)?.to_string();
-        written_paths.push(canonical_path);
+        written_paths.push(path);
     }
 
     // Read all files back
@@ -1118,17 +1113,15 @@ async fn test_special_characters_impl(
 }
 
 /// Like `test_special_characters_impl` but the special chars appear as
-/// path segments inside URL-style locations — covering both
-/// pre-percent-encoded segments (e.g. `%3F`, `%20`) and raw non-ASCII
-/// Unicode (e.g. `üñîçødé`, `日本語`). Both forms must round-trip
-/// write → read → list when used as a directory name. This is what
+/// pre-percent-encoded URL segments (e.g. `%3F`, `%20`) — what
 /// Lakekeeper REST receives when a client provides a URL-style location.
 async fn test_special_characters_in_url_segments_impl(
     storage: &StorageBackend,
     config: &TestConfig,
 ) -> anyhow::Result<()> {
-    // Positive: percent-encoded *and* raw-Unicode segments that must
-    // round-trip end-to-end through write → read → list.
+    // Each entry: a URL-encoded path segment that should round-trip through
+    // write → read → list when used as a directory name in a URL location.
+    // Positive: segments that must round-trip end-to-end.
     let positive_segments = vec![
         "%3F",     // ?
         "%22",     // "
