@@ -274,6 +274,7 @@ where
         storage_profile: StorageProfile,
         tabular_delete_profile: TabularDeleteProfile,
         storage_secret_id: Option<SecretId>,
+        format_version_policy: WarehouseFormatVersionPolicy,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'a>,
     ) -> std::result::Result<ResolvedWarehouse, CatalogCreateWarehouseError>;
 
@@ -349,6 +350,13 @@ where
         protect: bool,
         transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
     ) -> std::result::Result<ResolvedWarehouse, SetWarehouseProtectedError>;
+
+    /// Set the per-warehouse Iceberg table format version policy.
+    async fn set_warehouse_format_version_policy_impl(
+        warehouse_id: WarehouseId,
+        policy: &WarehouseFormatVersionPolicy,
+        transaction: <Self::Transaction as Transaction<Self::State>>::Transaction<'_>,
+    ) -> std::result::Result<ResolvedWarehouse, SetWarehouseFormatVersionPolicyError>;
 
     // ---------------- Namespace Management ----------------
     // Should only return namespaces if the warehouse is active.
