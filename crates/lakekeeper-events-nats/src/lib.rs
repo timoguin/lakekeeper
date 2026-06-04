@@ -1,13 +1,23 @@
+//! NATS cloud-events publisher for Lakekeeper.
+//!
+//! Implements [`lakekeeper::service::events::CloudEventBackend`] for a NATS
+//! client. Configured via env vars under the same `LAKEKEEPER__` /
+//! `ICEBERG_REST__` prefix as core; the [`config::CONFIG`] static aggregates
+//! the NATS-specific fields.
+
+pub mod config;
+
 use async_trait::async_trait;
 use cloudevents::Event;
+use lakekeeper::service::events::CloudEventBackend;
 
-use crate::{CONFIG, service::events::CloudEventBackend};
+use crate::config::CONFIG;
 
-/// Generate a NATS publisher from the crates configuration.
+/// Generate a NATS publisher from the crate's configuration.
 /// Returns `None` if the NATS address or topic is not set.
 ///
 /// # Errors
-/// - If NATs is configured but the connection or authentication fails.
+/// - If NATS is configured but the connection or authentication fails.
 pub async fn build_nats_publisher_from_config() -> anyhow::Result<Option<NatsBackend>> {
     let (Some(nats_addr), Some(nats_topic)) =
         (CONFIG.nats_address.clone(), CONFIG.nats_topic.clone())
@@ -47,18 +57,19 @@ pub async fn build_nats_publisher_from_config() -> anyhow::Result<Option<NatsBac
         builder
     };
 
-    let nats_publisher = NatsBackend {
-        client: builder.connect(nats_addr.to_string()).await.map_err(|e| {
-            anyhow::anyhow!(e).context(format!("Failed to connect to NATS at {nats_addr}"))
-        })?,
-        topic: nats_topic.clone(),
-    };
+    let client = builder.connect(nats_addr.to_string()).await.map_err(|e| {
+        anyhow::anyhow!(e).context(format!("Failed to connect to NATS at {nats_addr}"))
+    })?;
+    let nats_publisher = NatsBackend::builder()
+        .client(client)
+        .topic(nats_topic.clone())
+        .build();
 
     tracing::info!("Publishing events to NATS topic {nats_topic}, NATS address is: {nats_addr}");
     Ok(Some(nats_publisher))
 }
 
-#[derive(Debug)]
+#[derive(Debug, typed_builder::TypedBuilder)]
 pub struct NatsBackend {
     pub client: async_nats::Client,
     pub topic: String,
