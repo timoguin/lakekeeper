@@ -24,6 +24,8 @@ use crate::{
     },
 };
 
+mod decision;
+pub use decision::*;
 mod error;
 pub mod implementations;
 pub use error::*;
@@ -1111,6 +1113,16 @@ impl<T> MustUse<T> {
         self.0
     }
 }
+
+impl MustUse<Vec<AuthorizationDecision>> {
+    /// Extract just the allow/deny flags, discarding the per-decision
+    /// diagnostics. For call sites that only need the boolean outcome.
+    #[must_use]
+    pub fn into_allowed(self) -> Vec<bool> {
+        self.0.into_iter().map(|d| d.allowed).collect()
+    }
+}
+
 #[async_trait::async_trait]
 /// Interface to provide Authorization functions to the catalog.
 /// For metadata passed into all methods except `check_actor`, the `actor()` in `RequestMetadata`
@@ -1199,35 +1211,35 @@ where
         metadata: &RequestMetadata,
         for_user: Option<&UserOrRole>,
         users_with_actions: &[(&UserId, Self::UserAction)],
-    ) -> Result<Vec<bool>, IsAllowedActionError>;
+    ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError>;
 
     async fn are_allowed_role_actions_impl(
         &self,
         metadata: &RequestMetadata,
         for_user: Option<&UserOrRole>,
         roles_with_actions: &[(&Role, Self::RoleAction)],
-    ) -> Result<Vec<bool>, IsAllowedActionError>;
+    ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError>;
 
     async fn are_allowed_server_actions_impl(
         &self,
         metadata: &RequestMetadata,
         for_user: Option<&UserOrRole>,
         actions: &[Self::ServerAction],
-    ) -> Result<Vec<bool>, IsAllowedActionError>;
+    ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError>;
 
     async fn are_allowed_project_actions_impl(
         &self,
         metadata: &RequestMetadata,
         for_user: Option<&UserOrRole>,
         projects_with_actions: &[(&ArcProjectId, Self::ProjectAction)],
-    ) -> Result<Vec<bool>, IsAllowedActionError>;
+    ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError>;
 
     async fn are_allowed_warehouse_actions_impl(
         &self,
         metadata: &RequestMetadata,
         for_user: Option<&UserOrRole>,
         warehouses_with_actions: &[(&ResolvedWarehouse, Self::WarehouseAction)],
-    ) -> Result<Vec<bool>, IsAllowedActionError>;
+    ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError>;
 
     async fn are_allowed_namespace_actions_impl(
         &self,
@@ -1236,7 +1248,7 @@ where
         warehouse: &ResolvedWarehouse,
         parent_namespaces: &HashMap<NamespaceId, NamespaceWithParent>,
         actions: &[(&impl AuthZNamespaceInfo, Self::NamespaceAction)],
-    ) -> Result<Vec<bool>, IsAllowedActionError>;
+    ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError>;
 
     /// Checks if actions are allowed on tables. If supported by the concrete implementation, these
     /// checks may happen in batches to avoid sending a separate request for each tuple.
@@ -1255,7 +1267,7 @@ where
             &NamespaceWithParent,
             ActionOnTable<'_, '_, impl AuthZTableInfo, A>,
         )],
-    ) -> Result<Vec<bool>, IsAllowedActionError>;
+    ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError>;
 
     /// Checks if actions are allowed on views. If supported by the concrete implementation, these
     /// checks may happen in batches to avoid sending a separate request for each tuple.
@@ -1274,7 +1286,7 @@ where
             &NamespaceWithParent,
             ActionOnView<'_, '_, impl AuthZViewInfo, A>,
         )],
-    ) -> Result<Vec<bool>, IsAllowedActionError>;
+    ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError>;
 
     /// Checks if actions are allowed on generic tables.
     async fn are_allowed_generic_table_actions_impl<
@@ -1288,7 +1300,7 @@ where
             &NamespaceWithParent,
             ActionOnGenericTable<'_, '_, impl AuthZGenericTableInfo, A>,
         )],
-    ) -> Result<Vec<bool>, IsAllowedActionError>;
+    ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError>;
 
     /// Hook that is called when a user is deleted.
     async fn delete_user(&self, metadata: &RequestMetadata, user_id: UserId) -> Result<()>;
@@ -2130,8 +2142,11 @@ pub mod tests {
             _metadata: &RequestMetadata,
             _for_user: Option<&UserOrRole>,
             users_with_actions: &[(&UserId, Self::UserAction)],
-        ) -> Result<Vec<bool>, IsAllowedActionError> {
-            Ok(vec![true; users_with_actions.len()])
+        ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError> {
+            Ok(vec![
+                AuthorizationDecision::allow();
+                users_with_actions.len()
+            ])
         }
 
         async fn are_allowed_role_actions_impl(
@@ -2139,7 +2154,7 @@ pub mod tests {
             _metadata: &RequestMetadata,
             _for_user: Option<&UserOrRole>,
             roles_with_actions: &[(&Role, Self::RoleAction)],
-        ) -> Result<Vec<bool>, IsAllowedActionError> {
+        ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError> {
             let results: Vec<bool> = roles_with_actions
                 .iter()
                 .map(|(role, action)| {
@@ -2149,7 +2164,10 @@ pub mod tests {
                     self.check_available(format!("role:{}", role.id).as_str())
                 })
                 .collect();
-            Ok(results)
+            Ok(results
+                .into_iter()
+                .map(AuthorizationDecision::from)
+                .collect())
         }
 
         async fn are_allowed_server_actions_impl(
@@ -2157,8 +2175,8 @@ pub mod tests {
             _metadata: &RequestMetadata,
             _for_user: Option<&UserOrRole>,
             actions: &[Self::ServerAction],
-        ) -> Result<Vec<bool>, IsAllowedActionError> {
-            Ok(vec![true; actions.len()])
+        ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError> {
+            Ok(vec![AuthorizationDecision::allow(); actions.len()])
         }
 
         async fn are_allowed_project_actions_impl(
@@ -2166,7 +2184,7 @@ pub mod tests {
             _metadata: &RequestMetadata,
             _for_user: Option<&UserOrRole>,
             projects_with_actions: &[(&ArcProjectId, Self::ProjectAction)],
-        ) -> Result<Vec<bool>, IsAllowedActionError> {
+        ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError> {
             let results: Vec<bool> = projects_with_actions
                 .iter()
                 .map(|(project_id, action)| {
@@ -2176,7 +2194,10 @@ pub mod tests {
                     self.check_available(format!("project:{project_id}").as_str())
                 })
                 .collect();
-            Ok(results)
+            Ok(results
+                .into_iter()
+                .map(AuthorizationDecision::from)
+                .collect())
         }
 
         async fn are_allowed_warehouse_actions_impl(
@@ -2184,7 +2205,7 @@ pub mod tests {
             _metadata: &RequestMetadata,
             _for_user: Option<&UserOrRole>,
             warehouses_with_actions: &[(&ResolvedWarehouse, Self::WarehouseAction)],
-        ) -> Result<Vec<bool>, IsAllowedActionError> {
+        ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError> {
             let results: Vec<bool> = warehouses_with_actions
                 .iter()
                 .map(|(warehouse, action)| {
@@ -2195,7 +2216,10 @@ pub mod tests {
                     self.check_available(format!("warehouse:{warehouse_id}").as_str())
                 })
                 .collect();
-            Ok(results)
+            Ok(results
+                .into_iter()
+                .map(AuthorizationDecision::from)
+                .collect())
         }
 
         async fn are_allowed_namespace_actions_impl(
@@ -2205,7 +2229,7 @@ pub mod tests {
             _warehouse: &ResolvedWarehouse,
             _parent_namespaces: &HashMap<NamespaceId, NamespaceWithParent>,
             actions: &[(&impl AuthZNamespaceInfo, Self::NamespaceAction)],
-        ) -> Result<Vec<bool>, IsAllowedActionError> {
+        ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError> {
             let results: Vec<bool> = actions
                 .iter()
                 .map(|(namespace, action)| {
@@ -2216,7 +2240,10 @@ pub mod tests {
                     self.check_available(format!("namespace:{namespace_id}").as_str())
                 })
                 .collect();
-            Ok(results)
+            Ok(results
+                .into_iter()
+                .map(AuthorizationDecision::from)
+                .collect())
         }
 
         async fn are_allowed_table_actions_impl<
@@ -2230,7 +2257,7 @@ pub mod tests {
                 &NamespaceWithParent,
                 ActionOnTable<'_, '_, impl AuthZTableInfo, A>,
             )],
-        ) -> Result<Vec<bool>, IsAllowedActionError> {
+        ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError> {
             // `action.user == None` means "acting as self" (subject = actor),
             // so per-user hiding for the actor must still apply.
             let actor_identity = metadata.actor().to_user_or_role();
@@ -2249,7 +2276,10 @@ pub mod tests {
                     self.check_available_for_user(&object, subject)
                 })
                 .collect();
-            Ok(results)
+            Ok(results
+                .into_iter()
+                .map(AuthorizationDecision::from)
+                .collect())
         }
 
         async fn are_allowed_view_actions_impl<A: Into<Self::ViewAction> + Send + Clone + Sync>(
@@ -2261,7 +2291,7 @@ pub mod tests {
                 &NamespaceWithParent,
                 ActionOnView<'_, '_, impl AuthZViewInfo, A>,
             )],
-        ) -> Result<Vec<bool>, IsAllowedActionError> {
+        ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError> {
             // See the table impl above for why we fall back to the actor.
             let actor_identity = metadata.actor().to_user_or_role();
             let results: Vec<bool> = actions
@@ -2279,7 +2309,10 @@ pub mod tests {
                     self.check_available_for_user(&object, subject)
                 })
                 .collect();
-            Ok(results)
+            Ok(results
+                .into_iter()
+                .map(AuthorizationDecision::from)
+                .collect())
         }
 
         async fn are_allowed_generic_table_actions_impl<
@@ -2293,7 +2326,7 @@ pub mod tests {
                 &NamespaceWithParent,
                 ActionOnGenericTable<'_, '_, impl AuthZGenericTableInfo, A>,
             )],
-        ) -> Result<Vec<bool>, IsAllowedActionError> {
+        ) -> Result<Vec<AuthorizationDecision>, IsAllowedActionError> {
             // See the table impl above for why we fall back to the actor.
             let actor_identity = metadata.actor().to_user_or_role();
             let results: Vec<bool> = actions
@@ -2310,7 +2343,10 @@ pub mod tests {
                     self.check_available_for_user(&object, subject)
                 })
                 .collect();
-            Ok(results)
+            Ok(results
+                .into_iter()
+                .map(AuthorizationDecision::from)
+                .collect())
         }
 
         async fn delete_user(&self, _metadata: &RequestMetadata, _user_id: UserId) -> Result<()> {
