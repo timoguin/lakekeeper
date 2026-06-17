@@ -670,6 +670,8 @@ When enabled, Lakekeeper will use the managed identity of the virtual machine or
 
 ## OneLake (Microsoft Fabric)
 
+*Available since Lakekeeper 0.12.4.*
+
 Microsoft Fabric exposes its OneLake data lake through ADLS Gen2-compatible APIs, so Lakekeeper can back warehouses directly with a Fabric lakehouse using a dedicated `onelake` storage profile. The OneLake profile is a convenience layer over the generic ADLS profile: instead of asking you to encode the OneLake URL conventions yourself (`account_name = "onelake"`, container = workspace ID, key prefix = `<lakehouse>/Files/<dir>`), it derives those from the workspace and lakehouse UUIDs you provide. It also knows how to compute the workspace-scoped private-link endpoint host.
 
 !!! note
