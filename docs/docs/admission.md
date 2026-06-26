@@ -65,7 +65,7 @@ When set, the request **must** carry a bearer token; the gate fails closed if it
 
 ### `[admission_enforce.checks.<name>]`
 
-Each check is keyed by a name you choose (used in the cache key and logs). Use lowercase with `_`/`-` only, so env vars can express it.
+Each check is keyed by a name you choose (used in the cache key and logs). Use lowercase letters, digits, and underscores, so the name round-trips through `…__CHECKS__<NAME>__…` environment variables.
 
 | Key                | Required | Default          | Description                                                            |
 | ------------------ | -------- | ---------------- | --------------------------------------------------------------------- |
@@ -87,7 +87,7 @@ cache_ttl_secs   = 60
 type = "forward_caller_token"
 
 # A `403` here rejects the request outright.
-[admission_enforce.checks.instance-access]
+[admission_enforce.checks.instance_access]
 kind           = "gating"
 role_source_id = "instance-access"
 body = '''
@@ -98,7 +98,7 @@ body = '''
 '''
 
 # A `403` here only withholds the role; the request still proceeds.
-[admission_enforce.checks.workflow-editor]
+[admission_enforce.checks.workflow_editor]
 kind           = "role_granting"
 role_source_id = "workflow-editor"
 body = '''
@@ -112,7 +112,7 @@ body = '''
 The body shape is entirely yours — a different enforce API (e.g. OPA-style `{"input": {...}}`) is just a different `body`, with no code change:
 
 ```toml
-[admission_enforce.checks.can-read]
+[admission_enforce.checks.can_read]
 kind           = "gating"
 role_source_id = "reader"
 body = '''{ "input": { "user": "{{subject}}", "tenant": "acme", "verb": "read" } }'''
