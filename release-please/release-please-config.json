@@ -44,7 +44,27 @@
         {
             "type": "toml",
             "path": "Cargo.lock",
+            "jsonpath": "$.package[?(@.name.value == \"lakekeeper-events-kafka\")].version"
+        },
+        {
+            "type": "toml",
+            "path": "Cargo.lock",
+            "jsonpath": "$.package[?(@.name.value == \"lakekeeper-events-nats\")].version"
+        },
+        {
+            "type": "toml",
+            "path": "Cargo.lock",
+            "jsonpath": "$.package[?(@.name.value == \"lakekeeper-integration-tests\")].version"
+        },
+        {
+            "type": "toml",
+            "path": "Cargo.lock",
             "jsonpath": "$.package[?(@.name.value == \"lakekeeper-io\")].version"
+        },
+        {
+            "type": "toml",
+            "path": "Cargo.lock",
+            "jsonpath": "$.package[?(@.name.value == \"lakekeeper-secrets-kv2\")].version"
         },
         {
             "type": "toml",
