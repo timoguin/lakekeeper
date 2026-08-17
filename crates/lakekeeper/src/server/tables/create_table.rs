@@ -30,7 +30,7 @@ use crate::{
     },
     service::{
         AllowedFormatVersions, CachePolicy, CatalogIdempotencyOps, CatalogStore, CatalogTableOps,
-        State, TableCreation, TableId, TabularId, Transaction,
+        State, TableCreation, TableId, TabularId, TabularListFlags, Transaction,
         authz::{Authorizer, AuthzNamespaceOps, CatalogNamespaceAction},
         events::{
             APIEventContext,
@@ -121,13 +121,29 @@ pub(super) async fn create_table<C: CatalogStore, A: Authorizer + Clone, S: Secr
     // ------------------- IDEMPOTENCY CHECK -------------------
     let idempotency_key = request_metadata.idempotency_key().copied();
     if let Some(ref key) = idempotency_key {
-        let check =
-            C::check_idempotency_key(warehouse_id, key, state.v1_state.catalog.clone()).await?;
+        let check = C::check_idempotency_key(
+            warehouse_id,
+            key,
+            EndpointFlat::CatalogV1CreateTable,
+            state.v1_state.catalog.clone(),
+        )
+        .await?;
         if check.is_replay() {
             let table_ident = TableIdent::new(parameters.namespace.clone(), request.name.clone());
             let load_params = TableParameters {
                 prefix: parameters.prefix.clone(),
                 table: table_ident,
+            };
+            // `stage_create` tables are persisted with no metadata_location, and
+            // the original response returned exactly that. Replaying through an
+            // active-only load would 404 on a key whose request in fact
+            // succeeded. Only a staging retry gets the relaxation: `loadTable`
+            // otherwise refuses staged tables outright, so a plain create's key
+            // must not become a way to read one.
+            let list_flags = if request.stage_create.unwrap_or(false) {
+                TabularListFlags::active_and_staged()
+            } else {
+                TabularListFlags::active()
             };
             return super::replay_load_table::<C, A, S>(
                 load_params,
@@ -135,6 +151,7 @@ pub(super) async fn create_table<C: CatalogStore, A: Authorizer + Clone, S: Secr
                 state,
                 request_metadata,
                 "createTable",
+                list_flags,
             )
             .await;
         }
