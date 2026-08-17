@@ -33,9 +33,15 @@ http = { workspace = true }
 iceberg = { workspace = true }
 iceberg-ext = { path = "../iceberg-ext", features = ["axum"] }
 itertools = { workspace = true }
-lakekeeper = { path = "../lakekeeper", features = ["test-utils", "router", "sqlx-postgres"] }
+lakekeeper = { path = "../lakekeeper", features = [
+    "test-utils",
+    "router",
+    "sqlx-postgres",
+] }
 lakekeeper-io = { path = "../io", features = ["storage-in-memory"] }
-lakekeeper-storage-postgres = { path = "../lakekeeper-storage-postgres", features = ["test-utils"] }
+lakekeeper-storage-postgres = { path = "../lakekeeper-storage-postgres", features = [
+    "test-utils",
+] }
 maplit = { workspace = true }
 pastey = { workspace = true }
 serde = { workspace = true }
