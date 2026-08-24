@@ -559,37 +559,127 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
             None
         };
 
-        let resolved_warehouse = C::create_warehouse(
-            project_id,
-            CatalogCreateWarehouseRequest::builder()
-                .warehouse_name(warehouse_name)
-                .warehouse_id(Some(warehouse_id))
-                .storage_profile(storage_profile)
-                .storage_secret_id(secret_id)
-                .delete_profile(delete_profile)
-                .format_version_policy(format_version_policy)
-                .managed_by(managed_by)
-                .build(),
-            transaction.transaction(),
-        )
-        .await?;
-        authorizer
-            .create_warehouse(
-                request_metadata,
-                resolved_warehouse.warehouse_id,
+        // The secret is stored outside the transaction, so a rollback does not
+        // remove it. Everything up to the commit runs as one unit so that any
+        // failure — an id or name conflict, the authorizer, the commit itself —
+        // can delete the secret before returning, instead of leaving a credential
+        // behind that nothing references and no API can reach.
+        //
+        // The transaction stays owned out here rather than being moved into the
+        // block, so it can be settled explicitly below before the secret store is
+        // touched: cleanup talks to an external service (Vault, for one backend),
+        // and a write-pool connection must not be held across that call.
+        // Gates the authz compensation below. Strictly "the write succeeded": a
+        // failing `create_warehouse` may have failed *because* the id already
+        // carries relations, and deleting then would strip the rightful holder's
+        // grants. Its tuple write is atomic, so there is no partial case to undo.
+        let mut authz_relations_written = false;
+        let staged: Result<(_, _)> = async {
+            let resolved_warehouse = C::create_warehouse(
                 project_id,
+                CatalogCreateWarehouseRequest::builder()
+                    .warehouse_name(warehouse_name)
+                    .warehouse_id(Some(warehouse_id))
+                    .storage_profile(storage_profile)
+                    .storage_secret_id(secret_id)
+                    .delete_profile(delete_profile)
+                    .format_version_policy(format_version_policy)
+                    .managed_by(managed_by)
+                    .build(),
+                transaction.transaction(),
+            )
+            .await?;
+            authorizer
+                .create_warehouse(
+                    request_metadata,
+                    resolved_warehouse.warehouse_id,
+                    project_id,
+                )
+                .await?;
+            authz_relations_written = true;
+
+            let bootstrap_grants = write_bootstrap_grants::<C, A>(
+                &authorizer,
+                request_metadata,
+                &GrantResource::Warehouse(resolved_warehouse.warehouse_id),
+                transaction.transaction(),
             )
             .await?;
 
-        let bootstrap_grants = write_bootstrap_grants::<C, A>(
-            &authorizer,
-            request_metadata,
-            &GrantResource::Warehouse(resolved_warehouse.warehouse_id),
-            transaction.transaction(),
-        )
-        .await?;
+            Ok((resolved_warehouse, bootstrap_grants))
+        }
+        .await;
 
-        transaction.commit().await?;
+        // Settle the transaction before any cleanup: on success commit, otherwise
+        // roll back and release the connection. A rollback that fails is logged
+        // and discarded — the create error is what the caller needs, and the
+        // transaction is abandoned either way. A commit that fails has already
+        // ended the transaction, so there is nothing left to roll back, but its
+        // secret still needs cleaning up, which is why both funnel into one arm.
+        let settled = match staged {
+            Ok(staged) => transaction.commit().await.map(|()| staged),
+            Err(create_error) => {
+                transaction
+                    .rollback()
+                    .await
+                    .inspect_err(|e| {
+                        tracing::error!(
+                            ?e,
+                            "Failed to roll back after a failed warehouse creation: {}",
+                            e.error
+                        );
+                    })
+                    .ok();
+                Err(create_error)
+            }
+        };
+
+        let (resolved_warehouse, bootstrap_grants) = match settled {
+            Ok(settled) => settled,
+            Err(create_error) => {
+                // Relations written for a warehouse that then failed to commit
+                // would outlive it, and `create_warehouse` refuses an id that
+                // still carries any — so leaving them behind makes this id
+                // permanently unusable, including for the caller's own retry.
+                if authz_relations_written {
+                    authorizer
+                        .delete_warehouse(request_metadata, warehouse_id)
+                        .await
+                        .inspect_err(|e| {
+                            tracing::error!(
+                                ?e,
+                                %warehouse_id,
+                                "Failed to remove the authorization relations of a warehouse that \
+                                 was not created; the id cannot be used again until they are \
+                                 cleared: {}",
+                                e.error
+                            );
+                        })
+                        .ok();
+                }
+                // Best-effort, and the creation error is what the caller gets: a
+                // failure to clean up leaves the credential orphaned exactly as
+                // before, which must not mask why the create failed.
+                if let Some(secret_id) = secret_id {
+                    context
+                        .v1_state
+                        .secrets
+                        .delete_secret(&secret_id)
+                        .await
+                        .inspect_err(|e| {
+                            tracing::error!(
+                                ?e,
+                                %secret_id,
+                                "Failed to delete the storage secret of a warehouse that was not \
+                                 created; it is now orphaned in the secret store: {}",
+                                e.error
+                            );
+                        })
+                        .ok();
+                }
+                return Err(create_error);
+            }
+        };
 
         // Drop any entry this replica still holds for the id before the create
         // event repopulates it. Every other warehouse write invalidates; create
@@ -1154,7 +1244,11 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
         )
         .await
         .map_err(|e| spec_lock_to_error(&event_ctx, e))?;
-        C::delete_warehouse(warehouse_id, query, transaction.transaction()).await?;
+        // The secret comes from the row the delete removed, inside this
+        // transaction, so it cannot name a credential a concurrent rotation
+        // replaced between an earlier read and the delete.
+        let storage_secret_id =
+            C::delete_warehouse(warehouse_id, query, transaction.transaction()).await?;
         transaction.commit().await?;
         warehouse_cache_invalidate(warehouse_id).await;
 
@@ -1170,6 +1264,33 @@ pub trait Service<C: CatalogStore, A: Authorizer, S: SecretStore> {
                 );
             })
             .ok();
+
+        // The warehouse that owned this credential no longer exists, so nothing
+        // can reach it again through the API — left in place it is an
+        // indefinitely retained credential for storage Lakekeeper no longer
+        // serves. Post-commit and best-effort, like the authz cleanup above:
+        // deleting inside the transaction would destroy the credential of a
+        // warehouse that still exists if the commit then failed, and failing the
+        // request afterwards would report a delete that did happen as an error.
+        // A failure here leaves the credential exactly as orphaned as before,
+        // and says so in the log.
+        if let Some(secret_id) = storage_secret_id {
+            context
+                .v1_state
+                .secrets
+                .delete_secret(&secret_id)
+                .await
+                .inspect_err(|e| {
+                    tracing::error!(
+                        ?e,
+                        %secret_id,
+                        "Failed to delete the storage secret of deleted warehouse {warehouse_id}; \
+                         it is now orphaned in the secret store: {}",
+                        e.error
+                    );
+                })
+                .ok();
+        }
 
         event_ctx.emit_warehouse_deleted();
 

@@ -1969,3 +1969,177 @@ async fn test_create_warehouse_concurrent_requested_id(pool: PgPool) {
     assert_eq!(winner.warehouse_id(), contested);
     assert_eq!(loser.error.code, 409);
 }
+
+/// Deleting a warehouse deletes the storage credential it owned.
+///
+/// The warehouse row is the only thing that records which secret belonged to it,
+/// so a credential left behind here is unreachable through the API and retained
+/// indefinitely. Best-effort by design: the delete happens after the commit, so
+/// a failure leaves the credential orphaned rather than failing a delete that
+/// already succeeded.
+#[sqlx::test]
+async fn test_delete_warehouse_deletes_its_storage_secret(pool: PgPool) {
+    use lakekeeper::service::{SecretStore as _, storage::StorageCredential};
+
+    let storage_profile = memory_io_profile();
+    let (ctx, _) = SetupTestCatalog::builder()
+        .pool(pool.clone())
+        .storage_profile(storage_profile.clone())
+        .authorizer(AllowAllAuthorizer::default())
+        .number_of_warehouses(1)
+        .build()
+        .setup()
+        .await;
+
+    let credential: StorageCredential = serde_json::from_str(
+        r#"{
+            "type": "s3",
+            "credential-type": "access-key",
+            "access-key-id": "placeholder-access-key",
+            "secret-access-key": "placeholder-secret-key"
+        }"#,
+    )
+    .unwrap();
+    let secret_id = ctx
+        .v1_state
+        .secrets
+        .create_storage_secret(credential)
+        .await
+        .unwrap();
+    // Pin the premise: the assertion after the delete is only meaningful if the
+    // secret was resolvable to begin with.
+    ctx.v1_state
+        .secrets
+        .require_storage_secret_by_id(secret_id)
+        .await
+        .unwrap();
+
+    let project_id = ProjectId::from(Uuid::nil());
+    let mut transaction =
+        <PostgresBackend as CatalogStore>::Transaction::begin_write(ctx.v1_state.catalog.clone())
+            .await
+            .unwrap();
+    let warehouse = PostgresBackend::create_warehouse(
+        &project_id,
+        CatalogCreateWarehouseRequest::builder()
+            .warehouse_name(format!("secret-owner-{}", Uuid::now_v7()))
+            .storage_profile(storage_profile)
+            .storage_secret_id(Some(secret_id))
+            .delete_profile(TabularDeleteProfile::Hard {})
+            .build(),
+        transaction.transaction(),
+    )
+    .await
+    .unwrap();
+    transaction.commit().await.unwrap();
+
+    ApiServer::delete_warehouse(
+        warehouse.warehouse_id,
+        DeleteWarehouseQuery { force: false },
+        ctx.clone(),
+        random_request_metadata(),
+    )
+    .await
+    .unwrap();
+
+    let err = ctx
+        .v1_state
+        .secrets
+        .require_storage_secret_by_id(secret_id)
+        .await
+        .unwrap_err();
+    assert_eq!(err.error.code, 404, "{:?}", err.error);
+    assert_eq!(err.error.r#type, "SecretNotFound");
+}
+
+/// A create that fails after storing the credential does not leave it behind.
+///
+/// The secret is written outside the warehouse transaction, so the rollback that
+/// follows a conflict cannot remove it — the create path has to. Uses a requested
+/// id that is already taken, the cheapest failure that happens *after* the
+/// credential is stored.
+#[sqlx::test]
+async fn test_create_warehouse_conflict_deletes_the_new_secret(pool: PgPool) {
+    use lakekeeper::service::{SecretStore as _, storage::StorageCredential};
+
+    let storage_profile = memory_io_profile();
+    let (ctx, _) = SetupTestCatalog::builder()
+        .pool(pool.clone())
+        .storage_profile(storage_profile.clone())
+        .authorizer(AllowAllAuthorizer::default())
+        .number_of_warehouses(1)
+        .build()
+        .setup()
+        .await;
+
+    let credential: StorageCredential = serde_json::from_str(
+        r#"{
+            "type": "s3",
+            "credential-type": "access-key",
+            "access-key-id": "placeholder-access-key",
+            "secret-access-key": "placeholder-secret-key"
+        }"#,
+    )
+    .unwrap();
+    let warehouse_id = WarehouseId::new_random();
+
+    // First create takes the id and stores its own credential.
+    let first = ApiServer::create_warehouse(
+        CreateWarehouseRequest::builder()
+            .warehouse_name(format!("holder-{}", Uuid::now_v7()))
+            .warehouse_id(warehouse_id)
+            .storage_profile(storage_profile.clone())
+            .storage_credential(credential.clone())
+            .delete_profile(TabularDeleteProfile::Hard {})
+            .build(),
+        ctx.clone(),
+        random_request_metadata(),
+    )
+    .await
+    .unwrap();
+    let first_secret = PostgresBackend::get_warehouse_by_id(
+        first.warehouse_id(),
+        WarehouseStatus::active(),
+        ctx.v1_state.catalog.clone(),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .storage_secret_id
+    .expect("the first warehouse stored a credential");
+
+    // Second create collides on the id, after storing a credential of its own.
+    let err = ApiServer::create_warehouse(
+        CreateWarehouseRequest::builder()
+            .warehouse_name(format!("loser-{}", Uuid::now_v7()))
+            .warehouse_id(warehouse_id)
+            .storage_profile(storage_profile)
+            .storage_credential(credential)
+            .delete_profile(TabularDeleteProfile::Hard {})
+            .build(),
+        ctx.clone(),
+        random_request_metadata(),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        err.error.r#type, "WarehouseIdAlreadyExists",
+        "{:?}",
+        err.error
+    );
+
+    // The surviving warehouse keeps its credential; the failed create left none.
+    ctx.v1_state
+        .secrets
+        .require_storage_secret_by_id(first_secret)
+        .await
+        .expect("the existing warehouse's credential must be untouched");
+    let stored = sqlx::query_scalar!(r#"SELECT count(*) as "n!" FROM secret"#)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        stored, 1,
+        "expected only the surviving warehouse's credential to remain"
+    );
+}
