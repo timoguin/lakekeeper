@@ -384,15 +384,21 @@ fn match_not_modified(
     let current = TableETag::new(warehouse_id, metadata_location, shape, None);
 
     for client in client_etags {
-        let value = client.as_str();
-
-        // Wildcard matches the metadata, but carries no revalidation point.
-        if value == "*" {
+        // Wildcard matches the metadata, but carries no revalidation point. Asked
+        // before normalising, because it is the quotes that distinguish it from a
+        // tag whose opaque value is `*`.
+        if client.is_wildcard() {
             if vends_credentials {
                 continue;
             }
             return Some(current.clone().into_etag());
         }
+
+        // Not `as_str`: entries arrive as the client spelled them, and an
+        // in-process caller echoes back the tag exactly as it was minted, weak
+        // marker and quotes included. Comparing the raw value matches nothing, so
+        // the conditional load silently never succeeds.
+        let value = client.validator();
 
         // Not parseable as one of our ETags → reload.
         let Some(parsed) = TableETag::parse(value) else {
@@ -495,7 +501,7 @@ mod etag_tests {
     /// The shape a client echoes back: the wire value with the weak marker and
     /// quotes stripped, exactly as the HTTP layer's `parse_etags` produces.
     fn as_client_etag(etag: &ETag) -> ETag {
-        ETag::from(etag.as_str().trim_start_matches("W/").trim_matches('"'))
+        ETag::from(etag.validator())
     }
 
     /// Default-shape client [`ETag`].
@@ -532,6 +538,25 @@ mod etag_tests {
         let other = client_etag("s3://bucket/table/metadata-2.json", Some(NOW + 60_000));
         assert!(!matches(std::slice::from_ref(&other), false));
         assert!(!matches(&[other], true));
+    }
+
+    /// A quoted `*` is an entity-tag whose opaque value happens to be `*`, not
+    /// `If-None-Match`'s wildcard. Reading it as one skipped validator
+    /// comparison entirely and answered `304` from a tag nothing ever minted, so
+    /// the client kept serving whatever it had cached.
+    #[test]
+    fn a_quoted_asterisk_is_not_the_wildcard() {
+        for sent in ["\"*\"", "W/\"*\"", "\"W/*\""] {
+            assert!(
+                match_not_modified(&[ETag::from(sent)], wh(), Some(LOC), all(), NOW, false)
+                    .is_none(),
+                "{sent} was honoured as a wildcard"
+            );
+        }
+        // The bare token still is one, so the refusals above are the quotes.
+        assert!(
+            match_not_modified(&[ETag::from("*")], wh(), Some(LOC), all(), NOW, false).is_some()
+        );
     }
 
     #[test]
@@ -696,6 +721,29 @@ mod etag_tests {
     /// makes the test move with the code: reverting the `None` arm to
     /// [`StorageAccess::NoConfig`] would leave both sides agreeing and the
     /// regression invisible.
+    /// An in-process caller holds the tag exactly as the server minted it — weak
+    /// marker and quotes included — because nothing stripped them on the way back.
+    /// That is the enterprise `refresh()` path, whose conditional load never once
+    /// succeeded while the comparison used the raw value.
+    #[test]
+    fn a_wire_form_etag_still_matches() {
+        let minted = TableETag::new(wh(), LOC, all(), None).into_etag();
+        assert!(
+            minted.as_str().starts_with("W/\""),
+            "premise: the mint is wire form, {:?}",
+            minted.as_str()
+        );
+
+        assert!(
+            matches_repr(std::slice::from_ref(&minted), all(), false),
+            "a tag fed straight back in process must match: {:?}",
+            minted.as_str()
+        );
+        // And the header-parsed spelling of the same tag still matches, so the two
+        // routes agree rather than one being traded for the other.
+        assert!(matches_repr(&[as_client_etag(&minted)], all(), false));
+    }
+
     #[test]
     fn no_storage_access_maps_to_the_catalog_defaults_shape() {
         let mapped = storage_access_for(None, DataAccessMode::ClientManaged, wv());
