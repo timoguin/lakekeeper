@@ -89,9 +89,9 @@ pub struct StackitProfile {
     pub endpoint: Option<Url>,
     /// Vend temporary downscoped credentials via STS. Defaults to enabled.
     ///
-    /// Requires `credentials-group-urn`, and requires the credentials group to
-    /// carry a trust policy allowing `sts:AssumeRole`. Disable it to fall back
-    /// to remote signing on storage that predates `StorageGRID` 12.0.
+    /// Requires `credentials-group-urn`, and a trust policy on that group
+    /// allowing `sts:AssumeRole`. Disable it to fall back to remote signing on
+    /// STACKIT storage without STS.
     #[serde(default = "fn_true")]
     #[builder(default = true)]
     pub sts_enabled: bool,
@@ -733,6 +733,17 @@ mod tests {
                             "{name} did not pass: {check:?}"
                         );
                     }
+                    // Whether the test bucket has a policy is outside this test.
+                    let bucket_access = report
+                        .checks
+                        .iter()
+                        .find(|c| c.name == ValidationCheckName::BucketAccessRestricted)
+                        .expect("report has the bucket-access check");
+                    assert_ne!(
+                        bucket_access.status,
+                        ValidationCheckStatus::Failed,
+                        "{bucket_access:?}"
+                    );
                 },
                 true,
             );
