@@ -1029,7 +1029,9 @@ OneLake does not have a storage-account key. Only Microsoft Entra credentials ar
 
 Supplying `shared-access-key` to a OneLake warehouse is rejected at validation time.
 
-The OneLake tenant setting **"Authenticate with OneLake user-delegated SAS tokens"** must be enabled for the workspace before vended credentials work. This is a Fabric-side setting and cannot be configured from Lakekeeper.
+Vended credentials are user-delegated SAS tokens, which depend on two Fabric settings under *OneLake settings*. **"Use short-lived user-delegated SAS tokens"** lets Lakekeeper obtain the delegation key, and **"Authenticate with OneLake user-delegated SAS tokens"** lets OneLake accept requests signed with it. Enable the second one tenant-wide, or, when the tenant admin delegates it to workspaces, in the settings of the workspace that holds the lakehouse. Both are Fabric-side settings and cannot be configured from Lakekeeper.
+
+With only the first setting enabled, creating the warehouse fails storage validation at the `vended-credentials-read-write` step with a 401 `Authentication Failed with Access token validation failed`.
 
 ### Example
 
