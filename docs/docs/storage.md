@@ -918,6 +918,8 @@ Every credentials group of a STACKIT project can read and write every bucket of 
 
 In the example, `credentials-group-a1b2c3` is Lakekeeper's `credentials-group-urn` and `credentials-group-d4e5f6` is the admin group; replace both and `my-warehouse` with your values. The second statement keeps Lakekeeper's access key, and anyone who obtains it, from changing or removing the policy. Credentials that Lakekeeper vends act as the group in `credentials-group-urn`, so they keep working.
 
+Storage validation reads the policy with the Warehouse's access key, which needs `s3:GetBucketPolicy`; the recommended policy leaves it to Lakekeeper's group. If you also deny `s3:GetBucketPolicy` to Lakekeeper, the `bucket-access-restricted` check reports that the policy cannot be read.
+
 Apply the policy through the S3 API with the admin group's access key. Any group can set the first policy; afterwards only the admin group can change it. Use the endpoint of the Warehouse's storage service; the example uses the data platform storage service, and the object storage service uses `https://object.storage.eu01.onstackit.cloud`:
 
 ```bash
